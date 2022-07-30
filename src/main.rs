@@ -38,7 +38,7 @@ impl EventHandler for Handler
                     if msg.attachments.len() > 0 {
                         msg.attachments
                            .iter()
-                           .map(|c| format!("{}", c.url))
+                           .map(|c| format!("{}\n", c.url))
                            .collect::<String>()
                     }
                     else {
