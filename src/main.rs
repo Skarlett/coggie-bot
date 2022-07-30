@@ -10,12 +10,13 @@ use serenity::prelude::*;
 struct Handler;
 
 #[async_trait]
-impl EventHandler for Handler {
+impl EventHandler for Handler
+{
     async fn reaction_add(&self, ctx: Context, ev: Reaction)
     {
         if let ReactionType::Unicode(x) = ev.emoji
         {
-            if !x.eq(&String::from("\u{1F516}")) {
+            if x != "\u{1F516}" {
                 return;
             }
 
@@ -32,12 +33,20 @@ impl EventHandler for Handler {
                 let msg = ev.channel_id
                     .message(&ctx, ev.message_id).await.unwrap();
 
-                let attachments = msg.attachments
-                    .iter()
-                    .map(|c| format!("{}\n", c.url))
-                    .collect::<String>();
+                let attachments = {
+                    if msg.attachments.len() > 0 {
+                        msg.attachments
+                           .iter()
+                           .map(|c| format!("{}", c.url))
+                           .collect::<String>()
+                    }
+                    else {
+                        String::from("N/A")
+                    }
+                };
 
-                let _ = user_id.to_user(&ctx)
+
+                user_id.to_user(&ctx)
                     .await
                     .expect("Couldn't find user")
                     .create_dm_channel(&ctx)
@@ -46,18 +55,21 @@ impl EventHandler for Handler {
                     .send_message(&ctx, |m: &mut CreateMessage| {
                             m.embed(|e| {
                                 e.title("Bookmark")
-                                .description("You bookmarked this message on {} from channel {} ({})")
+                                // .description(
+                                //     format!("You bookmarked this message on {} from channel {} ({})"))
                                 .fields(vec![
-                                    ("link:", link, true),
+                                    ("author:", msg.author.tag(), false),
                                     ("attachments:", attachments, false),
                                     ("content:", msg.content.to_string(), false),
+                                    ("link:", format!("https://discord.com/channels/{}", link), true),
                                 ])
                                 .footer(|f| f.text("https://github.com/Skarlett/coggie-bot"))
                                 .timestamp(Timestamp::now())
                             })
                         }
                     )
-                    .await;
+                    .await
+                    .unwrap();
             }
         }
     }
@@ -77,7 +89,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS;
 
     let mut client =
         Client::builder(&token, intents)
