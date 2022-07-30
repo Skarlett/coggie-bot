@@ -9,6 +9,9 @@ use serenity::builder::CreateMessage;
 use serenity::prelude::*;
 struct Handler;
 
+
+
+
 #[async_trait]
 impl EventHandler for Handler
 {
@@ -23,7 +26,8 @@ impl EventHandler for Handler
             if let Some(user_id) = ev.user_id {
                 let link: String = {
                     if let Some(gid) = ev.guild_id {
-                        format!("{}/{}/{}", gid, ev.channel_id, ev.message_id)
+                        format!("https://discord.com/channels/{}/{}/{}",
+                                gid, ev.channel_id, ev.message_id)
                     }
                     else {
                         String::from("N/A")
@@ -45,6 +49,14 @@ impl EventHandler for Handler
                     }
                 };
 
+                let content = {
+                    if msg.content.len() > 0 {
+                        msg.content.to_string()
+                    }
+                    else {
+                        String::from("N/A")
+                    }
+                };
 
                 user_id.to_user(&ctx)
                     .await
@@ -60,8 +72,8 @@ impl EventHandler for Handler
                                 .fields(vec![
                                     ("author:", msg.author.tag(), false),
                                     ("attachments:", attachments, false),
-                                    ("content:", msg.content.to_string(), false),
-                                    ("link:", format!("https://discord.com/channels/{}", link), true),
+                                    ("content:", , false),
+                                    ("link:", link, true),
                                 ])
                                 .footer(|f| f.text("https://github.com/Skarlett/coggie-bot"))
                                 .timestamp(Timestamp::now())
