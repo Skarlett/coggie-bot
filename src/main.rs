@@ -9,9 +9,6 @@ use serenity::builder::CreateMessage;
 use serenity::prelude::*;
 struct Handler;
 
-
-
-
 #[async_trait]
 impl EventHandler for Handler
 {
@@ -72,7 +69,7 @@ impl EventHandler for Handler
                                 .fields(vec![
                                     ("author:", msg.author.tag(), false),
                                     ("attachments:", attachments, false),
-                                    ("content:", , false),
+                                    ("content:", content , false),
                                     ("link:", link, true),
                                 ])
                                 .footer(|f| f.text("https://github.com/Skarlett/coggie-bot"))
