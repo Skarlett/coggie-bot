@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 serenity = { version = "*", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-envdot = "*"
+dotenv = "*"
