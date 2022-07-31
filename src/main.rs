@@ -1,13 +1,34 @@
 use std::env;
 
 use serenity::async_trait;
-use serenity::model::channel::{ReactionType};
+use serenity::prelude::*;
+
+use serenity::http::Http;
+use serenity::model::channel::{ReactionType, Message};
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::Reaction;
 use serenity::model::Timestamp;
 use serenity::builder::CreateMessage;
-use serenity::prelude::*;
+use serenity::framework::standard::macros::{command, group};
+use serenity::framework::standard::{
+    StandardFramework, CommandResult
+};
+
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+#[group]
+#[commands(version)]
+struct Commands;
+
+// In this example channel mentions are excluded via the `ContentSafeOptions`.
+#[command]
+async fn version(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.channel_id.say(&ctx.http, VERSION).await?;
+    Ok(())
+}
+
 struct Handler;
+
 
 #[async_trait]
 impl EventHandler for Handler
@@ -92,7 +113,6 @@ impl EventHandler for Handler
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     dotenv::dotenv()?;
-
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected a token in the environment");
 
@@ -100,6 +120,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MESSAGE_REACTIONS;
+
+
+    let http = Http::new(&token);
+
+    // We will fetch your bot's owners and id
+    let bot_id = http.get_current_user().await?.id;
+
+    let framework = StandardFramework::new()
+        .configure(|c| c
+            .with_whitespace(true)
+            .on_mention(Some(bot_id))
+            //.prefix("~")
+            .delimiters(vec![", ", ","])
+            .owners(std::collections::HashSet::new()))
+        //    .before(before)
+        //    .after(after)
+        //    .unrecognised_command(unknown_command)
+        //    .normal_message(normal_message)
+        //    .on_dispatch_error(dispatch_error)
+        //    .bucket("emoji", |b| b.delay(5)).await
+        //    .bucket("complicated", |b| b.limit(2).time_span(30).delay(5)
+        //       .limit_for(LimitedFor::Channel)
+        //       .await_ratelimits(1)
+        //       .delay_action(delay_action)).await
+        //.help(&MY_HELP)
+        //.group(&GENERAL_GROUP)
+        //.group(&EMOJI_GROUP)
+        //.group(&MATH_GROUP)
+        //.group(&OWNER_GROUP);
+        .group(&COMMANDS_GROUP);
+
+
+    let mut client = Client::builder(&token, intents)
+        .event_handler(Handler)
+        .framework(framework)
+        .await
+        .expect("Err creating client");
+
+
+    if let Err(why) = client.start().await {
+        println!("Client error: {:?}", why);
+    }
 
     let mut client =
         Client::builder(&token, intents)
