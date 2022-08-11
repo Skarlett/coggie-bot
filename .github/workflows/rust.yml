@@ -12,17 +12,36 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
+
     - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose --release
+
     - name: Run tests
       run: cargo test --verbose --release
 
     - uses: actions/upload-artifact@v3
       with:
-        name: bookmark-bot
+        name: bookmark-bot-linux-glib-x64
         path: target/release/bookmark-bot
+    
+    - name: Clean up artifacts
+      run: cargo clean
+    
+    - name: aarch64 cross compile
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: ClementTsang/cargo-action@v0.0.2
+      with:
+        command: build
+        args: --lib --bins --benches --release --target aarch64-unknown-linux-musl
+        use-cross: true
+        cross-version: 0.2.4
+    
+    - uses: actions/upload-artifact@v3
+      with:
+        name: bookmark-bot-aarch64-unknown-linux-musl
+        path: target/aarch64-unknown-linux-musl/release/bookmark-bot
+    
