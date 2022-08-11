@@ -35,7 +35,7 @@ jobs:
     - uses: ClementTsang/cargo-action@v0.0.2
       with:
         command: build
-        args: --lib --bins --benches --release --target aarch64-unknown-linux-musl
+        args: --release --target aarch64-unknown-linux-musl
         use-cross: true
         cross-version: 0.2.4
     
