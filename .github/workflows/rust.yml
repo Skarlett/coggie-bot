@@ -30,7 +30,6 @@ jobs:
     - name: Clean up artifacts
       run: cargo clean
     
-    - name: aarch64 cross compile
     - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
     - uses: ClementTsang/cargo-action@v0.0.2
