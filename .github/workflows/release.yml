@@ -26,9 +26,8 @@ jobs:
         use-cross: true
         cross-version: 0.2.4
     
-    - name: Hashbrowns
+    - name: Hash bin
       run: sha256sum target/aarch64-unknown-linux-musl/release/bookmark-bot > sha256sum.txt
-
 
     - name: write version
       run: cargo run -- --version > VERSION
@@ -37,7 +36,7 @@ jobs:
       run: |
         mkdir release && \
         mv target/aarch64-unknown-linux-musl/release/bookmark-bot LICENSE README.md .env.example bookmark-bot.service release && \
-        cp sha256sum.txt release && \
+        cp sha256sum.txt VERSION release && \
         tar -czf release.tar.gz 
     
     - name: Release
