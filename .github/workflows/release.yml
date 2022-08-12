@@ -26,9 +26,13 @@ jobs:
         use-cross: true
         cross-version: 0.2.4
     
-    - name: Hash bin
+    - name: Hashbrowns
       run: sha256sum target/aarch64-unknown-linux-musl/release/bookmark-bot > sha256sum.txt
-    
+
+
+    - name: write version
+      run: cargo run -- --version > VERSION
+
     - name: TarBall it 
       run: |
         mkdir release && \
@@ -41,5 +45,6 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
+          VERSION
           sha256sum.txt
           release.tar.gz
