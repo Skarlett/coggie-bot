@@ -15,6 +15,7 @@ use serenity::framework::standard::{
 };
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const LICENSE: &'static str = include_str!("LICENSE");
 
 #[group]
 #[commands(version)]
@@ -111,8 +112,9 @@ impl EventHandler for Handler
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     dotenv::dotenv()?;
+    println!(LICENSE)
+
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected a token in the environment");
 
