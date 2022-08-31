@@ -145,17 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .group(&COMMANDS_GROUP);
 
 
-    let mut client = Client::builder(&token, intents)
-        .event_handler(Handler)
-        .framework(framework)
-        .await
-        .expect("Err creating client");
-
-
-    if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
-    }
-
     let mut client =
         Client::builder(&token, intents)
             .event_handler(Handler)
