@@ -9,41 +9,54 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+
 jobs:
   release:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Clean up artifacts
-      run: cargo clean
-    
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - uses: ClementTsang/cargo-action@v0.0.2
-      with:
-        command: build
-        args: --release --target aarch64-unknown-linux-musl
-        use-cross: true
-        cross-version: 0.2.4
-    
-    - name: Hash bin
-      run: sha256sum target/aarch64-unknown-linux-musl/release/bookmark-bot > sha256sum.txt
 
-    - name: write version
-      run: cargo run -- --version > VERSION
+      - uses: c-py/action-dotenv-to-setenv@v2
+        with:
+          env-file: .env
 
-    - name: TarBall it 
-      run: |
-        mkdir release && \
-        mv target/aarch64-unknown-linux-musl/release/bookmark-bot LICENSE README.md .env.example bookmark-bot.service release && \
+      - name: write version
+        run: cargo run -- --version > VERSION
+
+      - name: Clean up artifacts
+        run: cargo clean
+    
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ClementTsang/cargo-action@v0.0.2
+        with:
+          command: build
+          args: --release --target aarch64-unknown-linux-musl
+          use-cross: true
+          cross-version: 0.2.4
+    
+      - name: Hash bin
+        run: sha256sum target/aarch64-unknown-linux-musl/release/bookmark-bot > sha256sum.txt
+
+      - name: write version
+        run: cargo run -- --version > VERSION
+
+      - name: remove whitespace in file VERSION
+        run: truncate -s -1 VERSION sha256sum.txt
+
+      - name: TarBall it
+        run: |
+          mkdir release && \
+          mv migration/ target/aarch64-unknown-linux-musl/release/bookmark-bot LICENSE README.md .env.example bookmark-bot.service release && \
+        mv release/bookmark-bot release/aarch64-bookmark-bot && \
         cp sha256sum.txt VERSION release && \
         tar -czf release.tar.gz 
     
-    - name: Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          VERSION
-          sha256sum.txt
-          release.tar.gz
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            VERSION
+            sha256sum.txt
+            release.tar.gz
