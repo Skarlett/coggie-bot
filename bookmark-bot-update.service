@@ -1,0 +1,10 @@
+[Unit]
+Description=Automatically update bookmark-botd.
+Wants=bookmark-bot-update.timer
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bookmark-bot/check_update.sh
+
+[Install]
+WantedBy=multi-user.target
