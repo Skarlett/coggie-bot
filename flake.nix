@@ -6,7 +6,8 @@
   };
 
   outputs = { self, nixpkgs, utils, naersk }:
-    utils.lib.eachDefaultSystem (system:
+    {
+      inherit (utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
         naersk-lib = pkgs.callPackage naersk { };
@@ -21,6 +22,15 @@
         devShell = with pkgs; mkShell {
           buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy ];
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
+          shellHook = ''
+               echo ' property of dick '
+          '';
+
         };
-      });
+
+        nixosConfiguration = {};
+      }))
+        defaultPackage defaultApp devShell self;
+
+    };
 }
