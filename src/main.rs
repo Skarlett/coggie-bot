@@ -15,6 +15,7 @@ use serenity::framework::standard::{
 };
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const LICENSE: &'static str = include_str!("../LICENSE");
 
 #[group]
 #[commands(version)]
@@ -111,8 +112,9 @@ impl EventHandler for Handler
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     dotenv::dotenv()?;
+    println!("{}", LICENSE);
+
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected a token in the environment");
 
@@ -131,7 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .configure(|c| c
             .with_whitespace(true)
             .on_mention(Some(bot_id))
-            //.prefix("~")
             .delimiters(vec![", ", ","])
             .owners(std::collections::HashSet::new()))
         //    .before(before)
@@ -140,28 +141,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //    .normal_message(normal_message)
         //    .on_dispatch_error(dispatch_error)
         //    .bucket("emoji", |b| b.delay(5)).await
-        //    .bucket("complicated", |b| b.limit(2).time_span(30).delay(5)
-        //       .limit_for(LimitedFor::Channel)
-        //       .await_ratelimits(1)
-        //       .delay_action(delay_action)).await
         //.help(&MY_HELP)
-        //.group(&GENERAL_GROUP)
-        //.group(&EMOJI_GROUP)
-        //.group(&MATH_GROUP)
-        //.group(&OWNER_GROUP);
         .group(&COMMANDS_GROUP);
 
-
-    let mut client = Client::builder(&token, intents)
-        .event_handler(Handler)
-        .framework(framework)
-        .await
-        .expect("Err creating client");
-
-
-    if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
-    }
 
     let mut client =
         Client::builder(&token, intents)
