@@ -16,33 +16,18 @@
         defaultApp = utils.lib.mkApp {
           drv = self.defaultPackage."${system}";
         };
+
         devShell = with pkgs; mkShell {
           buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy ];
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
-        nixosModule = pkgs: {config, lib, ...}:
-          let
-            cfg = config.services.coggiebot;
-          in
-          with lib;
-        {
-          options.services."${coggiebot}".enable = mkEnableOption "coggiebot service";
-          config = mkIf cfg.enable {
-            systemd.user.services."backup-home" = {
-                description = "backup home directory";
-                after = [
-                  "multi-user.target"
-                  "networking.target"
-                ];
 
-                ExecStart = "${pkgs.coggiebot}/bin/coggiebot";
-                serviceConfig.Type = "simple";
-            };
-          };
-        };
-
-        #nixosModule.default = nixosModule;
+        nixosModule.coggiebot =  (import ./module.nix);
       }
-    )) devShell nixosModule defaultPackage defaultApp;
+    ))
+      devShell
+      nixosModule
+      defaultPackage
+      defaultApp;
     };
 }
