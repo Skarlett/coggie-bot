@@ -32,10 +32,7 @@
       )) packages devShell;
 
       overlays.default = final: prev: {
-        coggiebot =
-          with final;
-          let pkgs = import <nixpkgs> { inherit system; };
-          in final.callPackage ({ inShell ? false }: packages {});
+        coggiebot = with final; final.callPackage ({ inShell ? false }: packages {});
       };
 
       nixosModules.coggiebot =
