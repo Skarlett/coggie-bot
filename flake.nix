@@ -1,20 +1,18 @@
 {
-  description = "A Rust web server including a NixOS module";
+  description = "Open source discord utility bot";
+  inputs = {
+    nixpkgs.url = "nixpkgs/nixos-22.05";
+    import-cargo.url = github:edolstra/import-cargo;
+  };
 
-  # Nixpkgs / NixOS version to use.
-  inputs.nixpkgs.url = "nixpkgs/nixos-22.05";
-  inputs.import-cargo.url = github:edolstra/import-cargo;
   outputs = { self, nixpkgs, import-cargo }:
     let
-      supportedSystems = [ "x86_64-linux" ];
+      supportedSystems = [ "x86_64-linux" "aarch64-linux"  ];
       lastModifiedDate = self.lastModifiedDate or self.lastModified or "19700101";
       version = "${builtins.substring 0 8 lastModifiedDate}-${self.shortRev or "dirty"}";
-
       forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
       nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; overlays = [ self.overlay ]; });
     in {
-
-      # A Nixpkgs overlay.
       overlay = final: prev: {
         coggiebot = with final; final.callPackage ({ inShell ? false }: stdenv.mkDerivation rec {
           name = "coggiebot-${version}";
@@ -44,7 +42,6 @@
               rm $out/.crates.toml
             '';
         }) {};
-
       };
 
       # Provide some binary packages for selected system types.
@@ -53,11 +50,13 @@
           inherit (nixpkgsFor.${system}) coggiebot;
         });
 
+      hydraJobs = forAllSystems (system: self.packages.${system}.coggiebot);
       defaultPackage = forAllSystems (system: self.packages.${system}.coggiebot);
       devShell = forAllSystems (system: self.packages.${system}.coggiebot.override { inShell = true; });
 
       nixosModules.coggiebot =
-        { pkgs, lib, config, coggiebot, ... }: with lib;
+        { pkgs, lib, config, coggiebot, ... }:
+        with lib;
         let cfg = config.services.coggiebot;
         in {
           options.services.coggiebot = {
@@ -69,53 +68,17 @@
           };
 
           config = mkIf cfg.enable {
-                nixpkgs.overlays = [ self.overlay ];
-                systemd.services.coggiebot = {
-                  wantedBy = [ "multi-user.target" ];
-                  after = [ "network.target" ];
-                  wants = [ "network-online.target" ];
-                  environment.DISCORD_TOKEN = "${cfg.api-key}";
-                  serviceConfig.ExecStart = "${pkgs.coggiebot}/bin/coggiebot";
-
-                  #preStart = ''
-                  #         echo "DISCORD_TOKEN='${cfg.api-key}'" > ${pkgs.coggiebot}/bin/.env
-                  #'';
-
-                  #postStop = ''
-                  #         rm ${pkgs.coggiebot}/bin/.env
-                  #'';
-                };
+            nixpkgs.overlays = [ self.overlay ];
+            systemd.services.coggiebot = {
+              wantedBy = [ "multi-user.target" ];
+              after = [ "network.target" ];
+              wants = [ "network-online.target" ];
+              environment.DISCORD_TOKEN = "${cfg.api-key}";
+              serviceConfig.ExecStart = "${pkgs.coggiebot}/bin/coggiebot";
+              serviceConfig.Restart = "on-failure";
             };
-        };
+          };
+      };
 
-      # Tests run by 'nix flake check' and by Hydra.
-      checks = forAllSystems
-        (system:
-          with nixpkgsFor.${system};
-          {
-            inherit (self.packages.${system}) coggiebot;
-
-            # A VM test of the NixOS module.
-            vmTest =
-              with import (nixpkgs + "/nixos/lib/testing-python.nix") {
-                inherit system;
-              };
-
-              makeTest {
-                nodes = {
-                  client = { ... }: {
-                    imports = [ self.nixosModules.coggiebot ];
-                  };
-                };
-
-              testScript =
-                ''
-                  start_all()
-                  client.wait_for_unit("multi-user.target")
-                  assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
-                '';
-              };
-          }
-        );
     };
 }
