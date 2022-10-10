@@ -112,7 +112,6 @@ impl EventHandler for Handler
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv::dotenv()?;
     println!("{}", LICENSE);
 
     let token = env::var("DISCORD_TOKEN")
@@ -147,6 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut client =
         Client::builder(&token, intents)
+            .framework(framework)
             .event_handler(Handler)
             .await
             .expect("Err creating client");
