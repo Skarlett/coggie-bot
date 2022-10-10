@@ -8,12 +8,8 @@
 
   outputs = { self, nixpkgs, flake-utils, naersk }:
     let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux"  ];
       lastModifiedDate = self.lastModifiedDate or self.lastModified or "19700101";
       version = "${builtins.substring 0 8 lastModifiedDate}-${self.shortRev or "dirty"}";
-      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
-      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; overlays = [ self.overlay ]; });
-
     in rec {
       inherit(flake-utils.lib.eachDefaultSystem(system:
         let
@@ -25,7 +21,9 @@
           packages.coggiebot = naerk-lib.buildPackage {
             src = ./.;
           };
+
           packages.default = packages.coggiebot;
+          hydraJobs = packages.coggiebot;
 
           devShell = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [ rustc cargo ];
@@ -39,10 +37,6 @@
           let pkgs = import <nixpkgs> { inherit system; };
           in final.callPackage ({ inShell ? false }: packages {});
       };
-
-      # hydraJobs = forAllSystems (system: self.packages.${system}.coggiebot);
-      # packages.default = forAllSystems (system: self.packages.${system}.coggiebot);
-      # devShell = forAllSystems (system: self.packages.${system}.coggiebot.override { inShell = true; });
 
       nixosModules.coggiebot =
         { pkgs, lib, config, coggiebot, ... }:
@@ -68,6 +62,5 @@
             };
           };
       };
-
     };
 }
