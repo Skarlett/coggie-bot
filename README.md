@@ -25,20 +25,11 @@ Add your name to the contributors.txt. Please describe the changes made, and add
 
 This project uses the `nix` package manager to provide a uniformed development enviroment and deployment. `nix` can be installed using the following
 
-#### Arch linux
- ``` sh
- pacman -S nix
- ```
-
-#### RHEL/Fedora/Centos/Rocky/Alma
- ``` sh
- dnf install nix
- ```
-
-#### Debian/Ubuntu
+### Install Nix on Linux/MacOS
 ``` sh
- apt install nix
- ```
+curl -L https://nixos.org/nix/install | sh
+```
+[See repository](https://github.com/NixOS/nix)
 
 #### Enable experimental-features
 After you install nix, make sure to enable flakes, and future commands.
