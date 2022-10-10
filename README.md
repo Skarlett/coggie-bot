@@ -1,6 +1,22 @@
 # coggie-bot
-Hi! This is an open source discord bot written in rust. 
-The goals of this project is to create a discord bot by our users. 
+Hi! This is an open source discord bot written in rust.
+
+## Features
+| on-event    | action taken          | 
+| reaction 🔖 | dm message to reactor | 
+| <p>version  | say package's version | 
+|             |                       | 
+
+## Contributing
+All contributions are welcomed. When contributing, please pull request to a new branch, or use the `pull`. 
+Add your name to the contributors.txt. Please describe the changes made, and add the features to the list above.
+
+## Roadmap
+[X] Nix
+[ ] pre-commit hooks
+[ ] Workflow CI/CD
+[ ] cross compilation on CI/CD
+[ ] Automatic update delivery
 
 ## Run
 ```sh
@@ -66,4 +82,3 @@ git push origin your-update-branch
   };
 }
 ```
-
