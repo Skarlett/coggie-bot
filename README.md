@@ -1,6 +1,17 @@
 # coggie-bot
 Hi! This is an open source discord bot written in rust.
 
+## Limitation
+*raspberry pi 3B+* 
+| resource | max             |   |
+|----------|-----------------|---|
+| RAM:     | **512MB**       |   |
+| CPU:     | 1.4GHz 64-bit   |   |
+| CPU Arch | aarch64         |   |
+| Net:     | 100mbps/100mbps |   |
+| Storage: | 32GB            |   |
+|          |                 |   |
+
 ## Features
 | on-event | event-body | action taken          |   |
 |----------|------------|-----------------------|---|
@@ -11,6 +22,23 @@ Hi! This is an open source discord bot written in rust.
 ## Contributing
 All contributions are welcomed. When contributing, please pull request to a new branch, or use the `pull`. 
 Add your name to the contributors.txt. Please describe the changes made, and add the features to the list above.
+
+This project uses the `nix` package manager to provide a uniformed development enviroment and deployment. `nix` can be installed using the following
+
+#### Arch linux
+ ``` sh
+ pacman -S nix
+ ```
+
+#### RHEL/Fedora/Centos/Rocky/Alma
+ ``` sh
+ dnf install nix
+ ```
+
+#### Debian/Ubuntu
+``` sh
+ apt install nix
+ ```
 
 ## Roadmap
 - [X] Nix
