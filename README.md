@@ -40,6 +40,13 @@ This project uses the `nix` package manager to provide a uniformed development e
  apt install nix
  ```
 
+#### Enable experimental-features
+After you install nix, make sure to enable flakes, and future commands.
+```
+# ~/.config/nix/nix.conf
+experimental-features = nix-command flakes
+```
+
 ## Roadmap
 - [X] Nix
 - [ ] pre-commit hooks
