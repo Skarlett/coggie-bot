@@ -3,7 +3,7 @@ Hi! This is an open source discord bot written in rust.
 The goals of this project is to create a discord bot by our users. 
 
 ## Run
-``` nix
+```sh
 DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot
 ```
 
@@ -46,7 +46,7 @@ git push origin your-update-branch
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-22.05";
     nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
-    coggiebot.url = "git+file:/home/lunarix/lunarix/Code/Discord/bookmark-bot";
+    coggiebot.url = "github:skarlett/coggie-bot";
   };
 
   outputs = { self, nixpkgs, coggiebot }:
