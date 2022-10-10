@@ -62,7 +62,6 @@ git push origin your-update-branch
   description = "NixOS configuration";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-22.05";
-    nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
     coggiebot.url = "github:skarlett/coggie-bot";
   };
 
