@@ -2,11 +2,11 @@
 Hi! This is an open source discord bot written in rust.
 
 ## Features
-| on-event    | action taken          |
-|-------------|-----------------------|
-| reaction 🔖 | dm message to reactor |
-| <p>version  | say package's version |
-|             |                       |
+| on-event | event-body | action taken          |   |
+|----------|------------|-----------------------|---|
+| reaction | 🔖         | dm message to reactor |   |
+| message  | @version   | say package's version |   |
+|          |            |                       |   |
 
 ## Contributing
 All contributions are welcomed. When contributing, please pull request to a new branch, or use the `pull`. 
