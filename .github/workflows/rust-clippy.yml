@@ -6,18 +6,15 @@
 # mistakes in your Rust code and help improve your Rust code.
 # More details at https://github.com/rust-lang/rust-clippy 
 # and https://rust-lang.github.io/rust-clippy/
-
 name: rust-clippy analyze
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "pull" ]
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ "master" ]
-  schedule:
-    - cron: '34 10 * * 0'
-
+    branches: [ "master", "pull" ]
+  
 jobs:
   rust-clippy-analyze:
     name: Run rust-clippy analyzing
