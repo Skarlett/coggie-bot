@@ -13,15 +13,11 @@ All contributions are welcomed. When contributing, please pull request to a new 
 Add your name to the contributors.txt. Please describe the changes made, and add the features to the list above.
 
 ## Roadmap
-[X] Nix
-
-[ ] pre-commit hooks
-
-[ ] Workflow CI/CD
-
-[ ] cross compilation on CI/CD
-
-[ ] Automatic update delivery
+- [X] Nix
+- [ ] pre-commit hooks
+- [ ] Workflow CI/CD
+- [ ] cross compilation on CI/CD
+- [ ] Automatic update delivery
 
 ## Run
 ```sh
