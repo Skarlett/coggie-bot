@@ -16,7 +16,7 @@ use serenity::model::{
 use serenity::prelude::*;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const LICENSE: &'static str = include_str!("../LICENSE");
+const LICENSE: &'static str = include_str!("../../LICENSE");
 const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
 
 #[group]
