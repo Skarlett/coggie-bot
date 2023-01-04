@@ -8,35 +8,33 @@
 
   outputs = { self, nixpkgs, flake-utils, naersk }:
     let
-      lastModifiedDate = self.lastModifiedDate or self.lastModified or "19700101";
-      version = "${builtins.substring 0 8 lastModifiedDate}-${self.shortRev or "dirty"}";
+      lastModifiedDate =
+        self.lastModifiedDate or self.lastModified or "19700101";
+      version = "${builtins.substring 0 8 lastModifiedDate}-${
+          self.shortRev or "canary"
+        }";
     in rec {
-      inherit(flake-utils.lib.eachDefaultSystem(system:
+      inherit (flake-utils.lib.eachDefaultSystem (system:
         let
-          pkgs = import nixpkgs {
-            inherit system;
-          };
-          naerk-lib = pkgs.callPackage naersk {};
+          pkgs = import nixpkgs { inherit system; };
+          naerk-lib = pkgs.callPackage naersk { };
         in rec {
-          packages.coggiebot = naerk-lib.buildPackage {
-            src = ./.;
-          };
+          packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=self.Rev or "canary"; };
 
           packages.default = packages.coggiebot;
           hydraJobs = packages.coggiebot;
 
-          devShell = pkgs.mkShell {
-            nativeBuildInputs = with pkgs; [ rustc cargo ];
-          };
-        }
-      )) packages devShell;
+          devShell =
+            pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
+        }))
+        packages devShell;
 
       overlays.default = final: prev: {
-        coggiebot = with final; final.callPackage ({ inShell ? false }: packages {});
+        coggiebot = with final;
+          final.callPackage ({ inShell ? false }: packages { });
       };
 
-      nixosModules.coggiebot =
-        { pkgs, lib, config, coggiebot, ... }:
+      nixosModules.coggiebot = { pkgs, lib, config, coggiebot, ... }:
         with lib;
         let cfg = config.services.coggiebot;
         in {
@@ -58,6 +56,6 @@
               serviceConfig.Restart = "on-failure";
             };
           };
-      };
+        };
     };
 }
