@@ -21,6 +21,15 @@
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=self.Rev or "canary"; };
 
+          packages.coggiebot-agent = nixpkgs.stdenv.mkDerivation rec {
+            name = "coggiebot-agent";
+            phases = "buildPhase";
+            builder = ./sbin/coggiebot-agent.sh;
+            nativeBuildInputs = with pkgs; [ coreutils jq nix git ];
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+
           packages.default = packages.coggiebot;
           hydraJobs = packages.coggiebot;
 
