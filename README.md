@@ -1,7 +1,7 @@
 # coggie-bot
 Hi! This is an open source discord bot written in rust.
 
-## Features
+## Controls
 | on-event | event-body | action taken                                |   |
 |----------|------------|---------------------------------------------|---|
 | reaction | 🔖         | dm message to reactor with copy of contents |   |
