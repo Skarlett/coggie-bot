@@ -11,7 +11,7 @@ fi
 #
 # Fetch latest commit origin/master
 #
-FETCH_DIR=$(mktemp -d -T "coggie-bot.update")
+FETCH_DIR=$(mktemp -d -t "coggie-bot.update.XXXXXXXX")
 pushd $FETCH_DIR
 git init .
 git remote add origin https://github.com/Skarlett/coggie-bot.git
@@ -41,5 +41,5 @@ fi
 # run only once
 #
 (flock -xn 9 -w 0 || exit 1
-  nix run --refresh github:skarlett/coggie-bot
+  nix run --refresh github:skarlett/coggie-bot#coggiebot-agent
 ) 9>/tmp/coggiebot.lock

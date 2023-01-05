@@ -16,6 +16,7 @@ use serenity::model::{
 
 use serenity::prelude::*;
 use structopt::StructOpt;
+use dotenv;
 
 const LICENSE:  &'static str = include_str!("../LICENSE");
 const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
