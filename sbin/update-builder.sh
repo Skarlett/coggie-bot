@@ -2,32 +2,29 @@
 ###################
 # builder.sh
 
-bin=$coggiebot/bin/coggiebot
-
-cat >> $out <<EOF
+mkdir -p $out/bin
+cat >> $out/bin/$name <<EOF
 #!/usr/bin/env bash
 ###################
 # lazy script
-
-set -e
 if [[ \$1 -eq "--debug" || \$1 -eq "-d" ]]; then
   echo "DEBUG ON"
-  set -x
+  set -xe
 fi
 
 #
-# Fetch latest commit origin/master
+# Fetch latest commit origin/$branch
 #
 FETCH_DIR=\$(mktemp -d -t "coggie-bot.update.XXXXXXXX")
 pushd \$FETCH_DIR
 git init .
-git remote add origin https://github.com/Skarlett/coggie-bot.git
-git fetch origin master
-LHASH=\$(git show -s --pretty='format:%H' origin/master | sort -r | head -n 1)
+git remote add origin $origin_url
+git fetch origin $branch
+LHASH=\$(git show -s --pretty='format:%H' origin/$branch | sort -r | head -n 1)
 popd
 rm -rf \$FETCH_DIR
 
-CHASH=\$( $bin --built-from )
+CHASH=\$( ${coggiebot}/bin/coggiebot --built-from )
 
 #
 # Dont replace canary (in source build)
@@ -38,8 +35,10 @@ if [[ \$CHASE -eq "canary" || \$LHASH -eq "canary" ]]; then
 fi
 
 if [[ \$CHASE -ne \$LHASH ]]; then
-  systemctl restart coggiebotd
+  echo "restarting $sysdunit"
+  systemctl restart $sysdunit
 fi
+
 EOF
 
-chmod +x $out
+chmod +x $out/bin/$name

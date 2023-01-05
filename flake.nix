@@ -25,6 +25,9 @@
               packages.coggiebot
             ];
             coggiebot=packages.coggiebot;
+            origin_url="https://github.com/Skarlett/coggie-bot.git";
+            branch = "master";
+            sysdunit="coggiebotd";
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -37,7 +40,8 @@
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
 
-              $nix/bin/nix run --refresh coggiebot
+              $nix/bin/nix build --refresh --out-link /opt/coggiebot coggiebot
+              /opt/coggiebot/coggiebot
               EOF
               chmod +x $out/bin/$name
             '';
@@ -58,16 +62,16 @@
             ];
 
             builder = pkgs.writeShellScript "builder.sh" ''
-              mkdir -p $out/bin
-              ln -s ${packages.starter}/bin/start $out/bin/start
-              ln -s ${packages.updater}/bin/update $out/bin/ch_update
-              ln -s ${packages.coggiebot}/bin/coggiebot $out/bin/coggiebot
+              mkdir $out
+              ln -s ${packages.starter}/bin/start $out/start
+              ln -s ${packages.updater}/bin/update $out/update
+              ln -s ${packages.coggiebot}/bin/coggiebot $out/coggiebot
             '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
-          packages.default = packages.coggiebot;
+          packages.default = packages.deploy;
           hydraJobs = packages.coggiebot;
           devShell =
             pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
