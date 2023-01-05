@@ -16,7 +16,7 @@
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=(self.rev or "canary"); };
 
           packages.updater = pkgs.stdenv.mkDerivation rec {
-            name = "updater.sh";
+            name = "update";
             phases = "buildPhase";
             builder = ./sbin/update-builder.sh;
             nativeBuildInputs = [
@@ -29,9 +29,19 @@
           };
 
           packages.starter = pkgs.stdenv.mkDerivation rec {
-            name = "starter.sh";
+            name = "start";
             phases = "buildPhase";
-            builder = ./sbin/starter-builder.sh;
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin/
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+
+              $nix/bin/nix run --refresh coggiebot
+              EOF
+              chmod +x $out/bin/$name
+            '';
+
             nativeBuildInputs = [ pkgs.coreutils pkgs.nix ];
             nix=pkgs.nix;
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
@@ -49,19 +59,16 @@
 
             builder = pkgs.writeShellScript "builder.sh" ''
               mkdir -p $out/bin
-              ln -s ${packages.starter} $out/bin/starter.sh
-              ln -s ${packages.updater} $out/bin/updater.sh
+              ln -s ${packages.starter}/bin/start $out/bin/start
+              ln -s ${packages.updater}/bin/update $out/bin/ch_update
               ln -s ${packages.coggiebot}/bin/coggiebot $out/bin/coggiebot
             '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
-
-
           packages.default = packages.coggiebot;
           hydraJobs = packages.coggiebot;
-
           devShell =
             pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
         }))
