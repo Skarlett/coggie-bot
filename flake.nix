@@ -20,7 +20,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
-          REV=(pkgs.lib.trace "xxx: " (self.shortRev or "canary"));
+          REV=(pkgs.lib.trace "xxx: " self.shortRev);
 
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; inherit REV; };
@@ -42,7 +42,7 @@
           hydraJobs = packages.coggiebot;
 
           devShell =
-            pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
+            pkgs.mkShell { nativeBuildInputs = with pkgs; [ ffmpeg rustc cargo ]; };
         }))
         packages devShell;
 
