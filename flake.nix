@@ -10,17 +10,20 @@
     let
       lastModifiedDate =
         self.lastModifiedDate or self.lastModified or "19700101";
-      version = "${builtins.substring 0 8 lastModifiedDate}-${
+      version =
+        "${builtins.substring 0 8 lastModifiedDate}-${
           self.shortRev or "canary"
         }";
+
     in rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
         let
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
-        in rec {
-          packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=self.Rev or "canary"; };
+          REV=(pkgs.lib.trace "xxx: " (self.shortRev or "canary"));
 
+        in rec {
+          packages.coggiebot = naerk-lib.buildPackage { src = ./.; inherit REV; };
           packages.coggiebot-agent = nixpkgs.stdenv.mkDerivation rec {
             name = "coggiebot-agent";
             phases = "buildPhase";
