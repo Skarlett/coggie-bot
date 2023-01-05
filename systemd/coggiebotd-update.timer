@@ -1,5 +1,5 @@
 [Unit]
-Description=Run update-check on bookmark-botd every 2 hour
+Description=automatically run self update checks on coggiebotd
 
 [Timer]
 OnBootSec=15min

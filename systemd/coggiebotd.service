@@ -15,8 +15,8 @@ PrivateDevices=true
 NoNewPrivileges=true
 PrivateTmp=true
 
-WorkingDirectory=/opt/coggie-bot
-ExecStart=/usr/bin/nix run --refresh coggiebot
+WorkingDirectory=/opt/coggiebot
+ExecStart=/opt/coggiebot/start
 
 [Install]
 WantedBy=multi-user.target
