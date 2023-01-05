@@ -7,7 +7,7 @@ cat >> $out/bin/$name <<EOF
 #!/usr/bin/env bash
 ###################
 # lazy script
-if [[ \$1 -eq "--debug" || \$1 -eq "-d" ]]; then
+if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
   echo "DEBUG ON"
   set -xe
 fi
@@ -29,12 +29,12 @@ CHASH=\$( ${coggiebot}/bin/coggiebot --built-from )
 #
 # Dont replace canary (in source build)
 #
-if [[ \$CHASE -eq "canary" || \$LHASH -eq "canary" ]]; then
+if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
     echo "canary build -- nonapplicable"
     exit 0
 fi
 
-if [[ \$CHASE -ne \$LHASH ]]; then
+if [[ \$CHASE != \$LHASH ]]; then
   echo "restarting $sysdunit"
   systemctl restart $sysdunit
 fi
