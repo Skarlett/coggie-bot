@@ -32,7 +32,7 @@
           hydraJobs = packages.coggiebot;
 
           devShell =
-            pkgs.mkShell { nativeBuildInputs = with pkgs; [ ffmpeg rustc cargo ]; };
+            pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
         }))
         packages devShell;
 
