@@ -22,7 +22,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
-          REV=(pkgs.lib.trace rev);
+          REV=(pkgs.lib.trace "xxx" rev);
 
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=rev; };
