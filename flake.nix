@@ -25,7 +25,7 @@
             name = "coggiebot-agent";
             phases = "buildPhase";
             builder = ./sbin/coggiebot-agent.sh;
-            nativeBuildInputs = with pkgs; [ coreutils jq nix git ];
+            nativeBuildInputs = [ pkgs.coreutils pkgs.nix pkgs.git self.packages.coggiebot ];
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
