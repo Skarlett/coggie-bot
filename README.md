@@ -9,14 +9,12 @@ Hi! This is an open source discord bot written in rust.
 |          |            |                       |   |
 
 ## Contributing
-All contributions are welcomed. When contributing, please pull request to a new branch, or use the `pull`. 
+All contributions are welcome. When contributing, please pull request to a new branch, or use the `pull`. 
 Add your name to the contributors.txt. Please describe the changes made, and add the features to the list above.
 
 ## Roadmap
 - [X] Nix
 - [ ] pre-commit hooks
-- [ ] Workflow CI/CD
-- [ ] cross compilation on CI/CD
 - [ ] Automatic update delivery
 
 ## Run
@@ -27,12 +25,12 @@ DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot
 ## Build
 
 #### native
-``` nix
+```sh
 nix build github:skarlett/coggie-bot
 ```
 
 #### cross compilation
-``` nix
+```sh
 # Show compilation options
 nix flake show github:skarlett/coggie-bot
 
@@ -41,14 +39,14 @@ nix build github:skarlett/coggie-bot#packages.aarch64-linux
 ```
 
 ## Develpoment
-``` nix
+```sh
 git clone https://github.com/skarlett/coggie-bot
 cd coggie-bot
 nix develop
 ```
 
 #### updating dependencies
-``` nix
+```sh
 cargo update
 nix flake update
 nix build
