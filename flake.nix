@@ -8,11 +8,13 @@
 
   outputs = { self, nixpkgs, flake-utils, naersk }:
     let
+      short_str = str: builtins.substring 0 8 str;
+      rev = self.rev or "canary";
       lastModifiedDate =
         self.lastModifiedDate or self.lastModified or "19700101";
       version =
-        "${builtins.substring 0 8 lastModifiedDate}-${
-          self.shortRev or "canary"
+        "${short_str lastModifiedDate}-${
+          short_str rev
         }";
 
     in rec {
@@ -20,10 +22,10 @@
         let
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
-          REV=(pkgs.lib.trace "xxx: " self.shortRev);
+          REV=(pkgs.lib.trace rev);
 
         in rec {
-          packages.coggiebot = naerk-lib.buildPackage { src = ./.; inherit REV; };
+          packages.coggiebot = naerk-lib.buildPackage { src = ./.; inherit shortrev; };
 
           packages.coggiebot-agent = pkgs.stdenv.mkDerivation rec {
             name = "coggiebot-agent-${version}";
