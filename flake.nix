@@ -1,7 +1,7 @@
 {
   description = "Open source discord utility bot";
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-22.11";
+    nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
   };
@@ -15,18 +15,49 @@
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=(self.rev or "canary"); };
 
-          packages.coggiebot-agent = pkgs.stdenv.mkDerivation rec {
-            name = "coggiebot-agent";
+          packages.updater = pkgs.stdenv.mkDerivation rec {
+            name = "updater.sh";
             phases = "buildPhase";
-            builder = ./sbin/coggiebot-agent.sh;
+            builder = ./sbin/update-builder.sh;
             nativeBuildInputs = [
               pkgs.coreutils
-              pkgs.nix
               pkgs.git
               packages.coggiebot
             ];
+            coggiebot=packages.coggiebot;
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
+
+          packages.starter = pkgs.stdenv.mkDerivation rec {
+            name = "starter.sh";
+            phases = "buildPhase";
+            builder = ./sbin/starter-builder.sh;
+            nativeBuildInputs = [ pkgs.coreutils pkgs.nix ];
+            nix=pkgs.nix;
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+          packages.deploy = pkgs.stdenv.mkDerivation rec {
+            name = "coggie-deploy";
+            phases = "buildPhase";
+            nativeBuildInputs = [
+              pkgs.coreutils
+              packages.starter
+              packages.updater
+              packages.coggiebot
+            ];
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              mkdir -p $out/bin
+              ln -s ${packages.starter} $out/bin/starter.sh
+              ln -s ${packages.updater} $out/bin/updater.sh
+              ln -s ${packages.coggiebot}/bin/coggiebot $out/bin/coggiebot
+            '';
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+
 
           packages.default = packages.coggiebot;
           hydraJobs = packages.coggiebot;
