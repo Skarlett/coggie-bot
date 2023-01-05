@@ -8,7 +8,6 @@ After=network.target
 [Service]
 User=discordbot
 Group=discordbot
-#Nice=5
 KillMode=none
 SuccessExitStatus=0 1
 
@@ -16,8 +15,8 @@ PrivateDevices=true
 NoNewPrivileges=true
 PrivateTmp=true
 
-WorkingDirectory=/opt/bookmark-bot
-ExecStart=/opt/bookmark-bot
+WorkingDirectory=/opt/coggie-bot
+ExecStart=/usr/bin/nix run --refresh coggiebot
 
 [Install]
 WantedBy=multi-user.target
