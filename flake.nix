@@ -24,14 +24,19 @@
 
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; inherit REV; };
-          packages.coggiebot-agent = nixpkgs.stdenv.mkDerivation rec {
-            name = "coggiebot-agent";
+
+          packages.coggiebot-agent = pkgs.stdenv.mkDerivation rec {
+            name = "coggiebot-agent-${version}";
             phases = "buildPhase";
             builder = ./sbin/coggiebot-agent.sh;
-            nativeBuildInputs = [ pkgs.coreutils pkgs.nix pkgs.git self.packages.coggiebot ];
+            nativeBuildInputs = [
+              pkgs.coreutils
+              pkgs.nix
+              pkgs.git
+              packages.coggiebot
+            ];
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
-
 
           packages.default = packages.coggiebot;
           hydraJobs = packages.coggiebot;
