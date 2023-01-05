@@ -25,7 +25,7 @@
           REV=(pkgs.lib.trace rev);
 
         in rec {
-          packages.coggiebot = naerk-lib.buildPackage { src = ./.; inherit shortrev; };
+          packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=rev; };
 
           packages.coggiebot-agent = pkgs.stdenv.mkDerivation rec {
             name = "coggiebot-agent-${version}";
