@@ -42,6 +42,7 @@ if [[ \$CHASE != \$LHASH ]]; then
 
   ${nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
   ${install_dir}/result/enable
+  /bin/systemctl daemon-reload
   ${install_dir}/result/start
 
   echo "migrating from $(echo ${coggiebotd} | cut -d '/' -f 4)"
