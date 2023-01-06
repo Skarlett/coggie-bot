@@ -13,10 +13,11 @@
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
           install_dir="/var/coggiebot";
-
+          systemd_unit="coggiebotd";
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=(self.rev or "canary"); };
           packages.updater = pkgs.stdenv.mkDerivation rec {
+            inherit systemd_unit install_dir;
             name = "update";
             phases = "buildPhase";
             builder = ./sbin/update-builder.sh;
@@ -29,7 +30,8 @@
             coggiebot=packages.coggiebot;
             origin_url="https://github.com/Skarlett/coggie-bot.git";
             branch = "master";
-            sysdunit="coggiebotd";
+            nix = pkgs.nix;
+
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -42,9 +44,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              ln -sf ${packages.coggiebotd} /etc/systemd/system/coggiebotd.service
-              ln -sf ${packages.coggiebotd-update} /etc/systemd/system/coggiebotd-update.service
-              ln -sf ${packages.coggiebotd-update-timer} /etc/systemd/system/coggiebotd-update.timer
+              ln -sf ${packages.coggiebotd} /etc/systemd/system/${systemd_unit}.service
+              ln -sf ${packages.coggiebotd-update} /etc/systemd/system/${systemd_unit}-update.service
+              ln -sf ${packages.coggiebotd-update-timer} /etc/systemd/system/${systemd_unit}-update.timer
               EOF
 
               chmod +x $out/bin/$name
@@ -67,9 +69,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              rm /etc/systemd/system/coggiebotd.service
-              rm /etc/systemd/system/coggiebotd-update.service
-              rm /etc/systemd/system/coggiebotd-update.timer
+              rm -f /etc/systemd/system/${systemd_unit}.service
+              rm -f /etc/systemd/system/${systemd_unit}-update.service
+              rm -f /etc/systemd/system/${systemd_unit}-update.timer
               EOF
 
               chmod +x $out/bin/$name
@@ -88,19 +90,8 @@
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
 
-              if [[ \$(cat ${install_dir}/activate) == "1" ]]; then
-                echo 0 > ${install_dir}/deactivate
-
-                ${install_dir}/result/deactivate
-                ${pkgs.nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
-                ${install_dir}/result/activate
-                systemctl daemon-reload
-                exit 127
-              fi
-
               source ${install_dir}/.env
               ${install_dir}/result/coggiebot
-
               EOF
               chmod +x $out/bin/${name}
             '';
@@ -110,7 +101,7 @@
           };
 
           packages.coggiebotd = pkgs.stdenv.mkDerivation rec {
-            name = "coggiebotd.service";
+            name = "${systemd_unit}.service";
             phases = "buildPhase";
 
             builder = pkgs.writeShellScript "builder.sh" ''
@@ -159,11 +150,12 @@
               [Unit]
               Description=Automatically update coggiebotd.
               Wants=bookmark-bot-update.timer
+              User=root
+              group=root
 
               [Service]
               Type=oneshot
               ExecStart=${packages.updater}/bin/update
-
               [Install]
               WantedBy=multi-user.target
               EOF

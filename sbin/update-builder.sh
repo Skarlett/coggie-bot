@@ -35,11 +35,14 @@ if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
 fi
 
 if [[ \$CHASE != \$LHASH ]]; then
-  echo "restarting $sysdunit"
-  echo 1 > $install_dir/activate
-  systemctl restart $sysdunit
+  ${install_dir}/result/deactivate
+  ${nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
+  ${install_dir}/result/activate
+  /bin/systemctl daemon-reload
+
+  echo "restarting $systemd_unit"
+  systemctl restart $systemd_unit
 fi
 
 EOF
-
 chmod +x $out/bin/$name
