@@ -12,6 +12,8 @@ if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
   set -xe
 fi
 
+flock -xn /tmp/coggiebot.update.lock || exit 1
+
 #
 # Fetch latest commit origin/$branch
 #
@@ -44,5 +46,6 @@ if [[ \$CHASE != \$LHASH ]]; then
   echo "migrating from ${coggiebotd}"
 fi
 
+rm -f /tmp/coggiebot.update.lock
 EOF
 chmod +x $out/bin/$name
