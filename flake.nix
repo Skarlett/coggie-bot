@@ -117,9 +117,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              /bin/systemctl start ${packages.coggiebotd}
-              /bin/systemctl start ${packages.coggiebotd-update}
-              /bin/systemctl start ${packages.coggiebotd-update-timer}
+              /bin/systemctl start $(echo ${packages.coggiebotd} | cut -d '/' -f 4)
+              /bin/systemctl start $(echo ${packages.coggiebotd-update}  | cut -d '/' -f 4)
+              /bin/systemctl start $(echo ${packages.coggiebotd-update-timer}  | cut -d '/' -f 4)
               EOF
               chmod +x $out/bin/$name
             '';
@@ -141,9 +141,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              /bin/systemctl stop ${packages.coggiebotd}
-              /bin/systemctl stop ${packages.coggiebotd-update}
-              /bin/systemctl stop ${packages.coggiebotd-update-timer}
+              /bin/systemctl stop $(echo ${packages.coggiebotd} | cut -d '/' -f 4)
+              /bin/systemctl stop $(echo ${packages.coggiebotd-update}  | cut -d '/' -f 4)
+              /bin/systemctl stop $(echo ${packages.coggiebotd-update-timer}  | cut -d '/' -f 4)
               EOF
               chmod +x $out/bin/$name
             '';
