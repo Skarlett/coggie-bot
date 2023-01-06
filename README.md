@@ -20,7 +20,7 @@ Add your name to the contributors.txt. Please describe the changes made, and add
 
 ## Run
 ```sh
-DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot
+DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot#coggiebot
 ```
 
 ## Build
@@ -81,3 +81,40 @@ git push origin your-update-branch
   };
 }
 ```
+
+
+#### continuous integration on debian
+the objective of using a custom package manager is to achieve the goal of self-updating.
+
+``` sh
+# jump to root
+sudo su
+
+# install nix-multiuser-mode
+sh <(curl -L https://nixos.org/nix/install) --daemon
+
+# activate PATH
+# This is automatically appended into ~/.bashrc 
+source ~/.nix-profile/etc/profile.d/nix.sh
+
+echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+
+adduser coggiebot
+
+mkdir -p /var/coggiebot
+chown coggiebot /var/coggiebot
+
+cat >> /etc/sudoers.d/coggiebot <<EOF
+coggiebot ALL= NOPASSWD: /bin/systemctl restart $SERVICE.service
+coggiebot ALL= NOPASSWD: /usr/bin/ln restart $SERVICE.service
+
+EOF
+
+
+su coggiebot
+nix registry add coggiebot github:skarlett/coggie-bot
+
+/result/activate
+```
+
+
