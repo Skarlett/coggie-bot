@@ -207,9 +207,9 @@
               Type=oneshot
               ExecStart=${packages.updater}/bin/update
               TimeoutStartSec=900000
+
               [Install]
               WantedBy=multi-user.target
-
               EOF
               chmod 755 $out/etc/$name
             '';
