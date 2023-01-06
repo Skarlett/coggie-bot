@@ -46,7 +46,8 @@ if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
     exit 0
 fi
 
-if [[ \$CHASE != \$LHASH ]]; then
+if [[ "\$CHASE" != "\$LHASH" ]]; then
+  echo "start migrating"
   ${install_dir}/result/disable
 
   ${nix}/bin/nix build --refresh --out-link ${install_dir}/result github:skarlett/coggie-bot/$branch
@@ -54,7 +55,7 @@ if [[ \$CHASE != \$LHASH ]]; then
   /bin/systemctl daemon-reload
 
   systemctl restart ${coggiebotd}
-  echo "migrating from ${coggiebotd}"
+  echo "migrating finished"
 fi
 
 rm -f \$LOCKFILE
