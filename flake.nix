@@ -29,7 +29,7 @@
 
             coggiebot=packages.coggiebot;
             origin_url="https://github.com/Skarlett/coggie-bot.git";
-            branch = "cd-dev";
+            branch = "master";
             nix = pkgs.nix;
             coggiebotd = packages.coggiebotd.name;
             coggiebotd-update-timer = packages.coggiebotd-update-timer.name;
