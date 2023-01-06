@@ -90,7 +90,7 @@
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
 
-              source ${install_dir}/.env
+              . ${install_dir}/.env
               ${install_dir}/result/coggiebot
               EOF
               chmod +x $out/bin/${name}
