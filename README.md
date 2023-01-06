@@ -82,7 +82,6 @@ git push origin your-update-branch
 }
 ```
 
-
 #### continuous integration on debian
 the objective of using a custom package manager is to achieve the goal of self-updating.
 
@@ -109,8 +108,6 @@ chown coggiebot /var/coggiebot
 echo "DefaultTimeoutStartSec=9999s" >> /etc/systemd/system.conf
 
 su coggiebot
-
-
 
 /result/activate
 ```
