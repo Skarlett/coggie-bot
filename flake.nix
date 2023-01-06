@@ -164,7 +164,6 @@
               [Service]
               User=coggiebot
               Group=coggiebot
-              KillMode=none
               SuccessExitStatus=0 1
 
               PrivateDevices=true
