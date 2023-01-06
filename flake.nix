@@ -196,12 +196,13 @@
           };
 
           packages.coggiebotd = pkgs.stdenv.mkDerivation rec {
-            name = "${systemd_unit}.service";
+            name = "coggiebotd.service";
             phases = "buildPhase";
 
             builder = pkgs.writeShellScript "builder.sh" ''
               #!/bin/sh
-              cat >> $out <<EOF
+              mkdir -p $out/etc
+              cat >> $out/etc/$name <<EOF
               [Unit]
               Description=Coggie bot
               Documentation=
@@ -225,7 +226,7 @@
               WantedBy=multi-user.target
 
               EOF
-              chmod 755 $out
+              chmod 755 $out/etc/$name
             '';
 
             nativeBuildInputs = [ pkgs.coreutils packages.starter ];
