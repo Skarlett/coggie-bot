@@ -13,9 +13,9 @@
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
           install_dir="/var/coggiebot";
+
         in rec {
           packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=(self.rev or "canary"); };
-
           packages.updater = pkgs.stdenv.mkDerivation rec {
             name = "update";
             phases = "buildPhase";
@@ -25,10 +25,56 @@
               pkgs.git
               packages.coggiebot
             ];
+
             coggiebot=packages.coggiebot;
             origin_url="https://github.com/Skarlett/coggie-bot.git";
             branch = "master";
             sysdunit="coggiebotd";
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+          packages.systemd-activate = pkgs.stdenv.mkDerivation rec {
+            name = "coggiebotd-activate";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              ln -sf ${packages.coggiebotd} /etc/systemd/system/coggiebotd.service
+              ln -sf ${packages.coggiebotd-update} /etc/systemd/system/coggiebotd-update.service
+              ln -sf ${packages.coggiebotd-update-timer} /etc/systemd/system/coggiebotd-update.timer
+              EOF
+
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [
+              pkgs.coreutils packages.coggiebotd
+              packages.coggiebotd-update
+              packages.coggiebotd-update-timer
+            ];
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+          packages.systemd-deactivate = pkgs.stdenv.mkDerivation rec {
+            name = "coggiebotd-deactivate";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              rm /etc/systemd/system/coggiebotd.service
+              rm /etc/systemd/system/coggiebotd-update.service
+              rm /etc/systemd/system/coggiebotd-update.timer
+              EOF
+
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [ pkgs.coreutils ];
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -42,18 +88,24 @@
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
 
-              source $install_dir/.env
-              $nix/bin/nix build --refresh --out-link $install_dir/result coggiebot
-              $install_dir/result/coggiebot
+              if [[ \$(cat ${install_dir}/activate) == "1" ]]; then
+                echo 0 > ${install_dir}/deactivate
+
+                ${install_dir}/result/deactivate
+                ${pkgs.nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
+                ${install_dir}/result/activate
+                systemctl daemon-reload
+                exit 127
+              fi
+
+              source ${install_dir}/.env
+              ${install_dir}/result/coggiebot
 
               EOF
-              chmod +x $out/bin/$name
+              chmod +x $out/bin/${name}
             '';
 
             nativeBuildInputs = [ pkgs.coreutils pkgs.nix ];
-            nix=pkgs.nix;
-
-            install_dir="/var/coggiebot";
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -64,7 +116,6 @@
             builder = pkgs.writeShellScript "builder.sh" ''
               #!/bin/sh
               cat >> $out <<EOF
-
               [Unit]
               Description=Coggie bot
               Documentation=
@@ -82,8 +133,8 @@
               NoNewPrivileges=true
               PrivateTmp=true
 
-              WorkingDirectory=${start-script}
-              ExecStart=${start-script}/bin/start
+              WorkingDirectory=${packages.starter}
+              ExecStart=${packages.starter}/bin/start
 
               [Install]
               WantedBy=multi-user.target
@@ -93,7 +144,6 @@
             '';
 
             nativeBuildInputs = [ pkgs.coreutils packages.starter ];
-            start-script=packages.starter;
 
             install_dir="/var/coggiebot";
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
@@ -112,7 +162,7 @@
 
               [Service]
               Type=oneshot
-              ExecStart=${update-script}/bin/update
+              ExecStart=${packages.updater}/bin/update
 
               [Install]
               WantedBy=multi-user.target
@@ -121,7 +171,6 @@
             '';
 
             nativeBuildInputs = [ pkgs.coreutils packages.updater ];
-            update-script=packages.updater;
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -150,38 +199,6 @@
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
-          packages.coggiebotd-bootstrap-activate = pkgs.stdenv.mkDerivation rec {
-            name = "coggiebotd-bootstrap";
-            phases = "buildPhase";
-
-            builder = pkgs.writeShellScript "builder.sh" ''
-              #!/bin/sh
-              mkdir -p $out/bin
-              cat >> $out/bin/$name <<EOF
-                #!/bin/sh
-                systemctl stop coggiebotd.service
-                systemctl stop coggiebotd-update.service
-                systemctl stop coggiebotd-update.timer
-
-                ln -sf ${coggiebotd} /etc/systemd/system/coggiebotd.service
-                ln -sf ${coggiebotd-update} /etc/systemd/system/coggiebotd-update.service
-                ln -sf ${coggiebotd-update-timer} /etc/systemd/system/coggiebotd-update.timer
-
-                systemctl daemon-reload
-                systemctl start coggiebotd.service
-                systemctl start coggiebotd-update.service
-                systemctl start coggiebotd-update.timer
-              EOF
-              chmod +x $out/bin/$name
-            '';
-
-            nativeBuildInputs = [ pkgs.coreutils pkgs.nix ];
-            coggiebotd=packages.coggiebotd;
-            coggiebotd-update=packages.coggiebotd-update;
-            coggiebotd-update-timer=packages.coggiebotd-update-timer;
-            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
-          };
-
           packages.deploy = pkgs.stdenv.mkDerivation rec {
             name = "coggie-deploy";
             phases = "buildPhase";
@@ -190,16 +207,18 @@
               packages.starter
               packages.updater
               packages.coggiebot
-              packages.coggiebotd-bootstrap-activate
+              packages.systemd-activate
+              packages.systemd-deactivate
             ];
 
             builder = pkgs.writeShellScript "builder.sh" ''
-              mkdir -p $out/bin $out/etc
-              ln -s ${packages.starter}/bin/start $out/start
-              ln -s ${packages.updater}/bin/update $out/update
-              ln -s ${packages.coggiebot}/bin/coggiebot $out/coggiebot
-              ln -s ${packages.coggiebotd-bootstrap-activate}/bin/coggiebot $out/activate
-             '';
+            mkdir -p $out
+            ln -s ${packages.starter}/bin/start $out/start
+            ln -s ${packages.updater}/bin/update $out/update
+            ln -s ${packages.coggiebot}/bin/coggiebot $out/coggiebot
+            ln -s ${packages.systemd-activate}/bin/coggiebotd-activate $out/activate
+            ln -s ${packages.systemd-deactivate}/bin/coggiebotd-deactivate $out/deactivate
+            '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };

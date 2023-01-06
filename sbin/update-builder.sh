@@ -36,6 +36,7 @@ fi
 
 if [[ \$CHASE != \$LHASH ]]; then
   echo "restarting $sysdunit"
+  echo 1 > $install_dir/activate
   systemctl restart $sysdunit
 fi
 
