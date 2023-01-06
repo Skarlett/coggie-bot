@@ -1,5 +1,5 @@
 # coggie-bot
-Hi! This is an open source discord bot written in rust. test change
+Hi! This is an open source discord bot written in rust.
 
 ## Controls
 | on-event | event-body | action taken                                |   |
