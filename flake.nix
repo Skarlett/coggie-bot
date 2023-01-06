@@ -306,8 +306,8 @@
             ln -s ${packages.systemd-deactivate}/bin/coggiebotd-deactivate $out/deactivate
             ln -s ${packages.systemd-enable}/bin/systemd-enable $out/enable
             ln -s ${packages.systemd-disable}/bin/systemd-disable $out/disable
-            ln -s ${packages.systemd-start}/bin/systemd-disable $out/start
-            ln -s ${packages.systemd-stop}/bin/systemd-disable $out/stop
+            ln -s ${packages.systemd-start}/bin/systemd-start $out/start
+            ln -s ${packages.systemd-stop}/bin/systemd-stop $out/stop
             '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
