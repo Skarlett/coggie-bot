@@ -35,9 +35,13 @@ if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
 fi
 
 if [[ \$CHASE != \$LHASH ]]; then
-  ${install_dir}/result/deactivate
+  ${install_dir}/result/stop-coggiebotd
+  ${install_dir}/result/disable
+
   ${nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
-  ${install_dir}/result/activate
+  ${install_dir}/result/enable
+  ${install_dir}/result/start
+
   /bin/systemctl daemon-reload
 
   echo "restarting $systemd_unit"

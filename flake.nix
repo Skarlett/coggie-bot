@@ -141,6 +141,7 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
+
               /bin/systemctl stop $(echo ${packages.coggiebotd} | cut -d '/' -f 4)
               /bin/systemctl stop $(echo ${packages.coggiebotd-update}  | cut -d '/' -f 4)
               /bin/systemctl stop $(echo ${packages.coggiebotd-update-timer}  | cut -d '/' -f 4)
