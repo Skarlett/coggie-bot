@@ -39,7 +39,7 @@ if [[ \$CHASE != \$LHASH ]]; then
 
   ${install_dir}/result/disable
 
-  ${nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
+  ${nix}/bin/nix build --refresh --out-link ${install_dir}/result github:skarlett/coggie-bot/$branch
   ${install_dir}/result/enable
   /bin/systemctl daemon-reload
 
