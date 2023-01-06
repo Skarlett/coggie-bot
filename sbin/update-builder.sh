@@ -35,7 +35,6 @@ if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
 fi
 
 if [[ \$CHASE != \$LHASH ]]; then
-  systemctl stop ${coggiebotd}
   systemctl stop ${coggiebotd-update-timer}
 
   ${install_dir}/result/disable
@@ -43,8 +42,8 @@ if [[ \$CHASE != \$LHASH ]]; then
   ${nix}/bin/nix build --refresh --out-link ${install_dir}/result coggiebot
   ${install_dir}/result/enable
   /bin/systemctl daemon-reload
-  ${install_dir}/result/start
 
+  systemctl restart ${coggiebotd}
   echo "migrating from ${coggiebotd}"
 fi
 
