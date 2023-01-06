@@ -7,12 +7,23 @@ cat >> $out/bin/$name <<EOF
 #!/usr/bin/env bash
 ###################
 # lazy script
+
 if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
   echo "DEBUG ON"
   set -xe
 fi
 
-flock -xn /tmp/coggiebot.update.lock || exit 1
+LOCKFILE=/tmp/coggiebot.update.lock
+touch \$LOCKFILE
+exec {FD}<>\$LOCKFILE
+
+if [[ ! flock -x -w 1 \$FD ]]; then
+  echo "Failed to obtain a lock"
+  echo "Another instance of `basename \$0` is probably running."
+  exit 1
+else
+  echo "Lock acquired"
+fi
 
 #
 # Fetch latest commit origin/$branch
@@ -46,6 +57,6 @@ if [[ \$CHASE != \$LHASH ]]; then
   echo "migrating from ${coggiebotd}"
 fi
 
-rm -f /tmp/coggiebot.update.lock
+rm -f \$LOCKFILE
 EOF
 chmod +x $out/bin/$name
