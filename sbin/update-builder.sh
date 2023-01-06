@@ -17,7 +17,7 @@ LOCKFILE=/tmp/coggiebot.update.lock
 touch \$LOCKFILE
 exec {FD}<>\$LOCKFILE
 
-if [[ ! flock -x -w 1 \$FD ]]; then
+if ! flock -x -w 1 \$FD; then
   echo "Failed to obtain a lock"
   echo "Another instance of `basename \$0` is probably running."
   exit 1
