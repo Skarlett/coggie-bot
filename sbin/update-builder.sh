@@ -23,7 +23,6 @@ git fetch origin $branch
 LHASH=\$(git show -s --pretty='format:%H' origin/$branch | sort -r | head -n 1)
 popd
 rm -rf \$FETCH_DIR
-
 CHASH=\$(${coggiebot}/bin/coggiebot --built-from --token "")
 
 #
@@ -35,8 +34,6 @@ if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
 fi
 
 if [[ \$CHASE != \$LHASH ]]; then
-  systemctl stop ${coggiebotd-update-timer}
-
   ${install_dir}/result/disable
 
   ${nix}/bin/nix build --refresh --out-link ${install_dir}/result github:skarlett/coggie-bot/$branch
