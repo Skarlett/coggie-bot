@@ -60,6 +60,54 @@
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
+          packages.systemd-enable = pkgs.stdenv.mkDerivation rec {
+            name = "systemd-enable";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              /bin/systemctl enable ${packages.coggiebotd}
+              /bin/systemctl enable ${packages.coggiebotd-update}
+              /bin/systemctl enable ${packages.coggiebotd-update-timer}
+              EOF
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [
+              pkgs.coreutils packages.coggiebotd
+              packages.coggiebotd-update
+              packages.coggiebotd-update-timer
+            ];
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+          packages.systemd-disable = pkgs.stdenv.mkDerivation rec {
+            name = "systemd-disable";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              /bin/systemctl disable ${packages.coggiebotd}
+              /bin/systemctl disable ${packages.coggiebotd-update}
+              /bin/systemctl disable ${packages.coggiebotd-update-timer}
+              EOF
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [
+              pkgs.coreutils packages.coggiebotd
+              packages.coggiebotd-update
+              packages.coggiebotd-update-timer
+            ];
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
           packages.systemd-deactivate = pkgs.stdenv.mkDerivation rec {
             name = "coggiebotd-deactivate";
             phases = "buildPhase";
@@ -73,7 +121,6 @@
               rm -f /etc/systemd/system/${systemd_unit}-update.service
               rm -f /etc/systemd/system/${systemd_unit}-update.timer
               EOF
-
               chmod +x $out/bin/$name
             '';
             nativeBuildInputs = [ pkgs.coreutils ];
@@ -210,7 +257,9 @@
             ln -s ${packages.coggiebot}/bin/coggiebot $out/coggiebot
             ln -s ${packages.systemd-activate}/bin/coggiebotd-activate $out/activate
             ln -s ${packages.systemd-deactivate}/bin/coggiebotd-deactivate $out/deactivate
-            '';
+            ln -s ${packages.systemd-enable}/bin/systemd-enable $out/enable
+            ln -s ${packages.systemd-disable}/bin/systemd-disable $out/disable
+           '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
