@@ -252,8 +252,6 @@
               packages.starter
               packages.updater
               packages.coggiebot
-              packages.systemd-activate
-              packages.systemd-deactivate
               packages.systemd-start
               packages.systemd-stop
             ];
