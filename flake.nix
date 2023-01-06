@@ -206,8 +206,7 @@
               [Service]
               Type=oneshot
               ExecStart=${packages.updater}/bin/update
-              TimeoutSec=900000
-
+              TimeoutStartSec=900000
               [Install]
               WantedBy=multi-user.target
 
