@@ -31,8 +31,8 @@
             origin_url="https://github.com/Skarlett/coggie-bot.git";
             branch = "cd-dev";
             nix = pkgs.nix;
-            coggiebotd = packages.coggiebotd;
-            coggiebotd-update-timer = packages.coggiebotd-update-timer;
+            coggiebotd = packages.coggiebotd.name;
+            coggiebotd-update-timer = packages.coggiebotd-update-timer.name;
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 

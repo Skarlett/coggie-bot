@@ -24,7 +24,7 @@ LHASH=\$(git show -s --pretty='format:%H' origin/$branch | sort -r | head -n 1)
 popd
 rm -rf \$FETCH_DIR
 
-CHASH=\$( ${coggiebot}/bin/coggiebot --built-from )
+CHASH=\$(${coggiebot}/bin/coggiebot --built-from --token "")
 
 #
 # Dont replace canary (in source build)
@@ -35,8 +35,8 @@ if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
 fi
 
 if [[ \$CHASE != \$LHASH ]]; then
-  systemctl stop $(echo ${coggiebotd} | cut -d '/' -f 4)
-  systemctl stop $(echo ${coggiebotd-update-timer} | cut -d '/' -f 4)
+  systemctl stop ${coggiebotd}
+  systemctl stop ${coggiebotd-update-timer}
 
   ${install_dir}/result/disable
 
@@ -45,7 +45,7 @@ if [[ \$CHASE != \$LHASH ]]; then
   /bin/systemctl daemon-reload
   ${install_dir}/result/start
 
-  echo "migrating from $(echo ${coggiebotd} | cut -d '/' -f 4)"
+  echo "migrating from ${coggiebotd}"
 fi
 
 EOF
