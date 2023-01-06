@@ -38,7 +38,7 @@ async fn version(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command("rev")]
 async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.channel_id.say(&ctx.http, get_rev()).await?;
+    msg.channel_id.say(&ctx.http, format!("{REPO}/commit/{}", get_rev())).await?;
     Ok(())
 }
 
