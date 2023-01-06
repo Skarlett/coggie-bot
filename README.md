@@ -16,7 +16,7 @@ Add your name to the contributors.txt. Please describe the changes made, and add
 ## Roadmap
 - [X] Nix
 - [ ] pre-commit hooks
-- [ ] Automatic update delivery
+- [X] Automatic update delivery
 
 ## Run
 ```sh
@@ -100,16 +100,18 @@ echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 
 adduser coggiebot
 
-mkdir -p /var/coggiebot
-chown coggiebot /var/coggiebot
-
-###
-# this pipeline does an inplace replacement  
+# required 
 echo "DefaultTimeoutStartSec=9999s" >> /etc/systemd/system.conf
 
+mkdir -p /var/coggiebot
+chown coggiebot /var/coggiebot
 su coggiebot
 
-/result/activate
+cd /var/coggiebot
+nix build github:skarlett/coggie-bot
+
+/var/coggie/result/enable
+/var/coggie/result/start
 ```
 
 
