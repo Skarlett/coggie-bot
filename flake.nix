@@ -101,7 +101,8 @@
               chmod +x $out/bin/$name
             '';
             nativeBuildInputs = [
-              pkgs.coreutils packages.coggiebotd
+              pkgs.coreutils
+              packages.coggiebotd
               packages.coggiebotd-update
               packages.coggiebotd-update-timer
             ];
@@ -201,7 +202,8 @@
 
             builder = pkgs.writeShellScript "builder.sh" ''
               #!/bin/sh
-              mkdir -p $out/etc
+              mkdir -p $out/etc/
+
               cat >> $out/etc/$name <<EOF
               [Unit]
               Description=Coggie bot
