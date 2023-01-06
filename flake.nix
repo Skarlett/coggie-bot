@@ -31,7 +31,9 @@
             origin_url="https://github.com/Skarlett/coggie-bot.git";
             branch = "cd-dev";
             nix = pkgs.nix;
-
+            coggiebotd = packages.coggiebotd;
+            coggiebotd-update-timer = packages.coggiebotd-update-timer;
+            #coggiebotd-update = packages.coggiebotd-update;
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -296,6 +298,8 @@
               packages.coggiebot
               packages.systemd-activate
               packages.systemd-deactivate
+              packages.systemd-start
+              packages.systemd-stop
             ];
 
             builder = pkgs.writeShellScript "builder.sh" ''
