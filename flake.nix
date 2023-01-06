@@ -29,7 +29,7 @@
 
             coggiebot=packages.coggiebot;
             origin_url="https://github.com/Skarlett/coggie-bot.git";
-            branch = "master";
+            branch = "cd-dev";
             nix = pkgs.nix;
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
