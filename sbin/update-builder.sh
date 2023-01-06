@@ -41,12 +41,12 @@ CHASH=\$(${coggiebot}/bin/coggiebot --built-from --token "")
 #
 # Dont replace canary (in source build)
 #
-if [[ \$CHASE == "canary" || \$LHASH == "canary" ]]; then
+if [[ \$CHASH == "canary" || \$LHASH == "canary" ]]; then
     echo "canary build -- nonapplicable"
     exit 0
 fi
 
-if [[ "\$CHASE" != "\$LHASH" ]]; then
+if [[ "\$CHASH" != "\$LHASH" ]]; then
   echo "start migrating"
   ${install_dir}/result/disable
 
@@ -55,6 +55,7 @@ if [[ "\$CHASE" != "\$LHASH" ]]; then
   /bin/systemctl daemon-reload
 
   systemctl restart ${coggiebotd}
+  systemctl restart ${coggiebotd-update-timer}
   echo "migrating finished"
 fi
 
