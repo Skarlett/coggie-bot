@@ -202,8 +202,6 @@
               [Unit]
               Description=Automatically update coggiebotd.
               Wants=bookmark-bot-update.timer
-              User=root
-              group=root
 
               [Service]
               Type=oneshot
