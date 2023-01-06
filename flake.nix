@@ -108,6 +108,54 @@
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
+          packages.systemd-start = pkgs.stdenv.mkDerivation rec {
+            name = "systemd-start";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              /bin/systemctl start ${packages.coggiebotd}
+              /bin/systemctl start ${packages.coggiebotd-update}
+              /bin/systemctl start ${packages.coggiebotd-update-timer}
+              EOF
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [
+              pkgs.coreutils packages.coggiebotd
+              packages.coggiebotd-update
+              packages.coggiebotd-update-timer
+            ];
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
+          packages.systemd-stop = pkgs.stdenv.mkDerivation rec {
+            name = "systemd-stop";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              /bin/systemctl stop ${packages.coggiebotd}
+              /bin/systemctl stop ${packages.coggiebotd-update}
+              /bin/systemctl stop ${packages.coggiebotd-update-timer}
+              EOF
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [
+              pkgs.coreutils packages.coggiebotd
+              packages.coggiebotd-update
+              packages.coggiebotd-update-timer
+            ];
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
           packages.systemd-deactivate = pkgs.stdenv.mkDerivation rec {
             name = "coggiebotd-deactivate";
             phases = "buildPhase";
@@ -251,14 +299,16 @@
 
             builder = pkgs.writeShellScript "builder.sh" ''
             mkdir -p $out
-            ln -s ${packages.starter}/bin/start $out/start
+            ln -s ${packages.starter}/bin/start $out/start-bin
             ln -s ${packages.updater}/bin/update $out/update
             ln -s ${packages.coggiebot}/bin/coggiebot $out/coggiebot
             ln -s ${packages.systemd-activate}/bin/coggiebotd-activate $out/activate
             ln -s ${packages.systemd-deactivate}/bin/coggiebotd-deactivate $out/deactivate
             ln -s ${packages.systemd-enable}/bin/systemd-enable $out/enable
             ln -s ${packages.systemd-disable}/bin/systemd-disable $out/disable
-           '';
+            ln -s ${packages.systemd-start}/bin/systemd-disable $out/start
+            ln -s ${packages.systemd-stop}/bin/systemd-disable $out/stop
+            '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
