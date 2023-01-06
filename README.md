@@ -95,7 +95,7 @@ sh <(curl -L https://nixos.org/nix/install) --daemon
 
 # activate PATH
 # This is automatically appended into ~/.bashrc 
-source ~/.nix-profile/etc/profile.d/nix.sh
+. ~/.nix-profile/etc/profile.d/nix.sh
 
 echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 
@@ -104,15 +104,13 @@ adduser coggiebot
 mkdir -p /var/coggiebot
 chown coggiebot /var/coggiebot
 
-cat >> /etc/sudoers.d/coggiebot <<EOF
-coggiebot ALL= NOPASSWD: /bin/systemctl restart $SERVICE.service
-coggiebot ALL= NOPASSWD: /usr/bin/ln restart $SERVICE.service
-
-EOF
-
+###
+# this pipeline does an inplace replacement  
+echo "DefaultTimeoutStartSec=9999s" >> /etc/systemd/system.conf
 
 su coggiebot
-nix registry add coggiebot github:skarlett/coggie-bot
+
+
 
 /result/activate
 ```
