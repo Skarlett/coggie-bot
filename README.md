@@ -1,38 +1,37 @@
 # coggie-bot
 Hi! This is an open source discord bot written in rust.
 
-## Features
-| on-event | event-body | action taken          |   |
-|----------|------------|-----------------------|---|
-| reaction | 🔖         | dm message to reactor |   |
-| message  | @version   | say package's version |   |
-|          |            |                       |   |
+## Controls
+| on-event | event-body | action taken                                |   |
+|----------|------------|---------------------------------------------|---|
+| reaction | 🔖         | dm message to reactor with copy of contents |   |
+| message  | @version   | say package's version                       |   |
+| message  | @rev       | say git hash built-from                     |   |
+|          |            |                                             |   |
 
 ## Contributing
-All contributions are welcomed. When contributing, please pull request to a new branch, or use the `pull`. 
+All contributions are welcome. When contributing, please pull request to a new branch, or use the `pull`. 
 Add your name to the contributors.txt. Please describe the changes made, and add the features to the list above.
 
 ## Roadmap
 - [X] Nix
 - [ ] pre-commit hooks
-- [ ] Workflow CI/CD
-- [ ] cross compilation on CI/CD
-- [ ] Automatic update delivery
+- [X] Automatic update delivery
 
 ## Run
 ```sh
-DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot
+DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot#coggiebot
 ```
 
 ## Build
 
 #### native
-``` nix
+```sh
 nix build github:skarlett/coggie-bot
 ```
 
 #### cross compilation
-``` nix
+```sh
 # Show compilation options
 nix flake show github:skarlett/coggie-bot
 
@@ -41,14 +40,14 @@ nix build github:skarlett/coggie-bot#packages.aarch64-linux
 ```
 
 ## Develpoment
-``` nix
+```sh
 git clone https://github.com/skarlett/coggie-bot
 cd coggie-bot
 nix develop
 ```
 
 #### updating dependencies
-``` nix
+```sh
 cargo update
 nix flake update
 nix build
@@ -82,3 +81,37 @@ git push origin your-update-branch
   };
 }
 ```
+
+#### continuous integration on debian
+the objective of using a custom package manager is to achieve the goal of self-updating.
+
+``` sh
+# jump to root
+sudo su
+
+# install nix-multiuser-mode
+sh <(curl -L https://nixos.org/nix/install) --daemon
+
+# activate PATH
+# This is automatically appended into ~/.bashrc 
+. ~/.nix-profile/etc/profile.d/nix.sh
+
+echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+
+adduser coggiebot
+
+# required 
+echo "DefaultTimeoutStartSec=9999s" >> /etc/systemd/system.conf
+
+mkdir -p /var/coggiebot
+chown coggiebot /var/coggiebot
+su coggiebot
+
+cd /var/coggiebot
+nix build github:skarlett/coggie-bot
+
+/var/coggie/result/enable
+/var/coggie/result/start
+```
+
+

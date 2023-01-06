@@ -1,9 +1,0 @@
-[Unit]
-Description=Run update-check on bookmark-botd every 2 hour
-
-[Timer]
-OnBootSec=15min
-OnUnitActiveSec=2hour
-
-[Install]
-WantedBy=timers.target
