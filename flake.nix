@@ -33,7 +33,6 @@
             nix = pkgs.nix;
             coggiebotd = packages.coggiebotd;
             coggiebotd-update-timer = packages.coggiebotd-update-timer;
-            #coggiebotd-update = packages.coggiebotd-update;
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
@@ -46,9 +45,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              ln -sf ${packages.coggiebotd} /etc/systemd/system/${systemd_unit}.service
-              ln -sf ${packages.coggiebotd-update} /etc/systemd/system/${systemd_unit}-update.service
-              ln -sf ${packages.coggiebotd-update-timer} /etc/systemd/system/${systemd_unit}-update.timer
+              ln -sf ${packages.coggiebotd}/etc/${systemd_unit}.service /etc/systemd/system/${systemd_unit}.service
+              ln -sf ${packages.coggiebotd-update}/etc/${systemd_unit}-updater.service /etc/systemd/system/${systemd_unit}-update.service
+              ln -sf ${packages.coggiebotd-update-timer}/etc/${systemd_unit}-updater.timer /etc/systemd/system/${systemd_unit}-update.timer
               EOF
 
               chmod +x $out/bin/$name
@@ -71,9 +70,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              /bin/systemctl enable ${packages.coggiebotd}
-              /bin/systemctl enable ${packages.coggiebotd-update}
-              /bin/systemctl enable ${packages.coggiebotd-update-timer}
+              /bin/systemctl enable ${packages.coggiebotd}/etc/${packages.coggiebotd.name}
+              /bin/systemctl enable ${packages.coggiebotd-update}/etc/${packages.coggiebotd-update.name}
+              /bin/systemctl enable ${packages.coggiebotd-update-timer}/etc/${packages.coggiebotd-update-timer.name}
               EOF
               chmod +x $out/bin/$name
             '';
@@ -95,9 +94,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              /bin/systemctl disable ${packages.coggiebotd}
-              /bin/systemctl disable ${packages.coggiebotd-update}
-              /bin/systemctl disable ${packages.coggiebotd-update-timer}
+              /bin/systemctl disable ${packages.coggiebotd}/etc/${packages.coggiebotd.name}
+              /bin/systemctl disable ${packages.coggiebotd-update}/etc/${packages.coggiebotd-update.name}
+              /bin/systemctl disable ${packages.coggiebotd-update-timer}/etc/${packages.coggiebotd-update-timer.name}
               EOF
               chmod +x $out/bin/$name
             '';
@@ -119,9 +118,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-              /bin/systemctl start $(echo ${packages.coggiebotd} | cut -d '/' -f 4)
-              /bin/systemctl start $(echo ${packages.coggiebotd-update}  | cut -d '/' -f 4)
-              /bin/systemctl start $(echo ${packages.coggiebotd-update-timer}  | cut -d '/' -f 4)
+              /bin/systemctl start ${packages.coggiebotd.name}
+              /bin/systemctl start ${packages.coggiebotd-update.name}
+              /bin/systemctl start ${packages.coggiebotd-update-timer.name}
               EOF
               chmod +x $out/bin/$name
             '';
@@ -143,10 +142,9 @@
               mkdir -p $out/bin
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-
-              /bin/systemctl stop $(echo ${packages.coggiebotd} | cut -d '/' -f 4)
-              /bin/systemctl stop $(echo ${packages.coggiebotd-update}  | cut -d '/' -f 4)
-              /bin/systemctl stop $(echo ${packages.coggiebotd-update-timer}  | cut -d '/' -f 4)
+              /bin/systemctl stop ${packages.coggiebotd.name}
+              /bin/systemctl stop ${packages.coggiebotd-update.name}
+              /bin/systemctl stop ${packages.coggiebotd-update-timer.name}
               EOF
               chmod +x $out/bin/$name
             '';
@@ -187,7 +185,6 @@
               mkdir -p $out/bin/
               cat >> $out/bin/$name <<EOF
               #!/bin/sh
-
               . ${install_dir}/.env
               ${install_dir}/result/coggiebot
               EOF
@@ -243,7 +240,8 @@
 
             builder = pkgs.writeShellScript "builder.sh" ''
               #!/bin/sh
-              cat >> $out <<EOF
+              mkdir -p $out/etc
+              cat >> $out/etc/$name <<EOF
               [Unit]
               Description=Automatically update coggiebotd.
               Wants=bookmark-bot-update.timer
@@ -256,7 +254,7 @@
               [Install]
               WantedBy=multi-user.target
               EOF
-              chmod 755 $out
+              chmod 755 $out/etc/$name
             '';
 
             nativeBuildInputs = [ pkgs.coreutils packages.updater ];
@@ -269,7 +267,8 @@
 
             builder = pkgs.writeShellScript "builder.sh" ''
               #!/bin/sh
-              cat >> $out <<EOF
+              mkdir -p $out/etc
+              cat >> $out/etc/$name <<EOF
               [Unit]
               Description=automatically run self update checks on coggiebotd
 
@@ -281,7 +280,7 @@
               WantedBy=timers.target
 
               EOF
-              chmod 755 $out
+              chmod 755 $out/etc/$name
             '';
 
             nativeBuildInputs = [ pkgs.coreutils ];
