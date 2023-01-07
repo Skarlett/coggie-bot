@@ -100,7 +100,7 @@ Additional environment variables can be applied at build-time by adding them as 
 # Declare in Nix 
 packages.coggiebot = naerk-lib.buildPackage {
     src = ./.;
-    REV = (self.rev or "canary")
+    REV = (self.rev or "canary");
     variable_name = "My fork!";
 }
 ```
