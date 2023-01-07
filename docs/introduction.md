@@ -92,16 +92,18 @@ While its obvious that Nix helps build the necessary files to run the project, i
 
 The hash emitted from `coggiebot` is the result of the environment variable `REV` which is passed in during build-time. `REV=$(cat .git/ref/head) cargo build --release`. The `REV` environment variable is embedded within the nix build procedures.
 
+### Environment variables
+
 Additional environment variables can be applied at build-time by adding them as variables to the `mkDerivation` and `naerk-lib.buildPackage` body inside of the `flake.nix`.
 
 ```nix
 # Declare in Nix 
 packages.coggiebot = naerk-lib.buildPackage {
     src = ./.;
+    REV = (self.rev or "canary")
     variable_name = "My fork!";
 }
 ```
-
 ```rust
 // Use in rust
 fn on_message() {
