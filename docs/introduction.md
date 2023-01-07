@@ -5,7 +5,7 @@
 ## Development Toolchain
 - [Rust The programming language](https://doc.rust-lang.org/stable/book/)
 - [Serenity Discord API](https://docs.rs/serenity/latest/serenity/)
-- [Nix The Package Manager](https://nixos.org/manual/nix/unstable/introduction.html)
+- [Nix Reference manual](https://nixos.org/manual/nix/unstable/introduction.html)
 
 ## Project ideology
 
@@ -92,7 +92,7 @@ While its obvious that Nix helps build the necessary files to run the project, i
 
 The hash emitted from `coggiebot` is the result of the environment variable `REV` which is passed in during build-time. `REV=$(cat .git/ref/head) cargo build --release`. The `REV` environment variable is embedded within the nix build procedures.
 
-### Environment variables
+## Adding Environment variables
 
 Additional environment variables can be applied at build-time by adding them as variables to the `mkDerivation` and `naerk-lib.buildPackage` body inside of the `flake.nix`.
 
@@ -110,6 +110,75 @@ fn on_message() {
     println!("environment variable: {}", env!("variable_name"))
 }
 ```
+
+## Managing dependencies
+works with both `mkDerivation` and `naerk-lib.buildPackage`
+add or remove dependencies by using `buildInput`
+```
+packages.name = naerk-lib.buildPackage {
+    buildInput = [ pkgs.ffmpeg ]
+    ...
+}
+```
+
+## Adding shell scripts
+works with both `mkDerivation` and `naerk-lib.buildPackage`
+```
+packages.hello_world = mkDerivation {
+    name = "hello world"
+    phases = "buildPhase";
+    builder = pkgs.writeShellScript "builder.sh"
+    ''
+    #!/bin/sh
+    echo 'hello world'
+    '';
+}
+
+packages.caller = {
+  name="hello_caller";
+  buildInputs = [
+    packages.hello_world
+    pkgs.coreutils
+  ];
+}
+```
+
+## Using language helpers
+- [Language helpers](https://nixos.wiki/wiki/Language-specific_package_helpers)
+
+### Vanilla
+```nix
+packages.name = {
+  name="name";
+  builder = ''
+    cc hello.c -o $out 
+  '';
+};
+```
+
+Nix provides `cc` which is either `clang` or `gcc`. **Nix always** expects an artifact to be built at `$out`
+
+
+### C/C++ Addition CMake
+```
+packages.hello_world = mkDerivation {
+  name="hello_C";
+  nativeBuildInputs = with pkgs; [
+    cmake gnumake clang
+  ];
+  src = ./.
+};
+```
+
+### JavaScript
+See [napalm](https://github.com/nix-community/napalm)
+
+### Python
+See [Poetry2nix](https://github.com/nix-community/poetry2nix) (use flakes example)
+
+### Java
+See [gradle2nix](https://github.com/tadfisher/gradle2nix)
+
 
 #### Nix References
 - [The language introduction](https://cheat.readthedocs.io/en/latest/nixos/nix_lang.html)
