@@ -87,6 +87,27 @@ nix build github:skarlett/coggie-bot
 /var/coggie/result/start
 ```
 
+### CI underbelly
+While its obvious that Nix helps build the necessary files to run the project, it also provides the systemd unit files. The previous `coggiebot` is called with `--built-from`, which will return the git hash it was built from. This hash is compared with the content of the origin's branch `FETCH_HEAD`, if the hashes differ the `update` script is ran, rebuilds the project, then re-links & restarts all the necessary systemd units.
+
+The hash emitted from `coggiebot` is the result of the environment variable `REV` which is passed in during build-time. `REV=$(cat .git/ref/head) cargo build --release`. The `REV` environment variable is embedded within the nix build procedures.
+
+Additional environment variables can be applied at build-time by adding them as variables to the `mkDerivation` and `naerk-lib.buildPackage` body inside of the `flake.nix`.
+
+```nix
+# Declare in Nix 
+packages.coggiebot = naerk-lib.buildPackage {
+    src = ./.;
+    variable_name = "My fork!";
+}
+```
+
+```rust
+// Use in rust
+fn on_message() {
+    println!("environment variable: {}", env!("variable_name"))
+}
+```
 
 #### Nix References
 - [The language introduction](https://cheat.readthedocs.io/en/latest/nixos/nix_lang.html)
@@ -94,4 +115,3 @@ nix build github:skarlett/coggie-bot
 - [Building derivations NixPill](https://nixos.org/guides/nix-pills/our-first-derivation.html) Is it recommended to understand chapters 6-8.
 - [Language helpers](https://nixos.wiki/wiki/Language-specific_package_helpers)
 - [Nix Flakes](https://nixos.wiki/wiki/Flakes)
-
