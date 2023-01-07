@@ -3,9 +3,9 @@
 > Objective: The goal of providing documentation is to provide a guide on how to build, commit changes, and test local changes (canary) before pushing them upstream. Furthermore, providing the ideology, reasoning, and process on which updates are accepted by the project maintainer.
 
 ## Development Toolchain
-[Rust The programming language](https://doc.rust-lang.org/stable/book/)
-[Serenity Discord API](https://docs.rs/serenity/latest/serenity/)
-[Nix The Package Manager](https://nixos.org/manual/nix/unstable/introduction.html)
+- [Rust The programming language](https://doc.rust-lang.org/stable/book/)
+- [Serenity Discord API](https://docs.rs/serenity/latest/serenity/)
+- [Nix The Package Manager](https://nixos.org/manual/nix/unstable/introduction.html)
 
 ## Project ideology
 
