@@ -22,10 +22,11 @@ While `cargo` alone gives us a lot, the usage of nix along-side us allows us to 
 While the use of immutable environments has the benefits shown above, it does leave some pain points which will are affirmed out below.
 
 - Secret management is out tree
-Secrets are currently included in the parent directory (`/var/coggiebot`) of the build folder (`/var/coggiebot/result`), and is referenced inside of `start` binary. Secrets are currently carried in the forum of runtime environment variables.
+> Secrets are currently included in the parent directory (`/var/coggiebot`) of the build folder (`/var/coggiebot/result`), and is referenced inside of `start` binary. Secrets are currently carried in the forum of runtime environment variables.
+
 
 - Persistent mutable data challenge.
-Mutable data is out side of source tree, while it is possible to manage this data, it will be a challenge providing continuous integration to it without providing migration scripts to be included within the source tree on a commit by commit basis. For systems which are inconsistently bumping version upgrades, this may corrupt or break the project. 
+> Mutable data is out side of source tree, while it is possible to manage this data, it will be a challenge providing continuous integration to it without providing migration scripts to be included within the source tree on a commit by commit basis. For systems which are inconsistently bumping version upgrades, this may corrupt or break the project. 
 
 For this reason, persistent mutable data is frowned upon. 
 
