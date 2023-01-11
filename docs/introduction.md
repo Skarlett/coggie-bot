@@ -184,5 +184,6 @@ See [gradle2nix](https://github.com/tadfisher/gradle2nix)
 - [The language introduction](https://cheat.readthedocs.io/en/latest/nixos/nix_lang.html)
 - [The language deep dive](https://medium.com/@MrJamesFisher/nix-by-example-a0063a1a4c55)
 - [Building derivations NixPill](https://nixos.org/guides/nix-pills/our-first-derivation.html) Is it recommended to understand chapters 6-8.
+- [How To package software in nix](https://unix.stackexchange.com/questions/717168/how-to-package-my-software-in-nix-or-write-my-own-package-derivation-for-nixpkgs)
 - [Language helpers](https://nixos.wiki/wiki/Language-specific_package_helpers)
 - [Nix Flakes](https://nixos.wiki/wiki/Flakes)
