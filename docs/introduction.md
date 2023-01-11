@@ -186,4 +186,6 @@ See [gradle2nix](https://github.com/tadfisher/gradle2nix)
 - [Building derivations NixPill](https://nixos.org/guides/nix-pills/our-first-derivation.html) Is it recommended to understand chapters 6-8.
 - [How To package software in nix](https://unix.stackexchange.com/questions/717168/how-to-package-my-software-in-nix-or-write-my-own-package-derivation-for-nixpkgs)
 - [Language helpers](https://nixos.wiki/wiki/Language-specific_package_helpers)
+- [nix-nomicon (manual)](https://nixos.org/manual/nixpkgs/unstable/)
+- [search nixpkgs](https://search.nixos.org/)
 - [Nix Flakes](https://nixos.wiki/wiki/Flakes)
