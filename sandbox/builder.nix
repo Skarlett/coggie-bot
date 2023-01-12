@@ -1,25 +1,24 @@
 {
   self,
-  mkDerivationCC,
-  runCommand,
-  lib,
-  concatMapStrings
+  pkgs,
+  addArgs
 }:
-let
-  default_builder = src: (env: runCommand "build" {
-     phases = "buildPhase";
-  } src);
-
-in
 {
-  c = { cc, src, inputs ? [], env ? []}:
-    mkDerivationCC
-      env // {
+  ccompiler = { cc, src, inputs ? [], env ? [], opts ? []}:
+    pkgs.stdenv.mkDerivation
+      rec {
+        inherit src;
+        name = "c-builder";
         buildInputs = [
           cc
           src
-        ] ++ inputs;
-        inherit src;
+        ];
+        PATH = pkgs.lib.makeBinPath buildInputs;
+        builder =
+        pkgs.writeShellScript "builder.sh"
+        ''
+        cc $src ${addArgs opts} -o $out;
+        '';
       };
 
   elixir = {
@@ -29,7 +28,7 @@ in
     opts ? [],
     env ? []
   }:
-    runCommand "build" (env // {
+    pkgs.runCommand "build" (env // {
       buildInputs = [ elixir src ] ++ inputs;
     }) "elixirc ${self.lib.addArgs opts} $src -o $out";
 
@@ -42,7 +41,7 @@ in
       jar_opts ? [],
       env ? {}
   }:
-    runCommand "build" (env // {
+    pkgs.runCommand "build" (env // {
       buildInputs = [src jdk coreutils] ++ inputs;
     })
       ''
@@ -53,13 +52,13 @@ in
       '';
 
   nasm = { src, nasm, inputs ? [], filetype ? "elf", opts ? [], env ? {} }:
-    runCommand "build"
+    pkgs.runCommand "build"
       (env // {
         buildInputs = [ nasm ] ++ inputs;
       } "nasm ${self.lib.addArgs opts} -f ${filetype} $src -o $out");
 
   python = {python, src, coreutils, inputs ? [], env ? []}:
-    runCommand "build" (env // {
+    pkgs.runCommand "build" (env // {
       buildInputs = [python src coreutils] ++ inputs;
     }) ''
       pushd $out
@@ -76,7 +75,7 @@ in
       '';
 
   ts = {typescript, src, coreutils, opts ? [], inputs ? [], env ? []}:
-    runCommand "builder.sh"
+    pkgs.runCommand "builder.sh"
       (env // {
       buildInputs = [typescript src coreutils] ++ inputs;
       })
@@ -86,7 +85,7 @@ in
       '';
 
   zig = { zig, src, llvm, coreutils, opts ? [], inputs ? [], env ? [],  }:
-    runCommand "builder.sh"
+    pkgs.runCommand "builder.sh"
     (env // {
       buildInputs = [src coreutils zig llvm] ++ inputs;
     })
