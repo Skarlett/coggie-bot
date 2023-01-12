@@ -186,6 +186,7 @@ See [gradle2nix](https://github.com/tadfisher/gradle2nix)
 - [Building derivations NixPill](https://nixos.org/guides/nix-pills/our-first-derivation.html) Is it recommended to understand chapters 6-8.
 - [How To package software in nix](https://unix.stackexchange.com/questions/717168/how-to-package-my-software-in-nix-or-write-my-own-package-derivation-for-nixpkgs)
 - [stdenv mkderivation-builder](https://nixos.org/manual/nixpkgs/unstable/#chap-trivial-builders)
+- [quick start packaging](https://nixos.org/manual/nixpkgs/stable/#chap-quick-start)
 - [3rd party mkderivation-builders](https://nixos.wiki/wiki/Language-specific_package_helpers)
 - [nix-nomicon (nixpkgs manual)](https://nixos.org/manual/nixpkgs/unstable/)
 - [nix cmd reference (package manager manual)](https://nixos.org/manual/nix/unstable/introduction.html)
