@@ -30,7 +30,18 @@
   }:
     pkgs.runCommand "build" (env // {
       buildInputs = [ elixir src ] ++ inputs;
-    }) "elixirc ${self.lib.addArgs opts} $src -o $out";
+    }) "elixirc ${addArgs opts} $src -o $out";
+
+  rust = {
+    elixir,
+    src,
+    inputs ? [],
+    opts ? [],
+    env ? []
+  }:
+    pkgs.runCommand "rustc-srccode-builder" (env // {
+      buildInputs = [ elixir src ] ++ inputs;
+    }) "elixirc ${addArgs opts} $src -o $out";
 
   java = {
     src,
@@ -48,7 +59,7 @@
       mkdir -p $out/bin
       pushd $out
       javac ${javac_opts} $src
-      jar ${self.lib.addArgs jar_opts} -cf $out/bin/exe $out/main.class
+      jar ${addArgs jar_opts} -cf $out/bin/exe $out/main.class
       '';
 
   nasm = { src, nasm, inputs ? [], filetype ? "elf", opts ? [], env ? {} }:
@@ -80,7 +91,7 @@
       buildInputs = [typescript src coreutils] ++ inputs;
       })
       ''
-        tsc ${self.lib.addArgs opts} $src
+        tsc ${addArgs opts} $src
         cat *.js > $out.js
       '';
 
@@ -92,7 +103,7 @@
       ''
             mkdir -p $out
             pushd $out
-            zig build-exe ${self.lib.addArgs opts} $src -o $out
+            zig build-exe ${addArgs opts} $src -o $out
       '';
 
     # nim masm rust go c#

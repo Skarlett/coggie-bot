@@ -1,3 +1,5 @@
+mod sandbox;
+
 use std::env;
 
 use serenity::async_trait;

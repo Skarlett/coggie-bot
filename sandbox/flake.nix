@@ -1,41 +1,46 @@
-let
-  src=
-    ''
-    #include <stdio.h>
-    int main() { printf("hello world"); return 0; }
-    '';
-  system = "x86_64-linux";
-in
 {
-  description = "Language runner";
-  inputs.nixpkgs.url = github:nixos/nixpkgs/unstable;
+  description = "net runner";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-22.11";
+  inputs.utils.url = "github:numtide/flake-utils";
 
-  outputs = ({ self, nixpkgs }:
-    let
-      pkgs = nixpkgs.${system};
-      builders = pkgs.callPackage ./builders.nix { };
-      runners = pkgs.callPackage ./eval.nix { };
+  outputs = ({ self, nixpkgs, utils }:
+    utils.lib.eachDefaultSystem (system:
+      let
+        rawcode=
+          ''
+          #include <stdio.h>
 
-      srcbuilder = pkgs.mkDerivation {
-        inherit src;
-        phase = "buildPhase";
-        builder = pkgs.runCommand ''
-          cat > $out <<EOF
-          ${src}
-          EOF
-        '';
-      };
+          int main() { printf("hello world"); return 0; }
+          '';
 
-      result = runners.x86_64-linux {
-        exec=builders.ccompiler { src = srcbuilder; };
-      };
+        compiler = "ccompiler";
+        ext = "c";
 
-    in
+        pkgs = import nixpkgs { inherit system; };
+        addArgs = args: (pkgs.lib.concatMapStrings (x: " "+x) args);
+
+        srcbuilder = pkgs.writeTextFile {
+          name = "source-code.${ext}";
+          text = rawcode;
+        };
+
+        compilers = pkgs.callPackage ./builder.nix { inherit addArgs; };
+        rt = pkgs.callPackage ./eval.nix { inherit addArgs; };
+
+        exec=compilers.ccompiler {
+          src=srcbuilder;
+          cc=pkgs.gcc;
+        };
+
+        runner = rt.native { inherit exec; };
+      in
       {
-        #lib.addArgs = args: pkgs.lib.concatMapStrings (x: " "+x) args;
-        packages.${system} =
-          {
-            default = result;
-          };
-      });
+        packages.default = runner;
+
+        packages.list_compilers = pkgs.writeTextFile {
+          name = "compiler-list.txt";
+          text = (pkgs.lib.concatMapStrings (x: x+"\n") (builtins.attrNames compilers));
+        };
+      }
+    ));
 }
