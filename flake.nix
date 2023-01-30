@@ -1,6 +1,8 @@
 let
+  bottomPort = 13000;
+  topPort = 23000;
   adminKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILcon6Pn5nLNXEuLH22ooNR97ve290d2tMNjpM8cTm2r lunarix@masterbook";
-  mkCog = {
+  mkCogConfig = {
     pkgs
     , lib
     , config
@@ -14,6 +16,7 @@ let
   }: ({
 
     boot.isContainer = true;
+
     services.openssh = {
       passwordAuthentication = false;
       kbdInteractiveAuthentication = false;
@@ -38,6 +41,36 @@ let
       pkgs.git
     ] ++ inputs;
   } // container);
+
+  allowedPorts = port: port >= bottomPort && topPort >= port;
+  allowedPortsMap = portforward: allowedPorts portforward.containerPort && allowedPorts portforward.hostPort;
+
+  portAssert = {lib, ...}:
+    let msg =
+      "forwardPorts.containerPort or forwardPorts.hostPort
+       must be in the range of ${bottomPort} and ${topPort}";
+    in
+    forwardPorts:
+    if (builtins.assertMsg
+      (builtins.all allowedPortsMap forwardPorts) msg)
+    then forwardPorts
+    else builtins.throw "error";
+
+  mkCog = {lib}: {OsConfig, forwardPorts ? [], vmConfig ? {}}:
+    {
+      ephemeral = true;
+      tmpfs = true;
+      # drop root privs
+      extraFlags = [ "-U" ];
+      forwardPorts = portAssert forwardPorts;
+
+      # privateNetwork = true;
+      # hostAddress = hostAddr;
+      # localAddress = localAddr;
+      config =
+        mkCogConfig OsConfig;
+
+    };
 in
 {
   description = "Open source discord utility bot";
@@ -49,7 +82,7 @@ in
     in
       (base // extensions);
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, naersk, deploy-rs }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, naersk, deploy-rs, ... }@extras:
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
         let
@@ -86,7 +119,6 @@ in
                     ({self, config, pkgs, lib, ...}:
                       {
                         networking.hostName = "coggiebot"; # Define your hostname.
-                        documentation.dev.enable = true;
 
                         boot.loader.grub.enable = true;
                         boot.loader.grub.version = 2;
@@ -97,14 +129,14 @@ in
                         ];
 
                         containers = {
-                          sandbox = {hostAddr, localAddr, config_fn}: {
+                          sandbox = {hostAddr, localAddr, guestConfig}: {
                             tmpfs = true;
                             privateNetwork = true;
+                            autoStart = true;
 
                             hostAddress = hostAddr;
                             localAddress = "192.168.100.11";
-                            config =
-                              config_fn;
+                            config = guestConfig;
                           };
                         };
 
