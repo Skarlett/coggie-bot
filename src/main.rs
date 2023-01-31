@@ -106,7 +106,7 @@ impl EventHandler for Handler {
                            .map(|a| (a, a.filename.rsplit_once('.').unwrap().1) )
                            .fold(m, |msg, (atch, ext)|
                                match ext {
-                                   "png" | "jpg" | "jpeg" | "gif" => { println!("made it"); msg.add_embed(|e| e.image(&atch.url)); msg},
+                                   "png" | "jpg" | "jpeg" | "gif" => { msg.add_embed(|e| e.image(&atch.url)); msg},
                                    _ => msg
                                }
                            );
