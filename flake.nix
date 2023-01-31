@@ -1,13 +1,15 @@
 let
   bottomPort = 13000;
   topPort = 23000;
-  adminKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILcon6Pn5nLNXEuLH22ooNR97ve290d2tMNjpM8cTm2r lunarix@masterbook";
+
+  maintainers = import ./maintainers.nix;
+
   mkCogConfig = {
     pkgs
     , lib
     , config
     , container
-    , author
+    , maintainer
     , exec
     , inet
     , keys ? []
@@ -22,8 +24,6 @@ let
       kbdInteractiveAuthentication = false;
       permitRootLogin = "no";
     };
-    users.users.${author}.openssh.authorizedKeys.keys = [adminKey] ++ keys;
-    users.users.${author}.createHome = false;
 
     users.users.lunarix = {
       shell = pkgs.fish;
@@ -34,7 +34,7 @@ let
       createHome = false;
     };
 
-    openssh.authorizedKeys.keys = [adminKey];
+    openssh.authorizedKeys.keys = [maintainers.lib.adminKeys];
     environment.systemPackages = [
       pkgs.stevenblack-blocklist
       pkgs.htop
@@ -69,7 +69,6 @@ let
       # localAddress = localAddr;
       config =
         mkCogConfig OsConfig;
-
     };
 in
 {
@@ -79,6 +78,7 @@ in
     let
       base = import ./base_imports.nix;
       extensions = import ./cogs/extra-flake-inputs.nix;
+
     in
       (base // extensions);
 
@@ -90,7 +90,13 @@ in
           naerk-lib = pkgs.callPackage naersk { };
         in
         {
-          packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=(self.rev or "canary"); };
+          packages.coggiebot =
+            naerk-lib.buildPackage {
+              src = ./.;
+              REV=(self.rev or "canary");
+              # TODO: Find out how to add feature list
+              # cargoOptions = ['' --features "" ''];
+          };
           devShell =
             pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
 
@@ -116,7 +122,7 @@ in
                       ];
                     })
 
-                    ({self, config, pkgs, lib, ...}:
+                    ({self, config, pkgs, lib, discordToken, ...}:
                       {
                         networking.hostName = "coggiebot"; # Define your hostname.
 
@@ -129,13 +135,12 @@ in
                         ];
 
                         containers = {
-                          sandbox = {hostAddr, localAddr, guestConfig}: {
+                          sandbox = {localAddr, guestConfig}: {
                             tmpfs = true;
                             privateNetwork = true;
                             autoStart = true;
 
-                            hostAddress = hostAddr;
-                            localAddress = "192.168.100.11";
+                            hostAddress = "172.16.100.1";
                             config = guestConfig;
                           };
                         };
@@ -144,6 +149,18 @@ in
                         networking.nat.internalInterfaces = ["ve-+"];
                         networking.nat.externalInterface = "eth0";
                         services.openssh.enable = true;
+
+                        systemd.services.nginx.serviceConfig.ReadWritePaths = [ "/var/spool/nginx/logs/" ];
+
+                        services.lighttpd = {
+                          enable = true;
+                          extraConfig = ''
+                          $HTTP["url"] =~ "*.discord.com/" {
+                            proxy.server = ( "" => (( "host" => "127.0.0.1", "port" => 3000 )))
+                          }
+                          '';
+                        };
+
                         services.clamav = {
                           daemon.enable = true;
                           updater.enable = true;
@@ -173,14 +190,21 @@ in
                           };
                         };
 
-                        users.users.lunarix = {
-                          shell = pkgs.fish;
-                          isNormalUser = true;
-                          description = "admin";
-                          extraGroups = [ "networkmanager" "wheel" "audio" ];
-                          packages = with pkgs;
-                            [];
-                        };
+                        networking.firewall.extraCommands = [
+                          "iptables -N incoming-ssh"
+                          "iptables -A OUTPUT -p tcp --sport $PORTNUM_1 -g filter_quota_1"
+                          "iptables -A OUTPUT -p tcp --sport $PORTNUM_2 -g filter_quota_2"
+                          "iptables -A INPUT -p tcp --dport $PORTNUM_1 -g filter_quota_1"
+                          "iptables  -A INPUT -p tcp --dport $PORTNUM_2 -g filter_quota_2"
+
+                          "iptables -A filter_quota_1 -m quota --quota $QUOTA_1 -g chain_where_quota_not_reached"
+                          "iptables -A filter_quota_1 -g chain_where_quota_is_reached"
+                          "iptables -A filter_quota_2 -m quota --quota $QUOTA_2 -g chain_where_quota_not_reached"
+                          "iptables -A filter_quota_2 -g chain_where_quota_is_reached"
+
+                        ];
+                        users.users.lunarix = maintainers.lunarix.profile;
+
 
                         users.users.coggiebot = {
                           isSystemUser = true;
@@ -226,7 +250,13 @@ in
                 type = types.str;
                 example = "<api key>";
               };
-              enable-ci = mkEnableOption "enable ci";
+
+              features = {
+                ci = mkEnableOption "enable ci";
+                quota = mkEnableOption "enable quotas on containers";
+              };
+
+
             };
 
             config = mkIf cfg.enable {
@@ -240,7 +270,7 @@ in
                   serviceConfig.Restart = "on-failure";
                 };
 
-                services.coggiebot-updater = mkIf cfg.ci-enable {
+                services.coggiebot-updater = mkIf cfg.features.ci {
                   wantedBy = [ "multi-user.target" ];
                   after = [ "network.target" ];
                   wants = [ "network-online.target" ];
@@ -263,12 +293,12 @@ in
                   serviceConfig =
                     {
                       Type = "oneshot";
-                      User= "nobody";
+                      User= "root";
                       Restart = "on-failure";
                     };
                 };
 
-                timers.coggiebot-updater = mkIf cfg.ci-enable {
+                timers.coggiebot-updater = mkIf cfg.features.ci {
                   WantedBy = ["target.timers"];
                   after = [ "network.target" ];
                   wants = [ "network-online.target" ];
@@ -279,6 +309,34 @@ in
                       Unit = "coggiebot-update.service";
                   };
                 };
+
+                services.coggiebot-quota = mkIf cfg.features.quota {
+                  WantedBy = ["target.timers"];
+                  after = [ "network.target" ];
+                  wants = [ "network-online.target" ];
+                  script = ''
+
+                  '';
+                  serviceConfig =
+                    {
+                      Type = "oneshot";
+                      User= "root";
+                      Restart = "on-failure";
+                    };
+                };
+
+                timers.coggiebot-quota = mkIf cfg.features.quota {
+                  WantedBy = ["target.timers"];
+                  after = [ "network.target" ];
+                  wants = [ "network-online.target" ];
+                  timerConfig = {
+                      OnBootSec = "5s";
+                      OnUnitActiveSec = "24h";
+                      Unit = "coggiebot-updat.service";
+                  };
+                };
+
+
               };
             };
           };
