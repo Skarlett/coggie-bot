@@ -131,6 +131,29 @@
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
           };
 
+          packages.systemd-restart = pkgs.stdenv.mkDerivation rec {
+            name = "systemd-restart";
+            phases = "buildPhase";
+
+            builder = pkgs.writeShellScript "builder.sh" ''
+              #!/bin/sh
+              mkdir -p $out/bin
+              cat >> $out/bin/$name <<EOF
+              #!/bin/sh
+              /bin/systemctl restart ${packages.coggiebotd.name}
+              /bin/systemctl restart ${packages.coggiebotd-update-timer.name}
+              EOF
+              chmod +x $out/bin/$name
+            '';
+            nativeBuildInputs = [
+              pkgs.coreutils packages.coggiebotd
+              packages.coggiebotd-update
+              packages.coggiebotd-update-timer
+            ];
+
+            PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
+          };
+
           packages.starter = pkgs.stdenv.mkDerivation rec {
             name = "start";
             phases = "buildPhase";
@@ -254,6 +277,7 @@
               packages.coggiebot
               packages.systemd-start
               packages.systemd-stop
+              packages.systemd-restart
             ];
 
             builder = pkgs.writeShellScript "builder.sh" ''
@@ -265,6 +289,7 @@
             ln -s ${packages.systemd-disable}/bin/systemd-disable $out/disable
             ln -s ${packages.systemd-start}/bin/systemd-start $out/start
             ln -s ${packages.systemd-stop}/bin/systemd-stop $out/stop
+            ln -s ${packages.systemd-restart}/bin/systemd-restart $out/restart
             '';
 
             PATH = nixpkgs.lib.makeBinPath nativeBuildInputs;
