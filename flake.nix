@@ -233,9 +233,6 @@
               OnBootSec=15min
               OnUnitActiveSec=15min
 
-              [Service]
-              TimeoutStartSec=9999
-
               [Install]
               WantedBy=timers.target
 
