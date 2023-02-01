@@ -1,74 +1,6 @@
 let
   bottomPort = 13000;
   topPort = 23000;
-
-  maintainers = import ./maintainers.nix;
-
-  mkCogConfig = {
-    pkgs
-    , lib
-    , config
-    , container
-    , maintainer
-    , exec
-    , inet
-    , keys ? []
-    , inputs ? []
-    , env ? {}
-  }: ({
-
-    boot.isContainer = true;
-
-    services.openssh = {
-      passwordAuthentication = false;
-      kbdInteractiveAuthentication = false;
-      permitRootLogin = "no";
-    };
-
-    users.users.lunarix = {
-      shell = pkgs.fish;
-      isNormalUser = true;
-      description = "admin";
-      extraGroups = [ "networkmanager" "wheel" ];
-      packages = [pkgs.fish];
-      createHome = false;
-    };
-
-    openssh.authorizedKeys.keys = [maintainers.lib.adminKeys];
-    environment.systemPackages = [
-      pkgs.stevenblack-blocklist
-      pkgs.htop
-      pkgs.git
-    ] ++ inputs;
-  } // container);
-
-  allowedPorts = port: port >= bottomPort && topPort >= port;
-  allowedPortsMap = portforward: allowedPorts portforward.containerPort && allowedPorts portforward.hostPort;
-
-  portAssert = {lib, ...}:
-    let msg =
-      "forwardPorts.containerPort or forwardPorts.hostPort
-       must be in the range of ${bottomPort} and ${topPort}";
-    in
-    forwardPorts:
-    if (builtins.assertMsg
-      (builtins.all allowedPortsMap forwardPorts) msg)
-    then forwardPorts
-    else builtins.throw "error";
-
-  mkCog = {lib}: {OsConfig, forwardPorts ? [], vmConfig ? {}}:
-    {
-      ephemeral = true;
-      tmpfs = true;
-      # drop root privs
-      extraFlags = [ "-U" ];
-      forwardPorts = portAssert forwardPorts;
-      privateNetwork = true;
-      # hostAddress = hostAddr;
-      # localAddress = localAddr;
-      config =
-        mkCogConfig OsConfig;
-    };
 in
 {
   description = "Open source discord utility bot";
@@ -94,9 +26,7 @@ in
         let
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
-          pkgs-blacklist = [
-            pkgs.xmrig
-          ];
+          maintainers = pkgs.callPackage ./maintainers.nix;
         in
         {
           packages.coggiebot =
@@ -156,17 +86,6 @@ in
                         imports = [
                           self.nixosModules.coggiebot
                         ];
-
-                        containers = {
-                          sandbox = {localAddr, guestConfig}: {
-                            tmpfs = true;
-                            privateNetwork = true;
-                            autoStart = true;
-
-                            hostAddress = "172.16.100.1";
-                            config = guestConfig;
-                          };
-                        };
 
                         networking.nat.enable = true;
                         networking.nat.internalInterfaces = ["ve-+"];
@@ -307,9 +226,6 @@ in
                       echo "Lock acquired"
                     fi
 
-
-
-
                     nixos-rebuild --flake github:skarlet/coggie-bot#host
                     '';
 
@@ -364,7 +280,7 @@ in
             };
           };
 
-        runner = {pkgs, config, lib, exec}:
+        cogUnit = {pkgs, config, lib, exec}:
           with lib;
           let cfg = config.services.coggiebot;
           in {
