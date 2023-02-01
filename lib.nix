@@ -7,8 +7,16 @@ let
     container
     , maintainer
     , exec
+    , cogUnit
   }: ({
     boot.isContainer = true;
+
+    modules = [
+      cogUnit
+    ];
+
+    services.cogUnit.enable = true;
+    services.cogUnit.target = exec;
 
     services.openssh = {
       passwordAuthentication = false;
@@ -18,9 +26,9 @@ let
 
     users.users = (maintainers.adminUsers //
       {
-        ${maintainer.name} = (maintainer.profile // {
-          sshKeys = maintainer.profile ++ maintainers.adminKeys;
-        });
+        ${maintainer.name} = ({
+          openssh.authorizedKeys.ssh = maintainer.profile ++ maintainers.adminKeys;
+        } // maintainer.profile);
       }
     );
 
@@ -44,16 +52,16 @@ rec {
     else builtins.throw "error";
 
   mkCog = {OsConfig, forwardPorts ? [], vmConfig ? {}}:
-    {
+    ({
       ephemeral = true;
       tmpfs = true;
       # drop root privs
-      extraFlags = [ "-U" ];
+      extraFlags = [ "-U" ] ++ (lib.optional (if vmConfig ? extraFlags then vmConfig.extraFlags else []));
       forwardPorts = portAssert forwardPorts;
       privateNetwork = true;
-      # hostAddress = hostAddr;
-      # localAddress = localAddr;
+      hostAddress = conf.cog.hostAddr;
+
       config =
         mkCogConfig OsConfig;
-    };
+    } // vmConfig);
 }
