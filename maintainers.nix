@@ -1,8 +1,7 @@
 {pkgs, lib}:
 let
   mkMaintainer = {
-    lib
-    , name
+    name
     , sshKeys ? []
     , github ? null
     , shell ? null
