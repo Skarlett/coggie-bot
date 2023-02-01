@@ -7,7 +7,6 @@ let
     container
     , maintainer
     , exec
-    , inputs ? []
   }: ({
     boot.isContainer = true;
 
@@ -29,17 +28,16 @@ let
       pkgs.stevenblack-blocklist
       pkgs.htop
       pkgs.git
-    ] ++ inputs;
+    ] ++ container.environment.systemPackages;
   } // container);
 
 in
 rec {
-  portAssert = {lib, ...}:
+  portAssert = {lib, ...}: forwardPorts:
     let msg =
       "forwardPorts.containerPort or forwardPorts.hostPort
        must be in the range of ${conf.cog.bottomPort} and ${conf.cog.topPort}";
     in
-    forwardPorts:
     if (builtins.assertMsg
       (builtins.all allowedPortsMap forwardPorts) msg)
     then forwardPorts
