@@ -63,8 +63,7 @@ let
       # drop root privs
       extraFlags = [ "-U" ];
       forwardPorts = portAssert forwardPorts;
-
-      # privateNetwork = true;
+      privateNetwork = true;
       # hostAddress = hostAddr;
       # localAddress = localAddr;
       config =
@@ -73,32 +72,56 @@ let
 in
 {
   description = "Open source discord utility bot";
-
   inputs =
     let
-      base = import ./base_imports.nix;
-      extensions = import ./cogs/extra-flake-inputs.nix;
+      base = {
+        nixpkgs.url = "github:nixos/nixpkgs/nixos-22.11";
+        nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
+        flake-utils.url = "github:numtide/flake-utils";
+        naersk.url = "github:nix-community/naersk";
+        deploy-rs.url = "github:serokell/deploy-rs";
+        impermanence.url = "github:nix-community/impermanence";
+      };
 
+      extras = {};# import ./cogs/extra-flake-inputs.nix;
+      conf = import ./conf.nix;
     in
-      (base // extensions);
+      (base // extras);
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, flake-utils, naersk, deploy-rs, ... }@extras:
+  outputs = {self, nixpkgs, nixpkgs-unstable, flake-utils, naersk, deploy-rs, ... }@extras:
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
         let
           pkgs = import nixpkgs { inherit system; };
           naerk-lib = pkgs.callPackage naersk { };
+          pkgs-blacklist = [
+            pkgs.xmrig
+          ];
         in
         {
           packages.coggiebot =
             naerk-lib.buildPackage {
               src = ./.;
               REV=(self.rev or "canary");
+
               # TODO: Find out how to add feature list
               # cargoOptions = ['' --features "" ''];
           };
+
           devShell =
             pkgs.mkShell { nativeBuildInputs = with pkgs; [ rustc cargo ]; };
+
+          # packages.genblacklist =
+          #   # let
+          #   #   x = input: map (i: {} ) input;
+          #   # in
+          #     nativeBuildInputs = [
+          #       pkgs.coreutils
+          #       pkgs.git
+          #     ];
+
+          #     # PATH = lib.makeBinPath nativeBuildInputs;
+          #   };
 
           packages.nixosConfigurations =
             let
@@ -191,20 +214,19 @@ in
                         };
 
                         networking.firewall.extraCommands = [
-                          "iptables -N incoming-ssh"
-                          "iptables -A OUTPUT -p tcp --sport $PORTNUM_1 -g filter_quota_1"
-                          "iptables -A OUTPUT -p tcp --sport $PORTNUM_2 -g filter_quota_2"
-                          "iptables -A INPUT -p tcp --dport $PORTNUM_1 -g filter_quota_1"
-                          "iptables  -A INPUT -p tcp --dport $PORTNUM_2 -g filter_quota_2"
+                          # "iptables -N incoming-ssh"
+                          # "iptables -A OUTPUT -p tcp --sport $PORTNUM_1 -g filter_quota_1"
+                          # "iptables -A OUTPUT -p tcp --sport $PORTNUM_2 -g filter_quota_2"
+                          # "iptables -A INPUT -p tcp --dport $PORTNUM_1 -g filter_quota_1"
+                          # "iptables  -A INPUT -p tcp --dport $PORTNUM_2 -g filter_quota_2"
 
-                          "iptables -A filter_quota_1 -m quota --quota $QUOTA_1 -g chain_where_quota_not_reached"
-                          "iptables -A filter_quota_1 -g chain_where_quota_is_reached"
-                          "iptables -A filter_quota_2 -m quota --quota $QUOTA_2 -g chain_where_quota_not_reached"
-                          "iptables -A filter_quota_2 -g chain_where_quota_is_reached"
-
+                          # "iptables -A filter_quota_1 -m quota --quota $QUOTA_1 -g chain_where_quota_not_reached"
+                          # "iptables -A filter_quota_1 -g chain_where_quota_is_reached"
+                          # "iptables -A filter_quota_2 -m quota --quota $QUOTA_2 -g chain_where_quota_not_reached"
+                          # "iptables -A filter_quota_2 -g chain_where_quota_is_reached"
                         ];
-                        users.users.lunarix = maintainers.lunarix.profile;
 
+                        users.users.lunarix = maintainers.lunarix.profile;
 
                         users.users.coggiebot = {
                           isSystemUser = true;
@@ -255,8 +277,6 @@ in
                 ci = mkEnableOption "enable ci";
                 quota = mkEnableOption "enable quotas on containers";
               };
-
-
             };
 
             config = mkIf cfg.enable {
@@ -286,6 +306,9 @@ in
                     else
                       echo "Lock acquired"
                     fi
+
+
+
 
                     nixos-rebuild --flake github:skarlet/coggie-bot#host
                     '';
