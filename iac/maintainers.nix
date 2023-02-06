@@ -44,7 +44,7 @@ rec {
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILcon6Pn5nLNXEuLH22ooNR97ve290d2tMNjpM8cTm2r lunarix@masterbook"
     ];
     shell=pkgs.fish;
-    ownerId=191793436976873473;
+    discordId=191793436976873473;
   };
 
   admins = [
