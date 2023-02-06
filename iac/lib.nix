@@ -1,7 +1,16 @@
 { config, lib, pkgs, maintainers, conf }:
 let
-  allowedPorts = port: port >= conf.cog.topPort && conf.cog.topPort >= port;
-  allowedPortsMap = portforward: allowedPorts portforward.containerPort && allowedPorts portforward.hostPort;
+  # fn {top=int; bottom=int} => fn int -> bool
+  # returns boolean if integer between top and bottom
+  inRange = {top, bottom}: port: port >= top && bottom >= port;
+
+  allowedPortsMap = let
+    cogPortRng = inRange {
+      top=conf.cog.topPort;
+      bottom=conf.cog.bottomPort;
+    };
+    in
+      portforward: cogPortRng portforward.containerPort && cogPortRng portforward.hostPort;
 
   mkCogConfig = {
     container
@@ -27,7 +36,7 @@ let
     users.users = (maintainers.adminUsers //
       {
         ${maintainer.name} = ({
-          openssh.authorizedKeys.ssh = maintainer.profile ++ maintainers.adminKeys;
+          openssh.authorizedKeys.ssh = maintainer.profile.sshKeys ++ maintainers.adminKeys;
         } // maintainer.profile);
       }
     );
@@ -55,6 +64,7 @@ rec {
     ({
       ephemeral = true;
       tmpfs = true;
+
       # drop root privs
       extraFlags = [ "-U" ] ++ (lib.optional (if vmConfig ? extraFlags then vmConfig.extraFlags else []));
       forwardPorts = portAssert forwardPorts;
