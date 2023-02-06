@@ -54,8 +54,8 @@ if [[ "\$CHASH" != "\$LHASH" ]]; then
   ${install_dir}/result/enable
   /bin/systemctl daemon-reload
 
-  systemctl start ${coggiebotd}
-  systemctl start ${coggiebotd-update-timer}
+  systemctl restart ${coggiebotd}
+  systemctl restart ${coggiebotd-update-timer}
   echo "migrating finished"
 fi
 
