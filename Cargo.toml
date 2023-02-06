@@ -7,6 +7,7 @@ edition = "2021"
 serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 structopt = { version = "0.3", default-features = false }
+dotenv = "*"
 
 [package.metadata.nix]
 app = true

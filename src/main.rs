@@ -1,3 +1,5 @@
+mod rtenv;
+
 use std::env;
 
 use serenity::async_trait;
@@ -135,6 +137,8 @@ struct CLI {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>
 {
+    direnv::dot()?;
+
     let cli = CLI::from_args();
 
     if cli.version {

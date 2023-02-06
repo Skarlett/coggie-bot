@@ -316,7 +316,6 @@ in
           };
       };
 
-
       overlays.default = final: prev: {
         coggiebot = with final;
           final.callPackage ({ inShell ? false }: packages { });
