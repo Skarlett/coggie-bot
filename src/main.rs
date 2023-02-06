@@ -89,7 +89,7 @@ impl EventHandler for Handler {
                     .await
                     .unwrap()
                     .send_message(&ctx, |m: &mut CreateMessage| {
-                        m.embed(|e| {
+                        m.add_embed(|e| {
                             e.title("Bookmark")
                                 .fields(vec![
                                     ("author:", msg.author.tag(), false),
@@ -99,7 +99,18 @@ impl EventHandler for Handler {
                                 ])
                                 .footer(|f| f.text(REPO))
                                 .timestamp(Timestamp::now())
-                        })
+                        });
+
+                        let m = msg.attachments
+                           .iter()
+                           .map(|a| (a, a.filename.rsplit_once('.').unwrap().1) )
+                           .fold(m, |msg, (atch, ext)|
+                               match ext {
+                                   "png" | "jpg" | "jpeg" | "gif" => { msg.add_embed(|e| e.image(&atch.url)); msg},
+                                   _ => msg
+                               }
+                           );
+                        m
                     })
                     .await
                     .unwrap();
