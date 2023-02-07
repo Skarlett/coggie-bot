@@ -4,13 +4,13 @@ let
   # returns boolean if integer between top and bottom
   inRange = {top, bottom}: port: port >= top && bottom >= port;
 
-  allowedPortsMap = let
-    cogPortRng = inRange {
-      top=conf.cog.topPort;
-      bottom=conf.cog.bottomPort;
-    };
-    in
-      portforward: cogPortRng portforward.containerPort && cogPortRng portforward.hostPort;
+  allowedPortsMap =
+    let
+      cogPortRng = inRange {
+        top=conf.cog.topPort;
+        bottom=conf.cog.bottomPort;
+      };
+    in portforward: cogPortRng portforward.containerPort && cogPortRng portforward.hostPort;
 
   mkCogConfig = {
     container
@@ -50,6 +50,8 @@ let
 
 in
 rec {
+  inherit inRange;
+
   portAssert = {lib, ...}: forwardPorts:
     let msg =
       "forwardPorts.containerPort or forwardPorts.hostPort
@@ -60,18 +62,36 @@ rec {
     then forwardPorts
     else builtins.throw "error";
 
-  mkCog = {OsConfig, forwardPorts ? [], vmConfig ? {}}:
+  cogCommand = { example ? null, help ? null }:
+    { inherit example help; };
+
+  mkCog = {
+    OsConfig
+    , forwardPorts ? []
+    , vmConfig ? {}
+    , commands ? {}
+    , extraHelp ? "",
+  }:
     ({
       ephemeral = true;
       tmpfs = true;
 
       # drop root privs
-      extraFlags = [ "-U" ] ++ (lib.optional (if vmConfig ? extraFlags then vmConfig.extraFlags else []));
+      extraFlags = [ "-U" ] ++ (lib.optional (
+        if vmConfig ? extraFlags && vmConfig.extraFlags
+        then vmConfig.extraFlags
+        else []
+      ));
       forwardPorts = portAssert forwardPorts;
       privateNetwork = true;
       hostAddress = conf.cog.hostAddr;
 
       config =
         mkCogConfig OsConfig;
+
+      appdata = {
+        inherit commands extraHelp;
+      };
     } // vmConfig);
+
 }

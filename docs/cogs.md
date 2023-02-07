@@ -23,16 +23,18 @@ coggiebot hosts an HTTP and WebSocket proxy on the network gateway. HTTP request
 
 coggiebot will replace the proxy requests, header's with its own Authorization Token. When submitting your API token, replace it with `COGGIEBOT_AUTH`
 
-
 # Network
-Coggiebot self-configures its self with two categories of networks. **Trusted**, and **Experimental**.
+Coggiebot self-configures networks. **Trusted**, **Staging**, **Experimental**.
 
-- **Trusted** Cogs which are labeled as trusted can speak freely to other Cogs inside the local **Trusted network**.
+`mkCog` contains a parameter ``
+
+- **Trusted** Cogs which are labeled as trusted can speak freely to other Cogs inside the local **Trusted network**. They're hosted under `${NetTrustAddr}/${NetTrustCidr}`
+
 
 - **Staging** Cogs which are labeled as **Staging** maybe include a list of required Cogs to operate, but everything in the list must already included in Trusted
 
 - **Experimental**
-
+  Experimental cogs have access to trusted cogs with declarative dependency. They're  bandwidth 100mb.
 
 Each cog's network lives in a Virtual Network which can speak with other cogs.  private network, where 
 
@@ -48,7 +50,7 @@ Some custom environment variables are passed into the running processes context.
 - `BOTID=123123123`
   Cog's user ID
 
-- `HTTP_PROXY="172.16.0.1"`
+- `HTTP_PROXY="${NetworkGateway}"`
   Discord API proxy
 
 - `USERNAME="coggerz"`
@@ -57,12 +59,14 @@ Some custom environment variables are passed into the running processes context.
 # Intents, Commands & help menus
 ```nix
 mkCog {
-    commands = [
+    name="cat-machine";
+
+    commands = {
         cat = CogCommand {
             example = "cat";
             help = "fetches random image from cats api"
         };
-    ];
+    };
     
     extraHelp = ''
        reacting to any message with :bookmark: will send a copy to your direct message indox.
