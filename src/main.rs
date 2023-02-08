@@ -48,7 +48,6 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
         .channel_id
         .send_message(&ctx.http, |m| {
             m.reference_message(msg)
-             .allowed_mentions(|f| f.empty_parse())
              .embed(|e| {
                  e.title("Coggie Bot");
                  e.description("Coggie Bot is an open source bot written in Rust. It is licensed under the BSD2 license.");
