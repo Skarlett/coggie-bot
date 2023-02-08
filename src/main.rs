@@ -42,7 +42,7 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-#[command("contribute")]
+#[command]
 async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
     msg
         .channel_id
