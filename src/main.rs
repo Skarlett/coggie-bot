@@ -27,7 +27,7 @@ fn get_rev() -> &'static str {
 }
 
 #[group]
-#[commands(version, rev_cmd)]
+#[commands(version, rev_cmd, contribute)]
 struct Commands;
 
 #[command]
@@ -39,6 +39,27 @@ async fn version(ctx: &Context, msg: &Message) -> CommandResult {
 #[command("rev")]
 async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     msg.channel_id.say(&ctx.http, format!("{REPO}/commit/{}", get_rev())).await?;
+    Ok(())
+}
+
+#[command("contribute")]
+async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
+    msg
+        .channel_id
+        .send_message(&ctx.http, |m| {
+            m.reference_message(msg)
+             .allowed_mentions(|f| f.empty_parse())
+             .embed(|e| {
+                 e.title("Coggie Bot");
+                 e.description("Coggie Bot is an open source bot written in Rust. It is licensed under the BSD2 license.");
+                 e.url(REPO);
+                 e.field("License", LICENSE, false);
+                 e.field("Contribute", format!("{}#contribute", REPO), false);
+                 e
+             })
+            .content(include_str!("../tickets.md"))
+        })
+        .await?;
     Ok(())
 }
 
