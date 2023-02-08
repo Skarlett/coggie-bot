@@ -2,13 +2,13 @@
 Hi! This is an open source discord bot written in rust.
 
 ## Controls
-| on-event | event-body | action taken                                |   |
-|----------|------------|---------------------------------------------|---|
-| reaction | 🔖         | dm message to reactor with copy of contents |   |
-| message  | @version   | say package's version                       |   |
-| message  | @rev       | say git hash built-from                     |   |
-|          |            |                                             |   |
-
+| on-event | event-body  | action taken                                       |   |
+|----------|-------------|----------------------------------------------------|---|
+| reaction | 🔖          | dm message to reactor with copy of contents        |   |
+| message  | @version    | say package's version                              |   |
+| message  | @rev        | say git hash built-from                            |   |
+| message  | @contribute | show list of things we want to have, documentation |   |
+|          |             |                                                    |   |
 ## Contributing
 All contributions are welcome. When contributing, please pull request to a new branch, or use the `pull`. 
 Add your name to the contributors.txt. Please describe the changes made, and add the features to the list above.
