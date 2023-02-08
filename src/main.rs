@@ -57,7 +57,7 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
                  e.field("Contribute", format!("{}#contribute", REPO), false);
                  e
              })
-            .content(include!("../tickets.md"))
+            .content(include_str!("../tickets.md"))
         })
         .await?;
     Ok(())
