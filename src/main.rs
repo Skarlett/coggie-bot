@@ -44,21 +44,21 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
-    msg
-        .channel_id
-        .send_message(&ctx.http, |m| {
-            m.reference_message(msg)
-             .embed(|e| {
-                 e.title("Coggie Bot");
-                 e.description("Coggie Bot is an open source bot written in Rust. It is licensed under the BSD2 license.");
-                 e.url(REPO);
-                 e.field("License", LICENSE, false);
-                 e.field("Contribute", format!("{}#contribute", REPO), false);
-                 e
-             })
-            .content(include_str!("../tickets.md"))
-        })
-        .await?;
+    msg.channel_id
+       .send_message(&ctx.http, |m|
+           m
+            .add_embed(|e|
+                e.title("Coggie Bot")
+                   .description("Coggie Bot is an open source \"Discord\" (discord.com) bot.")
+                   .url(REPO)
+                    .fields(vec![
+                        ("License", "BSD2", false),
+                        ("Version", VERSION, false),
+                        ("Revision", get_rev(), false),
+                        ("Contribute", &format!("{}/contribute.md", REPO), false),
+                   ])
+            )
+       ).await?;
     Ok(())
 }
 
@@ -123,10 +123,21 @@ impl EventHandler for Handler {
 
                         let m = msg.attachments
                            .iter()
-                           .map(|a| (a, a.filename.rsplit_once('.').unwrap().1) )
+                           .map(|c| c.url.clone())
+                           .chain(
+                               msg.content
+                                  .split_whitespace()
+                                  .filter(|x| x.starts_with("http"))
+                                  .map(|x| x.to_string())
+                            )
+
+                           .filter_map(|a| if let Some((_prefix, suffix)) = &a.rsplit_once('.') {
+                               Some((a.clone(), suffix.to_string()))
+                           } else { None })
+
                            .fold(m, |msg, (atch, ext)|
-                               match ext {
-                                   "png" | "jpg" | "jpeg" | "gif" => { msg.add_embed(|e| e.image(&atch.url)); msg},
+                               match ext.as_str() {
+                                   "png" | "jpg" | "jpeg" | "gif" => { msg.add_embed(|e| e.image(&atch)); msg},
                                    _ => msg
                                }
                            );
@@ -167,7 +178,6 @@ struct CLI {
 async fn main() -> Result<(), Box<dyn std::error::Error>>
 {
     let cli = CLI::from_args();
-
     if cli.version {
         println!("{VERSION}");
         return Ok(());
@@ -181,24 +191,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
 
     println!("{}", LICENSE);
 
-    let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT
-        | GatewayIntents::GUILD_MESSAGE_REACTIONS;
-
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
 
     let framework = StandardFramework::new()
         .configure(|c| {
             c.with_whitespace(true)
+                .ignore_bots(true)
+                .prefix(".")
                 .on_mention(Some(bot_id))
                 .delimiters(vec![", ", ","])
                 .owners(std::collections::HashSet::new())
         })
         .group(&COMMANDS_GROUP);
 
-    let mut client = Client::builder(&cli.token, intents)
+    let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
         .event_handler(Handler)
         .await
