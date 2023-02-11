@@ -1,5 +1,7 @@
+mod mockingbird;
 use std::env;
 
+use songbird::SerenityInit;
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::framework::standard::{
@@ -203,11 +205,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
                 .delimiters(vec![", ", ","])
                 .owners(std::collections::HashSet::new())
         })
-        .group(&COMMANDS_GROUP);
+        .group(&COMMANDS_GROUP)
+        .group(&crate::mockingbird::SONGBIRD_GROUP);
 
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
         .event_handler(Handler)
+        .register_songbird()
         .await
         .expect("Err creating client");
 

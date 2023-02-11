@@ -15,7 +15,31 @@
           install_dir="/var/coggiebot";
           systemd_unit="coggiebotd";
         in rec {
-          packages.coggiebot = naerk-lib.buildPackage { src = ./.; REV=(self.rev or "canary"); };
+
+          packages.coggiebot = naerk-lib.buildPackage
+            {
+              nativeBuildInputs = [
+                pkgs.cmake
+                pkgs.gnumake
+              ];
+
+              buildInputs = [
+                pkgs.ffmpeg
+                pkgs.libopus
+                pkgs.youtube-dl
+              ];
+
+              src = ./.;
+              REV=(self.rev or "canary");
+          };
+
+          packages.coggiebotWrapped = pkgs.writeShellScriptBin "coggiebot" ''
+            #!${pkgs.stdenv.shell}
+            export LD_LIBRARY_PATH=${pkgs.libopus}/lib
+            export PATH=${pkgs.ffmpeg}/bin:${pkgs.youtube-dl}/bin
+            exec ${packages.coggiebot}/bin/coggiebot "$@"
+          '';
+
           packages.updater = pkgs.stdenv.mkDerivation rec {
             inherit systemd_unit install_dir;
             name = "update";

@@ -4,7 +4,8 @@ version = "1.3.7"
 edition = "2021"
 
 [dependencies]
-serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework"] }
+serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework", "voice", "cache"] }
+songbird = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 structopt = { version = "0.3", default-features = false }
 
