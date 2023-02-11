@@ -40,7 +40,13 @@ async fn version(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command("rev")]
 async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.channel_id.say(&ctx.http, format!("{REPO}/commit/{}", get_rev())).await?;
+
+    match get_rev() {
+        "canary" => {
+            msg.channel_id.say(&ctx.http, "This is a canary build.").await?;
+        },
+        _ => { msg.channel_id.say(&ctx.http, format!("{REPO}/commit/{}", get_rev())).await?; }
+    }
     Ok(())
 }
 
