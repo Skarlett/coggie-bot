@@ -1,73 +1,23 @@
-mod mockingbird;
+mod controllers;
 use std::env;
 
+use controllers::bookmark::bookmark_on_react_add;
 use songbird::SerenityInit;
 use serenity::async_trait;
-use serenity::builder::CreateMessage;
-use serenity::framework::standard::{
-    macros::{command, group},
-    CommandResult, StandardFramework,
-};
+use serenity::framework::standard::StandardFramework;
 use serenity::http::Http;
-use serenity::model::{
-    channel::{Message, ReactionType},
-    gateway::Ready,
-    prelude::Reaction,
-    Timestamp,
-};
+use serenity::model::{channel::Reaction, gateway::Ready};
 
 use serenity::prelude::*;
 use structopt::StructOpt;
 
-const LICENSE:  &'static str = include_str!("../LICENSE");
-const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+pub const LICENSE:  &'static str = include_str!("../LICENSE");
+pub const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-fn get_rev() -> &'static str {
+pub fn get_rev() -> &'static str {
     option_env!("REV")
         .unwrap_or("canary")
-}
-
-#[group]
-#[commands(version, rev_cmd, contribute)]
-struct Commands;
-
-#[command]
-async fn version(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.channel_id.say(&ctx.http, VERSION).await?;
-    Ok(())
-}
-
-#[command("rev")]
-async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
-
-    match get_rev() {
-        "canary" => {
-            msg.channel_id.say(&ctx.http, "This is a canary build.").await?;
-        },
-        _ => { msg.channel_id.say(&ctx.http, format!("{REPO}/commit/{}", get_rev())).await?; }
-    }
-    Ok(())
-}
-
-#[command]
-async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.channel_id
-       .send_message(&ctx.http, |m|
-           m
-            .add_embed(|e|
-                e.title("Coggie Bot")
-                   .description("Coggie Bot is an open source \"Discord\" (discord.com) bot.")
-                   .url(REPO)
-                    .fields(vec![
-                        ("License", "BSD2", false),
-                        ("Version", VERSION, false),
-                        ("Revision", get_rev(), false),
-                        ("Contribute", &format!("{}/contribute.md", REPO), false),
-                   ])
-            )
-       ).await?;
-    Ok(())
 }
 
 struct Handler;
@@ -75,85 +25,9 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
-        if let ReactionType::Unicode(x) = ev.emoji {
-
-            /* :bookmark: */
-            if x != "\u{1F516}" {
-                return;
-            }
-
-            if let Some(user_id) = ev.user_id {
-                // grab message
-                let msg = ev.channel_id.message(&ctx, ev.message_id).await.unwrap();
-
-                // build response
-                let link = match ev.guild_id {
-                    Some(gid) => format!(
-                        "https://discord.com/channels/{}/{}/{}",
-                        gid, ev.channel_id, ev.message_id
-                    ),
-                    None => String::from("N/A"),
-                };
-
-                let attachments = match msg.attachments.is_empty() {
-                    true => String::from("N/A"),
-                    false => msg
-                        .attachments
-                        .iter()
-                        .map(|c| format!("{}\n", c.url))
-                        .collect::<String>(),
-                };
-
-                let content = match msg.content.as_str() {
-                    "" => String::from("N/A"),
-                    _ => msg.content.to_string(),
-                };
-
-                user_id
-                    .to_user(&ctx)
-                    .await
-                    .expect("Couldn't find user")
-                    .create_dm_channel(&ctx)
-                    .await
-                    .unwrap()
-                    .send_message(&ctx, |m: &mut CreateMessage| {
-                        m.add_embed(|e| {
-                            e.title("Bookmark")
-                                .fields(vec![
-                                    ("author:", msg.author.tag(), false),
-                                    ("attachments:", attachments, false),
-                                    ("content:", content, false),
-                                    ("link:", link, true),
-                                ])
-                                .footer(|f| f.text(REPO))
-                                .timestamp(Timestamp::now())
-                        });
-
-                        let m = msg.attachments
-                           .iter()
-                           .map(|c| c.url.clone())
-                           .chain(
-                               msg.content
-                                  .split_whitespace()
-                                  .filter(|x| x.starts_with("http"))
-                                  .map(|x| x.to_string())
-                            )
-
-                           .filter_map(|a| if let Some((_prefix, suffix)) = &a.rsplit_once('.') {
-                               Some((a.clone(), suffix.to_string()))
-                           } else { None })
-
-                           .fold(m, |msg, (atch, ext)|
-                               match ext.as_str() {
-                                   "png" | "jpg" | "jpeg" | "gif" => { msg.add_embed(|e| e.image(&atch)); msg},
-                                   _ => msg
-                               }
-                           );
-                        m
-                    })
-                    .await
-                    .unwrap();
-            }
+        match bookmark_on_react_add(&ctx, &ev).await {
+            Ok(_) => {},
+            Err(e) => { ev.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
         }
     }
 
@@ -211,8 +85,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
                 .delimiters(vec![", ", ","])
                 .owners(std::collections::HashSet::new())
         })
-        .group(&COMMANDS_GROUP)
-        .group(&crate::mockingbird::SONGBIRD_GROUP);
+        .group(&controllers::basic::COMMANDS_GROUP)
+        .group(&controllers::mockingbird::SONGBIRD_GROUP);
 
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
