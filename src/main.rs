@@ -1,6 +1,6 @@
 use std::{env, thread};
 
-use std::time::SystemTime;
+use std::time::{SystemTime, Duration};
 
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
@@ -19,6 +19,7 @@ use serenity::model::{
 use serenity::prelude::*;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
+use tokio::time::{Instant, sleep};
 
 
 const LICENSE:  &'static str = include_str!("../LICENSE");
@@ -201,9 +202,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
     let bot_id = http.get_current_user().await?.id;
 
     let (tx, mut rx) = mpsc::channel(32);
+    let start_time = Instant::now();
+
     tokio::spawn(async move {
-        let current_time = SystemTime::now();
-        tx.send(current_time).await;
+        loop {
+            let current_time = start_time.elapsed();
+            println!("{:?}", current_time.as_millis());
+            sleep(Duration::from_millis(1000)).await;
+            tx.send(current_time.as_secs());
+        }
     });
 
     let framework = StandardFramework::new()
