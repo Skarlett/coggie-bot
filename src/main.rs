@@ -1,4 +1,6 @@
-use std::env;
+use std::{env, thread};
+
+use std::time::SystemTime;
 
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
@@ -16,6 +18,8 @@ use serenity::model::{
 
 use serenity::prelude::*;
 use structopt::StructOpt;
+use tokio::sync::mpsc;
+
 
 const LICENSE:  &'static str = include_str!("../LICENSE");
 const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
@@ -152,6 +156,7 @@ impl EventHandler for Handler {
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
     }
+
 }
 
 #[derive(Debug, StructOpt)]
@@ -191,8 +196,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
 
     println!("{}", LICENSE);
 
+    
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
+
+    let (tx, mut rx) = mpsc::channel(32);
+    tokio::spawn(async move {
+        let current_time = SystemTime::now();
+        tx.send(current_time).await;
+    });
 
     let framework = StandardFramework::new()
         .configure(|c| {
