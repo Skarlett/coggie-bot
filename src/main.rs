@@ -1,7 +1,8 @@
 use std::{env, thread};
 
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 
+use crossbeam_channel::Receiver;
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::framework::standard::{
@@ -18,21 +19,18 @@ use serenity::model::{
 
 use serenity::prelude::*;
 use structopt::StructOpt;
-use tokio::sync::mpsc;
-use tokio::time::{Instant, sleep};
+use tokio::time::{sleep, Instant};
 
-
-const LICENSE:  &'static str = include_str!("../LICENSE");
+const LICENSE: &'static str = include_str!("../LICENSE");
 const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 fn get_rev() -> &'static str {
-    option_env!("REV")
-        .unwrap_or("canary")
+    option_env!("REV").unwrap_or("canary")
 }
 
 #[group]
-#[commands(version, rev_cmd, contribute)]
+#[commands(version, rev_cmd, tester_cmd, contribute)]
 struct Commands;
 
 #[command]
@@ -43,37 +41,51 @@ async fn version(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command("rev")]
 async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.channel_id.say(&ctx.http, format!("{REPO}/commit/{}", get_rev())).await?;
+    msg.channel_id
+        .say(&ctx.http, format!("{REPO}/commit/{}", get_rev()))
+        .await?;
     Ok(())
 }
+
+
+#[command("tester")]
+async fn tester_cmd(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.channel_id
+        .say(&ctx.http, format!("test"))
+        .await?;
+    Ok(())
+}
+
 
 #[command]
 async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
     msg.channel_id
-       .send_message(&ctx.http, |m|
-           m
-            .add_embed(|e|
+        .send_message(&ctx.http, |m| {
+            m.add_embed(|e| {
                 e.title("Coggie Bot")
-                   .description("Coggie Bot is an open source \"Discord\" (discord.com) bot.")
-                   .url(REPO)
+                    .description("Coggie Bot is an open source \"Discord\" (discord.com) bot.")
+                    .url(REPO)
                     .fields(vec![
                         ("License", "BSD2", false),
                         ("Version", VERSION, false),
                         ("Revision", get_rev(), false),
                         ("Contribute", &format!("{}/contribute.md", REPO), false),
-                   ])
-            )
-       ).await?;
+                    ])
+            })
+        })
+        .await?;
     Ok(())
 }
 
-struct Handler;
+struct Handler {
+    receiver: Receiver<u64>
+}
+
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
         if let ReactionType::Unicode(x) = ev.emoji {
-
             /* :bookmark: */
             if x != "\u{1F516}" {
                 return;
@@ -126,38 +138,43 @@ impl EventHandler for Handler {
                                 .timestamp(Timestamp::now())
                         });
 
-                        let m = msg.attachments
-                           .iter()
-                           .map(|c| c.url.clone())
-                           .chain(
-                               msg.content
-                                  .split_whitespace()
-                                  .filter(|x| x.starts_with("http"))
-                                  .map(|x| x.to_string())
+                        let m = msg
+                            .attachments
+                            .iter()
+                            .map(|c| c.url.clone())
+                            .chain(
+                                msg.content
+                                    .split_whitespace()
+                                    .filter(|x| x.starts_with("http"))
+                                    .map(|x| x.to_string()),
                             )
-
-                           .filter_map(|a| if let Some((_prefix, suffix)) = &a.rsplit_once('.') {
-                               Some((a.clone(), suffix.to_string()))
-                           } else { None })
-
-                           .fold(m, |msg, (atch, ext)|
-                               match ext.as_str() {
-                                   "png" | "jpg" | "jpeg" | "gif" => { msg.add_embed(|e| e.image(&atch)); msg},
-                                   _ => msg
-                               }
-                           );
+                            .filter_map(|a| {
+                                if let Some((_prefix, suffix)) = &a.rsplit_once('.') {
+                                    Some((a.clone(), suffix.to_string()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .fold(m, |msg, (atch, ext)| match ext.as_str() {
+                                "png" | "jpg" | "jpeg" | "gif" => {
+                                    msg.add_embed(|e| e.image(&atch));
+                                    msg
+                                }
+                                _ => msg,
+                            });
                         m
                     })
                     .await
                     .unwrap();
             }
         }
+        let x = self.receiver.recv().ok().unwrap();
+        dbg!(x);
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
     }
-
 }
 
 #[derive(Debug, StructOpt)]
@@ -177,12 +194,11 @@ struct CLI {
 
     /// Access Token
     #[structopt(long = "token", env = "DISCORD_TOKEN")]
-    token: String
+    token: String,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = CLI::from_args();
     if cli.version {
         println!("{VERSION}");
@@ -197,22 +213,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
 
     println!("{}", LICENSE);
 
-    
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
 
-    let (tx, mut rx) = mpsc::channel(32);
+    let (tx, rx) = crossbeam_channel::unbounded();
     let start_time = Instant::now();
-
+    
+    
+    // time tracking thread for interval based functionality
     tokio::spawn(async move {
         loop {
             let current_time = start_time.elapsed();
             println!("{:?}", current_time.as_millis());
             sleep(Duration::from_millis(1000)).await;
+            
             tx.send(current_time.as_secs());
+            
         }
     });
-
+    
     let framework = StandardFramework::new()
         .configure(|c| {
             c.with_whitespace(true)
@@ -226,7 +245,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
 
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
-        .event_handler(Handler)
+        .event_handler(Handler {
+            receiver: rx.clone()
+        })
         .await
         .expect("Err creating client");
 
