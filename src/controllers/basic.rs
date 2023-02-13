@@ -1,6 +1,6 @@
 
 use crate::{
-    get_rev, VERSION, REPO
+    get_rev, VERSION, REPO,
 };
 
 use serenity::framework::standard::{
@@ -8,12 +8,14 @@ use serenity::framework::standard::{
     CommandResult,
 };
 
+use serenity::client::ClientBuilder;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
+use serenity::framework::standard::CommandGroup;
 
 #[group]
 #[commands(version, rev_cmd, contribute)]
-struct Commands;
+pub struct Commands;
 
 #[command]
 async fn version(ctx: &Context, msg: &Message) -> CommandResult {

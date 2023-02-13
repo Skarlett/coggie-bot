@@ -1,15 +1,17 @@
 mod controllers;
 use std::env;
 
-use controllers::bookmark::bookmark_on_react_add;
-use songbird::SerenityInit;
 use serenity::async_trait;
-use serenity::framework::standard::StandardFramework;
+use serenity::framework::standard::{StandardFramework, CommandGroup};
 use serenity::http::Http;
 use serenity::model::{channel::Reaction, gateway::Ready};
 
 use serenity::prelude::*;
 use structopt::StructOpt;
+
+#[cfg(feature = "basic-cmds")]
+#[path = "controllers/bookmark.rs"]
+mod bookmark;
 
 pub const LICENSE:  &'static str = include_str!("../LICENSE");
 pub const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
@@ -21,14 +23,18 @@ pub fn get_rev() -> &'static str {
 }
 
 struct Handler;
-
 #[async_trait]
 impl EventHandler for Handler {
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
-        match bookmark_on_react_add(&ctx, &ev).await {
-            Ok(_) => {},
-            Err(e) => { ev.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
-        }
+
+        #[cfg(feature="bookmark")]
+        async {
+            use bookmark::bookmark_on_react_add;
+            match bookmark_on_react_add(&ctx, &ev).await {
+                Ok(_) => {},
+                Err(e) => { ev.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
+            };
+        };
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
@@ -84,16 +90,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
                 .on_mention(Some(bot_id))
                 .delimiters(vec![", ", ","])
                 .owners(std::collections::HashSet::new())
-        })
-        .group(&controllers::basic::COMMANDS_GROUP)
-        .group(&controllers::mockingbird::SONGBIRD_GROUP);
+        });
 
-    let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
+    let framework = controllers::setup_framework(framework);
+
+    let mut client = controllers::setup_state(Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
-        .event_handler(Handler)
-        .register_songbird()
-        .await
-        .expect("Err creating client");
+        .event_handler(Handler))
+        .await?;
 
     client.start().await?;
     unreachable!();
