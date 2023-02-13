@@ -10,28 +10,23 @@
 //! features = ["cache", "framework", "standard_framework", "voice"]
 //! ```
 use std::{
-    env,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::Duration,
 };
 
 use serenity::{
     async_trait,
-    client::{Client, Context, EventHandler},
+    client::Context,
     framework::{
         standard::{
             macros::{command, group},
             Args,
             CommandResult,
         },
-        StandardFramework,
     },
     http::Http,
     model::{channel::Message, prelude::ChannelId},
-    prelude::{Mentionable},
+    prelude::Mentionable,
     Result as SerenityResult,
 };
 
@@ -43,8 +38,7 @@ use songbird::{
     Event,
     EventContext,
     EventHandler as VoiceEventHandler,
-    SerenityInit,
-    TrackEvent, tracks::Track,
+    TrackEvent,
 };
 
 #[group]
@@ -118,54 +112,18 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
 
     let (handle_lock, success) = manager.join(guild_id, connect_to).await;
 
-    if let Ok(_channel) = success {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, &format!("Joined {}", connect_to.mention()))
-                .await,
-        );
+    let reply = match success {
+        Ok(_) => format!("Joined {}", connect_to.mention()),
+        Err(e) =>format!("Failed to join voice channel: {:?}", e),
+    };
 
-        let chan_id = msg.channel_id;
-        let send_http = ctx.http.clone();
-        let mut handle = handle_lock.lock().await;
-
-        handle.add_global_event(
-            Event::Track(TrackEvent::End),
-            TrackEndNotifier {
-                chan_id,
-                http: send_http,
-            },
-        );
-
-    } else {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, "Error joining the channel")
-                .await,
-        );
-    }
+    check_msg(
+        msg.channel_id
+           .say(&ctx.http, reply)
+           .await
+    );
 
     Ok(())
-}
-
-struct TrackEndNotifier {
-    chan_id: ChannelId,
-    http: Arc<Http>,
-}
-
-#[async_trait]
-impl VoiceEventHandler for TrackEndNotifier {
-    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        if let EventContext::Track(track_list) = ctx {
-            check_msg(
-                self.chan_id
-                    .say(&self.http, &format!("Tracks ended: {}.", track_list.len()))
-                    .await,
-            );
-        }
-
-        None
-    }
 }
 
 #[command]
@@ -407,8 +365,6 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
-
-
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
