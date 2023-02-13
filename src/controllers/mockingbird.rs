@@ -48,7 +48,7 @@ use songbird::{
 struct MockingBird;
 
 pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
-    let url = match dbg!(&msg.content)
+    let url = match &msg.content
     {
         url if url.starts_with("http") => url.to_string(),
         _ => {
