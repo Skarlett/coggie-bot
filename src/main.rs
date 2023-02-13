@@ -9,10 +9,6 @@ use serenity::model::{channel::Reaction, gateway::Ready};
 use serenity::prelude::*;
 use structopt::StructOpt;
 
-#[cfg(feature = "basic-cmds")]
-#[path = "controllers/bookmark.rs"]
-mod bookmark;
-
 pub const LICENSE:  &'static str = include_str!("../LICENSE");
 pub const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -20,26 +16,6 @@ pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub fn get_rev() -> &'static str {
     option_env!("REV")
         .unwrap_or("canary")
-}
-
-struct Handler;
-#[async_trait]
-impl EventHandler for Handler {
-    async fn reaction_add(&self, ctx: Context, ev: Reaction) {
-
-        #[cfg(feature="bookmark")]
-        async {
-            use bookmark::bookmark_on_react_add;
-            match bookmark_on_react_add(&ctx, &ev).await {
-                Ok(_) => {},
-                Err(e) => { ev.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
-            };
-        };
-    }
-
-    async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
-    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -94,9 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
 
     let framework = controllers::setup_framework(framework);
 
-    let mut client = controllers::setup_state(Client::builder(&cli.token, GatewayIntents::non_privileged())
+    let mut client = controllers::setup_state(
+        Client::builder(&cli.token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
         .framework(framework)
-        .event_handler(Handler))
+        .event_handler(controllers::EvHandler))
         .await?;
 
     client.start().await?;

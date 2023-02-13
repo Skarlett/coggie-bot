@@ -43,10 +43,70 @@ use songbird::{
 
 #[group]
 #[commands(
-    deafen, join, leave, mute, play_fade, queue, skip, stop, ping, undeafen, unmute
+    deafen, join, leave, mute, play_fade, queue, skip, stop, undeafen, unmute
 )]
 struct MockingBird;
 
+pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
+    let url = match dbg!(&msg.content)
+    {
+        url if url.starts_with("http") => url.to_string(),
+        _ => {
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, "Must provide a URL to a video or audio")
+                    .await,
+            );
+
+            return Ok(());
+        },
+    };
+
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+
+        // Here, we use lazy restartable sources to make sure that we don't pay
+        // for decoding, playback on tracks which aren't actually live yet.
+        let source = match Restartable::ytdl(url, true).await {
+            Ok(source) => source,
+            Err(why) => {
+                println!("Err starting source: {:?}", why);
+
+                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
+
+                return Ok(());
+            },
+        };
+
+        handler.enqueue_source(source.into());
+
+        check_msg(
+            msg.channel_id
+                .say(
+                    &ctx.http,
+                    format!("Added song to queue: position {}", handler.queue().len()),
+                )
+                .await,
+        );
+    }
+    else {
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Not in a voice channel to play in")
+                .await,
+        );
+    }
+
+    Ok(())
+}
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
@@ -110,7 +170,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    let (handle_lock, success) = manager.join(guild_id, connect_to).await;
+    let (_handle_lock, success) = manager.join(guild_id, connect_to).await;
 
     let reply = match success {
         Ok(_) => format!("Joined {}", connect_to.mention()),
@@ -190,13 +250,6 @@ async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
 
         check_msg(msg.channel_id.say(&ctx.http, "Now muted").await);
     }
-
-    Ok(())
-}
-
-#[command]
-async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    check_msg(msg.channel_id.say(&ctx.http, "Pong!").await);
 
     Ok(())
 }

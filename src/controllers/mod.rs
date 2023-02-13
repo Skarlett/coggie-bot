@@ -1,13 +1,11 @@
-use serenity::{framework::StandardFramework, client::ClientBuilder};
 use std::env;
 
+use serenity::model::prelude::Message;
+use serenity::{framework::StandardFramework, client::ClientBuilder};
 use serenity::async_trait;
-use serenity::framework::standard::{CommandGroup};
-use serenity::http::Http;
 use serenity::model::{channel::Reaction, gateway::Ready};
 
 use serenity::prelude::*;
-use structopt::StructOpt;
 
 #[cfg(feature = "basic-cmds")]
 #[path = "bookmark.rs"]
@@ -32,24 +30,16 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
 }
 
 pub fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
-
     #[cfg(feature = "mockingbird")]
     {
         use songbird::SerenityInit;
         cfg = cfg.register_songbird();
     }
-        // .type_map_insert::<CommandCounter>(HashMap::default())
-        // .await
-        // .expect("Err creating client");
-
-    //     let mut data = client.data.write().await;
-    //     data.insert::<ShardManagerContainer>(Arc::clone(&client.shard_manager));
 
     cfg
 }
 
-
-struct EvHandler;
+pub struct EvHandler;
 #[async_trait]
 impl EventHandler for EvHandler {
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
@@ -60,7 +50,25 @@ impl EventHandler for EvHandler {
                 Ok(_) => {},
                 Err(e) => { ev.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
             };
-        };
+        }.await;
+    }
+
+    async fn message(&self, ctx: Context, msg: Message) {
+        #[cfg(feature="mockingbird")]
+        async {
+            const DJ_CHANNEL: u64 = 960044319476179055;
+            println!("firing channel id scan");
+
+            let bot_id = ctx.cache.current_user_id().0;
+
+            if msg.channel_id.0 == DJ_CHANNEL && msg.author.id.0 != bot_id {
+                println!("firing mockingbird");
+                match mockingbird::on_dj_channel(&ctx, &msg).await {
+                    Ok(_) => {},
+                    Err(e) => { msg.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
+                }
+            }
+        }.await;
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
