@@ -19,6 +19,12 @@ mod mockingbird;
 #[path = "basic.rs"]
 mod basic;
 
+/// ARL tokens are used for deezer API access
+struct ArlToken;
+impl TypeMapKey for ArlToken {
+    type Value = String;
+}
+
 pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
     #[cfg(feature = "mockingbird")]
     { cfg = cfg.group(&mockingbird::MOCKINGBIRD_GROUP); }
@@ -29,11 +35,12 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
     cfg
 }
 
-pub fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
+pub fn setup_state(mut cfg: ClientBuilder, arl: String) -> ClientBuilder {
     #[cfg(feature = "mockingbird")]
     {
         use songbird::SerenityInit;
-        cfg = cfg.register_songbird();
+        cfg = cfg.register_songbird()
+                 .type_map_insert::<ArlToken>(String::from(arl));
     }
 
     cfg

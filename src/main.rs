@@ -1,10 +1,8 @@
 mod controllers;
 use std::env;
 
-use serenity::async_trait;
-use serenity::framework::standard::{StandardFramework, CommandGroup};
+use serenity::framework::standard::StandardFramework;
 use serenity::http::Http;
-use serenity::model::{channel::Reaction, gateway::Ready};
 
 use serenity::prelude::*;
 use structopt::StructOpt;
@@ -58,6 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
 
+    let arl_token = std::env::var("ARL_TOKEN")
+        .expect("ARL_TOKEN must be set");
+
     let framework = StandardFramework::new()
         .configure(|c| {
             c.with_whitespace(true)
@@ -73,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
     let mut client = controllers::setup_state(
         Client::builder(&cli.token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
         .framework(framework)
-        .event_handler(controllers::EvHandler))
+        .event_handler(controllers::EvHandler), arl_token )
         .await?;
 
     client.start().await?;

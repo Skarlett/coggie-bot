@@ -11,10 +11,26 @@
       inherit (flake-utils.lib.eachDefaultSystem (system:
         let
           pkgs = import nixpkgs { inherit system; };
+          stdenv = pkgs.stdenv;
           naerk-lib = pkgs.callPackage naersk { };
           install_dir="/var/coggiebot";
           systemd_unit="coggiebotd";
         in rec {
+
+          packages.demix =
+            let python =
+              (pkgs.python310.withPackages (ps: with ps; [ deemix click spotipy ]));
+            in
+            stdenv.mkDerivation {
+              name = "pipe_demix";
+              src = ./.;
+              buildInputs = [ python ];
+              installPhase = ''
+                mkdir -p $out/bin
+                cp -r . $out/bin
+                chmod +x $out/bin/deemix-rip
+              '';
+            };
 
           packages.coggiebot = naerk-lib.buildPackage
             {
@@ -36,7 +52,7 @@
           packages.coggiebotWrapped = pkgs.writeShellScriptBin "coggiebot" ''
             #!${pkgs.stdenv.shell}
             export LD_LIBRARY_PATH=${pkgs.libopus}/lib
-            export PATH=${pkgs.ffmpeg}/bin:${pkgs.youtube-dl}/bin
+            export PATH=${pkgs.ffmpeg}/bin:${pkgs.youtube-dl}/bin:${packages.demix}/bin
             exec ${packages.coggiebot}/bin/coggiebot "$@"
           '';
 
