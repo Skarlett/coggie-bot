@@ -33,8 +33,6 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::time::{sleep, Instant};
 
-
-
 const LICENSE: &'static str = include_str!("../LICENSE");
 const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -63,7 +61,7 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command("ping")]
 async fn ping_cmd(_ctx: &Context, _msg: &Message) -> CommandResult {
-    todo!()
+    Ok(())
 }
 
 #[command("tip")]
@@ -109,8 +107,7 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 struct Handler {
-    
-    _shard: Shard
+    _shard: Shard,
 }
 #[derive(Deserialize, Debug)]
 struct GameTips {
@@ -120,6 +117,16 @@ struct GameTips {
 
 #[async_trait]
 impl EventHandler for Handler {
+    /*
+    async fn message(&self, ctx: Context, msg: Message) {
+        if msg.content == "..ping" {
+            if let Some(latency) = self._shard.latency() {
+                msg.channel_id.say(ctx.http, latency.as_millis()).await;
+            }
+        }
+        
+    }
+    */
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
         if let ReactionType::Unicode(x) = ev.emoji {
             /* :bookmark: */
@@ -139,7 +146,7 @@ impl EventHandler for Handler {
                     ),
                     None => String::from("N/A"),
                 };
-
+            
                 let attachments = match msg.attachments.is_empty() {
                     true => String::from("N/A"),
                     false => msg
@@ -280,7 +287,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
         .event_handler(Handler {
-            _shard: Shard::new(gateway, cli.token.as_str(), [0u64, 1u64], GatewayIntents::all()).await?
+            _shard: Shard::new(
+                gateway,
+                cli.token.as_str(),
+                [0u64, 1u64],
+                GatewayIntents::all(),
+            )
+            .await?,
         })
         .await
         .expect("Err creating client");
