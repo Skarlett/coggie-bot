@@ -1,8 +1,11 @@
 use std::sync::Arc;
+#[allow(unused_imports)]
 use std::{env, thread};
 
+#[allow(unused_imports)]
 use crossbeam_channel::Receiver;
 use serde::Deserialize;
+#[allow(unused_imports)]
 use serde_json::{self, Deserializer};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
@@ -11,6 +14,7 @@ use serenity::framework::standard::{
     CommandResult, StandardFramework,
 };
 use serenity::gateway::Shard;
+#[allow(unused_imports)]
 use std::time::{Duration, SystemTime};
 
 use serenity::http::Http;
@@ -23,9 +27,13 @@ use serenity::model::{
 
 use serenity::prelude::*;
 use structopt::StructOpt;
+#[allow(unused_imports)]
 use tokio::fs::File;
+#[allow(unused_imports)]
 use tokio::io::AsyncReadExt;
 use tokio::time::{sleep, Instant};
+
+
 
 const LICENSE: &'static str = include_str!("../LICENSE");
 const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
@@ -54,7 +62,7 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command("ping")]
-async fn ping_cmd(ctx: &Context, msg: &Message) -> CommandResult {
+async fn ping_cmd(_ctx: &Context, _msg: &Message) -> CommandResult {
     todo!()
 }
 
@@ -101,7 +109,8 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 struct Handler {
-    shard: Shard
+    
+    _shard: Shard
 }
 #[derive(Deserialize, Debug)]
 struct GameTips {
@@ -243,17 +252,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bot_id = http.get_current_user().await?.id;
     let gateway = Arc::new(Mutex::new(http.get_gateway().await?.url));
 
-    let (tx, rx) = crossbeam_channel::bounded(32);
+    let (tx, _rx) = crossbeam_channel::bounded(32);
     let start_time = Instant::now();
 
     // time tracking thread for interval based functionality
-    let delta_thr = tokio::spawn(async move {
+    let _delta_thr = tokio::spawn(async move {
         loop {
             let current_time = start_time.elapsed();
             println!("{:?}", current_time.as_millis());
             sleep(Duration::from_millis(1000)).await;
-            tx.send(current_time.as_secs() % 5);
-            tx.send(current_time.as_secs());
+            tx.send(current_time.as_secs() % 5).ok();
+            tx.send(current_time.as_secs()).ok();
         }
     });
 
@@ -271,7 +280,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
         .event_handler(Handler {
-            shard: Shard::new(gateway, cli.token.as_str(), [0u64, 1u64], GatewayIntents::all()).await?
+            _shard: Shard::new(gateway, cli.token.as_str(), [0u64, 1u64], GatewayIntents::all()).await?
         })
         .await
         .expect("Err creating client");
