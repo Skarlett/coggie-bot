@@ -53,14 +53,13 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
 #[command("tester")]
 async fn tester_cmd(ctx: &Context, msg: &Message) -> CommandResult {
 
-    let mut file = File::open("tips.json").await.unwrap();
-    let mut data = String::new();
-    file.read_to_string(&mut data).await.ok();
-    let json: Option<String> = serde_json::from_str(&data).ok();
+    let file = include_str!("tips.json");
+    //let mut file = File::open("tips.json").await.unwrap();
+    
     
     
     msg.channel_id
-        .say(&ctx.http, format!("{}", json.unwrap()))
+        .say(&ctx.http, format!("{}", file))
         .await?;
     Ok(())
 }
