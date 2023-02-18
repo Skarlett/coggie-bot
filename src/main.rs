@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{env, thread};
 
 use crossbeam_channel::Receiver;
@@ -9,6 +10,7 @@ use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, StandardFramework,
 };
+use serenity::gateway::Shard;
 use std::time::{Duration, SystemTime};
 
 use serenity::http::Http;
@@ -34,7 +36,7 @@ fn get_rev() -> &'static str {
 }
 
 #[group]
-#[commands(version, rev_cmd, tip_cmd, contribute)]
+#[commands(version, rev_cmd, ping_cmd, tip_cmd, contribute)]
 struct Commands;
 
 #[command]
@@ -49,6 +51,11 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
         .say(&ctx.http, format!("{REPO}/commit/{}", get_rev()))
         .await?;
     Ok(())
+}
+
+#[command("ping")]
+async fn ping_cmd(ctx: &Context, msg: &Message) -> CommandResult {
+    todo!()
 }
 
 #[command("tip")]
@@ -93,7 +100,9 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-struct Handler;
+struct Handler {
+    shard: Shard
+}
 #[derive(Deserialize, Debug)]
 struct GameTips {
     loading_screen_tips: Vec<String>,
@@ -232,6 +241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
+    let gateway = Arc::new(Mutex::new(http.get_gateway().await?.url));
 
     let (tx, rx) = crossbeam_channel::bounded(32);
     let start_time = Instant::now();
@@ -260,7 +270,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
-        .event_handler(Handler)
+        .event_handler(Handler {
+            shard: Shard::new(gateway, cli.token.as_str(), [0u64, 1u64], GatewayIntents::all()).await?
+        })
         .await
         .expect("Err creating client");
 
