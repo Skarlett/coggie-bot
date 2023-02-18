@@ -1,14 +1,11 @@
 {
     "loading_screen_tips": [
-      {
-        "tip": "Archery is more effective if you zoom in with a bow before shooting."
-      },
-      {
-        "tip": "If you are having trouble hitting your targets, try standing still and using your bow's zoom feature."
-      },
-      {
-        "tip": "Alchemy is more effective when you have a high Alchemy skill and access to rare ingredients."
-      }
+      
+      "Archery is more effective if you zoom in with a bow before shooting.",
+      "If you are having trouble hitting your targets, try standing still and using your bow's zoom feature.",
+      "Alchemy is more effective when you have a high Alchemy skill and access to rare ingredients.",
+      ""
     ]
-  }
+
+}
   

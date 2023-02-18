@@ -1,14 +1,16 @@
 use std::{env, thread};
 
-use std::time::{Duration, SystemTime};
-use serde_json;
 use crossbeam_channel::Receiver;
+use serde::Deserialize;
+use serde_json::{self, Deserializer};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, StandardFramework,
 };
+use std::time::{Duration, SystemTime};
+
 use serenity::http::Http;
 use serenity::model::{
     channel::{Message, ReactionType},
@@ -32,7 +34,7 @@ fn get_rev() -> &'static str {
 }
 
 #[group]
-#[commands(version, rev_cmd, tester_cmd, contribute)]
+#[commands(version, rev_cmd, tip_cmd, contribute)]
 struct Commands;
 
 #[command]
@@ -49,21 +51,27 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-
-#[command("tester")]
-async fn tester_cmd(ctx: &Context, msg: &Message) -> CommandResult {
-
+#[command("tip")]
+async fn tip_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     let file = include_str!("tips.json");
     //let mut file = File::open("tips.json").await.unwrap();
-    
-    
-    
+    //dbg!(file);
+    let tips: GameTips = serde_json::from_str(file)?; //borked
+                                                      //dbg!(&tips.first());
     msg.channel_id
-        .say(&ctx.http, format!("{}", file))
+        .say(
+            &ctx.http,
+            format!(
+                "{:?}",
+                tips.loading_screen_tips
+                    [rand::random::<usize>() % tips.loading_screen_tips.len() - 1] // seems to crash on last index
+                                                                                   // tips.json has an empty value towards the end, so that rng may exhaust the selection
+            ),
+        )
         .await?;
+
     Ok(())
 }
-
 
 #[command]
 async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
@@ -86,6 +94,11 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 struct Handler;
+#[derive(Deserialize, Debug)]
+struct GameTips {
+    loading_screen_tips: Vec<String>,
+    // src: game
+}
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -222,8 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (tx, rx) = crossbeam_channel::bounded(32);
     let start_time = Instant::now();
-    
-    
+
     // time tracking thread for interval based functionality
     let delta_thr = tokio::spawn(async move {
         loop {
@@ -232,11 +244,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             sleep(Duration::from_millis(1000)).await;
             tx.send(current_time.as_secs() % 5);
             tx.send(current_time.as_secs());
-            
-            
         }
     });
-    
+
     let framework = StandardFramework::new()
         .configure(|c| {
             c.with_whitespace(true)
