@@ -56,7 +56,7 @@ async fn tester_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     let mut file = File::open("tips.json").await.unwrap();
     let mut data = String::new();
     file.read_to_string(&mut data).await.ok();
-    let json = serde_json::from_str(&data).ok().;
+    let json: Option<String> = serde_json::from_str(&data).ok();
     
     
     msg.channel_id
