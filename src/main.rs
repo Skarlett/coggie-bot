@@ -1,7 +1,7 @@
 use std::{env, thread};
 
 use std::time::{Duration, SystemTime};
-
+use serde_json;
 use crossbeam_channel::Receiver;
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
@@ -19,6 +19,8 @@ use serenity::model::{
 
 use serenity::prelude::*;
 use structopt::StructOpt;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::time::{sleep, Instant};
 
 const LICENSE: &'static str = include_str!("../LICENSE");
@@ -50,8 +52,15 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command("tester")]
 async fn tester_cmd(ctx: &Context, msg: &Message) -> CommandResult {
+
+    let mut file = File::open("tips.json").await.unwrap();
+    let mut data = String::new();
+    file.read_to_string(&mut data).await.ok();
+    let json = serde_json::from_str(&data).ok().;
+    
+    
     msg.channel_id
-        .say(&ctx.http, format!("test"))
+        .say(&ctx.http, format!("{}", json.unwrap()))
         .await?;
     Ok(())
 }
@@ -77,10 +86,7 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-struct Handler {
-    receiver: Receiver<u64>
-}
-
+struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -168,8 +174,7 @@ impl EventHandler for Handler {
                     .unwrap();
             }
         }
-        let x = self.receiver.recv().ok().unwrap();
-        dbg!(x);
+        //println!("received: {}", self.receiver.recv().ok().unwrap())
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
@@ -216,18 +221,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
 
-    let (tx, rx) = crossbeam_channel::unbounded();
+    let (tx, rx) = crossbeam_channel::bounded(32);
     let start_time = Instant::now();
     
     
     // time tracking thread for interval based functionality
-    tokio::spawn(async move {
+    let delta_thr = tokio::spawn(async move {
         loop {
             let current_time = start_time.elapsed();
             println!("{:?}", current_time.as_millis());
             sleep(Duration::from_millis(1000)).await;
-            
+            tx.send(current_time.as_secs() % 5);
             tx.send(current_time.as_secs());
+            
             
         }
     });
@@ -245,9 +251,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut client = Client::builder(&cli.token, GatewayIntents::non_privileged())
         .framework(framework)
-        .event_handler(Handler {
-            receiver: rx.clone()
-        })
+        .event_handler(Handler)
         .await
         .expect("Err creating client");
 
