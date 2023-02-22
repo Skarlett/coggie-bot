@@ -13,6 +13,8 @@ songbird = { version = "0.3.0", optional=true, features=["builtin-queue"] }
 default = ["basic-cmds", "mockingbird", "bookmark"]
 basic-cmds = []
 mockingbird = ["dep:songbird"]
+enable-dj-room = ["mockingbird"]
+demix = ["mockingbird"]
 bookmark = []
 
 [package.metadata.nix]
