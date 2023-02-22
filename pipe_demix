@@ -17,7 +17,6 @@ from deemix.itemgen import generateTrackItem
 from deemix.errors import DownloadFailed, MD5NotFound, DownloadCanceled, PreferredBitrateNotFound, TrackNot360, AlbumDoesntExists, DownloadError, ErrorMessages
 from deezer.errors import WrongLicense, WrongGeolocation
 
-
 try:
     from deemix.plugins.spotify import Spotify
 except ImportError:

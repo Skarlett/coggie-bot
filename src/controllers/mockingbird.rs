@@ -54,9 +54,7 @@ use songbird::{
     EventContext,
     EventHandler as VoiceEventHandler,
     TrackEvent,
-
 };
-
 
 #[group]
 #[commands(
@@ -74,7 +72,7 @@ struct DeezerRestarter<P>
 fn deezer(uri: &str, arl: &str, pre_args: &[&str]) -> Result<Input, InputError>
 {
     let demix_args = [
-        "-arl", arl,
+        "--arl", arl,
         "-b", "128000",
         uri,
     ];
@@ -91,15 +89,14 @@ fn deezer(uri: &str, arl: &str, pre_args: &[&str]) -> Result<Input, InputError>
         "-",
     ];
 
-    let mut youtube_dl = Command::new("pipe_demix")
+    let mut demix_pipe = Command::new("pipe_demix")
         .args(&demix_args)
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
 
-    let taken_stdout = youtube_dl.stdout.take().ok_or(InputError::Stdout)?;
-
+    let taken_stdout = demix_pipe.stdout.take().ok_or(InputError::Stdout)?;
     let ffmpeg = Command::new("ffmpeg")
         .args(pre_args)
         .arg("-i")
@@ -114,7 +111,7 @@ fn deezer(uri: &str, arl: &str, pre_args: &[&str]) -> Result<Input, InputError>
 
     Ok(Input::new(
         true,
-        children_to_reader::<f32>(vec![youtube_dl, ffmpeg]),
+        children_to_reader::<f32>(vec![demix_pipe, ffmpeg]),
         Codec::FloatPcm,
         Container::Raw,
         None,
@@ -149,8 +146,6 @@ pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
             return Ok(());
         },
     };
-
-
 
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
@@ -192,21 +187,20 @@ pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
 
             handler.enqueue_source(restarter.into());
         }
+        else {
+            // Here, we use lazy restartable sources to make sure that we don't pay
+            // for decoding, playback on tracks which aren't actually live yet.
+            let source = match Restartable::ytdl(url, true).await {
+                Ok(source) => source,
+                Err(why) => {
+                    println!("Err starting source: {:?}", why);
+                    check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
 
-        // Here, we use lazy restartable sources to make sure that we don't pay
-        // for decoding, playback on tracks which aren't actually live yet.
-        let source = match Restartable::ytdl(url, true).await {
-            Ok(source) => source,
-            Err(why) => {
-                println!("Err starting source: {:?}", why);
-
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                return Ok(());
-            },
-        };
-
-        handler.enqueue_source(source.into());
+                    return Ok(());
+                },
+            };
+            handler.enqueue_source(source.into());
+        }
 
         check_msg(
             msg.channel_id
