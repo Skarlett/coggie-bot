@@ -26,8 +26,6 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
 
         #[cfg(feature = "demix")]
         cfg = cfg.group(&mockingbird::DEMIX_GROUP);
-
-        cfg
     }
 
     #[cfg(feature = "basic-cmds")]
