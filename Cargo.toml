@@ -7,15 +7,25 @@ edition = "2021"
 serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework", "voice", "cache"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 structopt = { version = "0.3", default-features = false }
+derive_builder = "0.12"
+thiserror = "1.0"
+anyhow = "1.0"
+toml = "0.7"
+serde = "1.0"
+serde_derive = "*"
+confique = "0.2.2"
+
 songbird = { version = "0.3.0", optional=true, features=["builtin-queue"] }
 
+
 [features]
-default = ["basic-cmds", "mockingbird", "bookmark"]
+default = [ "basic-cmds", "list-feature-cmd" ] #["basic-cmds", "mockingbird", "bookmark"]
 basic-cmds = []
-mockingbird = ["dep:songbird"]
-enable-dj-room = ["mockingbird"]
-demix = ["mockingbird"]
 bookmark = []
+mockingbird = ["dep:songbird"]
+dj-room = ["mockingbird"]
+demix = ["mockingbird"]
+list-feature-cmd = []
 
 [package.metadata.nix]
 app = true

@@ -19,9 +19,10 @@
           vanilla-linux = pkgs.callPackages ./iac/vanilla-linux/default.nix {};
 
         in rec {
+          inherit cogpkgs;
           # Main package without any features enabled by default
           packages.canary = cogpkgs.mkCoggiebot' {};
-          packages.no-defaults = cogpkgs.features.no-default-features;
+          packages.no-defaults = cogpkgs.no-default-features;
           # Main package with all features enabled
           packages.coggiebot = cogpkgs.mkCoggiebot {};
 

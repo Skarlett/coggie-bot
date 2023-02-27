@@ -1,6 +1,6 @@
-
 use crate::{
     get_rev, VERSION, REPO,
+    pkglib::{CoggiebotError}
 };
 
 use serenity::framework::standard::{
@@ -8,10 +8,8 @@ use serenity::framework::standard::{
     CommandResult,
 };
 
-use serenity::client::ClientBuilder;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
-use serenity::framework::standard::CommandGroup;
 
 #[group]
 #[commands(version, rev_cmd, contribute)]
