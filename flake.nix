@@ -31,6 +31,7 @@
             features-list = with cogpkgs.features; [
               basic-cmds
               bookmark
+              mockingbird
             ];
           };
 

@@ -19,7 +19,7 @@ songbird = { version = "0.3.0", optional=true, features=["builtin-queue"] }
 
 
 [features]
-default = ["mockingbird"] # [ "basic-cmds", "list-feature-cmd" ] #["basic-cmds", "mockingbird", "bookmark"]
+default = []
 basic-cmds = []
 bookmark = []
 mockingbird = ["dep:songbird"]
