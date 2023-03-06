@@ -26,13 +26,15 @@
 
         in rec {
           inherit cogpkgs;
-          packages.no-defaults = cogpkgs.no-default-features;
 
-          packages.coggiebot = cogpkgs.mkCoggiebot {
+          packages.coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = with cogpkgs.features; [
               basic-cmds
+              bookmark
             ];
           };
+
+
           # packages.naersk = naerk-lib;
           # packages.features = cogpkgs.features;
           # packages.which-features = cogpkgs.which-features;
@@ -43,11 +45,8 @@
             inherit installDir;
             coggiebot = packages.coggiebot;
           };
-          packages.cogpkgs = cogpkgs;
-          packages.pkgs = pkgs;
-          packages.mockingbird = cogpkgs.features.mockingbird-standalone cogpkgs.coggiebot;
-          packages.coggiebot-raw = cogpkgs.coggiebot;
-          packages.default = packages.canary;
+
+          packages.default = packages.coggiebot-stable;
 
           hydraJobs = packages.coggiebot;
           devShell =
