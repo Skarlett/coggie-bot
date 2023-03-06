@@ -133,8 +133,10 @@ rec {
             cargoBuildOptions=
               l: l
                  ++ ["--no-default-features"]
-                 ++ lib.optional (builtins.length pkg.passthru.features-list > 0)
-                   ["--features"] ++ ((lib.foldl (s: x: s ++ [x.featureName]) [] pkg.passthru.features-list));
+                 ++ (lib.optional (builtins.length pkg.passthru.features-list > 0)
+                   ["--features"] ++ [(lib.concatStringsSep ","
+                     (lib.foldl (s: x: s ++ [x.featureName]) [] pkg.passthru.features-list)
+                   )]);
           }));
     in
       pkgs.symlinkJoin {
