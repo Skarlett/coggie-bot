@@ -9,8 +9,8 @@
 //! git = "https://github.com/serenity-rs/serenity.git"
 //! features = ["cache", "framework", "standard_framework", "voice"]
 //! ```
-use super::ArlToken;
 
+use serde::{Deserialize, Serialize};
 use std::{
     sync::Arc,
     time::Duration,
@@ -19,6 +19,7 @@ use std::{
 use std::{
     io::{BufRead, BufReader, Read},
     process::{Command, Stdio},
+    default::Default
 };
 use tokio::{process::Command as TokioCommand, task};
 
@@ -56,6 +57,7 @@ use songbird::{
     TrackEvent,
 };
 
+#[derive(Default, Debug, Deserialize, Serialize)]
 pub struct MockingbirdConfig {
     #[cfg(feature="demix")]
     demix: DemixConfig,
@@ -161,36 +163,37 @@ pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        if url.contains("deezer.page")
+        // if url.contains("deezer.page")
+        // {
+        //     let arl = match ctx.data.read().await.get::<ArlToken>() {
+        //         Some(arl) => arl.clone(),
+        //         None => {
+        //             check_msg(
+        //                 msg.channel_id
+        //                     .say(&ctx.http, "No ARL token found")
+        //                     .await,
+        //             );
+
+        //             return Ok(());
+        //         }
+        //     };
+
+        //     let restarter = match deezer(&url, &arl, &[] ){
+        //         Ok(src) => src,
+        //         Err(e) => {
+        //             check_msg(
+        //                 msg.channel_id
+        //                     .say(&ctx.http, format!("Error: {}", e))
+        //                     .await,
+        //             );
+        //             return Ok(());
+        //         }
+        //     };
+
+        //     handler.enqueue_source(restarter.into());
+        // }
+        // else
         {
-            let arl = match ctx.data.read().await.get::<ArlToken>() {
-                Some(arl) => arl.clone(),
-                None => {
-                    check_msg(
-                        msg.channel_id
-                            .say(&ctx.http, "No ARL token found")
-                            .await,
-                    );
-
-                    return Ok(());
-                }
-            };
-
-            let restarter = match deezer(&url, &arl, &[] ){
-                Ok(src) => src,
-                Err(e) => {
-                    check_msg(
-                        msg.channel_id
-                            .say(&ctx.http, format!("Error: {}", e))
-                            .await,
-                    );
-                    return Ok(());
-                }
-            };
-
-            handler.enqueue_source(restarter.into());
-        }
-        else {
             // Here, we use lazy restartable sources to make sure that we don't pay
             // for decoding, playback on tracks which aren't actually live yet.
             let source = match Restartable::ytdl(url, true).await {
@@ -225,13 +228,14 @@ pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-#[command("arl")]
-async fn get_arl(ctx: &Context, msg: &Message) -> CommandResult {
 
-    let arl = ctx.data.read().await.get::<ArlToken>().expect("Expected CommandCounter in TypeMap.").clone();
-    msg.channel_id.say(&ctx.http, arl).await?;
-    Ok(())
-}
+// #[command("arl")]
+// async fn get_arl(ctx: &Context, msg: &Message) -> CommandResult {
+//     let arl = ctx.data.read().await.get::<ArlToken>().expect("Expected CommandCounter in TypeMap.").clone();
+//     msg.channel_id.say(&ctx.http, arl).await?;
+//     Ok(())
+// }
+
 
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {

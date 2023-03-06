@@ -3,7 +3,8 @@
 mod bookmark;
 
 #[cfg(feature = "mockingbird")]
-mod mockingbird;
+pub mod mockingbird;
+
 
 #[cfg(feature = "basic-cmds")]
 #[path = "basic.rs"]
@@ -13,22 +14,21 @@ mod basic;
 #[path = "features.rs"]
 pub mod features;
 
-mod config;
-
 use serenity::model::prelude::Message;
 use serenity::{framework::StandardFramework, client::ClientBuilder};
 use serenity::async_trait;
 use serenity::model::{channel::Reaction, gateway::Ready};
 use serenity::prelude::*;
 
-
 #[allow(unused_mut)]
 pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
     #[cfg(feature = "mockingbird")]
     {
         cfg = cfg.group(&mockingbird::MOCKINGBIRD_GROUP);
+    }
 
-        #[cfg(feature = "demix")]
+    #[cfg(all(feature="demix", feature="mockingbird"))]
+    {
         cfg = cfg.group(&mockingbird::DEMIX_GROUP);
     }
 

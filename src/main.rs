@@ -1,7 +1,6 @@
 mod controllers;
 mod pkglib;
 mod config;
-// mod ncomplex;
 use std::env;
 
 use serenity::framework::standard::StandardFramework;
@@ -30,6 +29,7 @@ pub mod EnvVars {
 }
 
 #[derive(Debug, StructOpt)]
+
 #[structopt(name = "coggiebot", about = "An example of StructOpt usage.")]
 struct CLI {
     /// Show Package Version
@@ -44,10 +44,10 @@ struct CLI {
     #[structopt(long = "license")]
     license: bool,
 
-    #[cfg(feature="list-feature-cmd")]
-    #[structopt(long = "list-features", alias="features-list")]
-    /// list all features if enabled
-    features: bool,
+    // #[cfg(feature="list-feature-cmd")]
+    // #[structopt(long = "list-features", alias="features-list")]
+    // /// list all features if enabled
+    // features: bool,
 
     /// Access Token
     #[structopt(long = "token", env = EnvVars::DISCORD_TOKEN)]

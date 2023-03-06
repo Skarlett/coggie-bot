@@ -4,9 +4,15 @@
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
+
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
   };
 
-  outputs = { self, nixpkgs, flake-utils, naersk }:
+  outputs = { self, nixpkgs, flake-utils, naersk, crane }:
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
         let
@@ -20,18 +26,27 @@
 
         in rec {
           inherit cogpkgs;
-          # Main package without any features enabled by default
-          packages.canary = cogpkgs.mkCoggiebot' {};
           packages.no-defaults = cogpkgs.no-default-features;
-          # Main package with all features enabled
-          packages.coggiebot = cogpkgs.mkCoggiebot {};
+
+          packages.coggiebot = cogpkgs.mkCoggiebot {
+            features-list = with cogpkgs.features; [
+              basic-cmds
+            ];
+          };
+          # packages.naersk = naerk-lib;
+          # packages.features = cogpkgs.features;
+          # packages.which-features = cogpkgs.which-features;
+          # packages.feature-list = cogpkgs.featurelist;
 
           # Deployment environment for normal linux machines.
           packages.deploy = vanilla-linux.deploy {
             inherit installDir;
             coggiebot = packages.coggiebot;
           };
-
+          packages.cogpkgs = cogpkgs;
+          packages.pkgs = pkgs;
+          packages.mockingbird = cogpkgs.features.mockingbird-standalone cogpkgs.coggiebot;
+          packages.coggiebot-raw = cogpkgs.coggiebot;
           packages.default = packages.canary;
 
           hydraJobs = packages.coggiebot;
