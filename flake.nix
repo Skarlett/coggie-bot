@@ -4,12 +4,10 @@
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
-
     crane = {
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
   };
 
   outputs = { self, nixpkgs, flake-utils, naersk, crane }:
@@ -26,7 +24,6 @@
 
         in rec {
           inherit cogpkgs;
-
           packages.coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = with cogpkgs.features; [
               basic-cmds
@@ -34,12 +31,6 @@
               mockingbird
             ];
           };
-
-
-          # packages.naersk = naerk-lib;
-          # packages.features = cogpkgs.features;
-          # packages.which-features = cogpkgs.which-features;
-          # packages.feature-list = cogpkgs.featurelist;
 
           # Deployment environment for normal linux machines.
           packages.deploy = vanilla-linux.deploy {
@@ -56,7 +47,7 @@
         }))
         packages devShell;
 
-      nixosModules.coggiebot = { pkgs, lib, config, coggiebot, ... }:
+      nixosModules.coggiebot = {pkgs, lib, config, coggiebot}:
         with lib;
         let cfg = config.services.coggiebot;
         in {

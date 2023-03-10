@@ -8,28 +8,26 @@
 }:
 let
   coggiebot-setup = features-list:
-    let
-      defaults = {
-        nativeBuildInputs = [];
-        buildInputs = [];
+    {
+      name = "coggiebot";
+      nativeBuildInputs = [];
+      buildInputs = [];
 
-        passthru = {
-          inherit features-list;
-        };
-      };
-      consts = {
-        REV=(self.rev or "canary");
-        name = "coggiebot";
-        src = ../../.;
-      };
-    in
-      defaults // consts;
+      REV=(self.rev or "canary");
+      src = ../../.;
 
-  genericFeature = {name, pkg-override ? (c: c), dependencies ? []}:
+      passthru = {
+        inherit features-list;
+      };
+    };
+
+  # these are
+  genericFeature = {name, pkg-override ? (c: c), dependencies ? [], config-options ? {}}:
     {
       ${name} = {
         featureName = "${name}";
-        inherit dependencies pkg-override;
+
+        inherit dependencies pkg-override config-options;
       };
     };
 
@@ -87,11 +85,10 @@ let
       # The delimiter ':' is used to separate the feature name from the suffix.
       #
       # This file is read by coggiebot to determine which features are enabled.
-      #
       ${
-      lib.concatMapStrings (feature:
-        "${feature.featureName}:${if feature.enabled then "1" else "0"}\n")
-         (which-features coggiebot)
+        lib.concatMapStrings (feature:
+          "${feature.featureName}:${if feature.enabled then "1" else "0"}\n")
+           (which-features coggiebot)
       }
     '';
 
@@ -102,7 +99,6 @@ rec {
     which-features
     all-features-list
     featurelist
-    #coggiebot-install
     genericFeature
     features
     coggiebot-setup;
@@ -121,6 +117,8 @@ rec {
   # MkCoggiebot' { } -> naesrk-lib.buildPackage -> mkDerivation
   mkCoggiebot = {
     features-list ? [],
+    options ? {},
+
   }:
     let
       coggie = coggiebot-setup features-list;
@@ -140,10 +138,11 @@ rec {
           }));
     in
       pkgs.symlinkJoin {
-          name = "coggiebot-install";
+          name = "coggiebot";
           paths = [
             drv
             ( featurelist coggie )
+
           ];
         };
 }

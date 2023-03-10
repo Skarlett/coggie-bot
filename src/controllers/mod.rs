@@ -5,7 +5,6 @@ mod bookmark;
 #[cfg(feature = "mockingbird")]
 pub mod mockingbird;
 
-
 #[cfg(feature = "basic-cmds")]
 #[path = "basic.rs"]
 mod basic;
