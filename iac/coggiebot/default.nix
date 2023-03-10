@@ -119,9 +119,7 @@ rec {
       nonexistent-deps =
         let dependents = lib.filter (x: x.dependencies != []) all-features-list;
         in
-          lib.filter (f: !lib.all(dep:
-            let x = (builtins.hasAttr dep features);
-            in (builtins.trace x x)) f.dependencies) dependents;
+          lib.filter (f: !lib.all(dep: (builtins.hasAttr dep features)) f.dependencies) dependents;
 
       enabled-features-with-missing-dependencies =
         lib.filter
