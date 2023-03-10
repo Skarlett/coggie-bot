@@ -56,6 +56,7 @@ let
             name = "dj-channel";
             dependencies = [ "demix" ];
           }
+          # { name = "fake"; dependencies = [ "nonexist" ]; }
         ])
       );
 
@@ -113,16 +114,14 @@ rec {
       marked-features-list = (which-features-list coggiebot);
       marked-features = lib.foldl (s: x: (s // { ${x.featureName} = x;}))
         {}
-        (builtins.trace "hi" marked-features-list);
-
-      fn-all-dependencies-exist = feature-set:
-        lib.all (f:
-          lib.all (dep:
-            (builtins.hasAttr dep feature-set) f.dependencies)
-          ) builtins.trace (builtins.attrValues feature-set) "hi2";
+        marked-features-list;
 
       nonexistent-deps =
-        lib.filter (f: lib.all (x: builtins.hasAttr x features) f.dependencies) all-features-list;
+        let dependents = lib.filter (x: x.dependencies != []) all-features-list;
+        in
+          lib.filter (f: !lib.all(dep:
+            let x = (builtins.hasAttr dep features);
+            in (builtins.trace x x)) f.dependencies) dependents;
 
       enabled-features-with-missing-dependencies =
         lib.filter
@@ -135,14 +134,14 @@ rec {
                 ok = s.ok ++ lib.optional (lib.list.all s f.dependencies) [f.name];
                 err =
                   s.err ++ [{
-                    name=f.name;
+                    name=f.featureName;
                     dependencies=f.dependencies;
                     missing=lib.lists.filter (x: !lib.lists.elem x s) f.dependencies;
                   }];
               }
         )
           { ok=[]; err=[]; }
-          (builtins.trace (lib.filter (x: !x.enabled) (marked-features-list)) "hi")
+          (lib.filter (x: !x.enabled) (marked-features-list))
         ).err;
     in
       if (nonexistent-deps != []) then
@@ -150,7 +149,6 @@ rec {
           The following features do not exist within the final "features" set:
           ${lib.concatMapStrings (f: "  ${f.featureName} ->  ${lib.concatMapStrings (x: "${x}, ") f.dependencies}\n") nonexistent-deps}
         ''
-
       else if (enabled-features-with-missing-dependencies != []) then
         throw ''
           The following features are enabled but have missing dependencies:
@@ -171,7 +169,7 @@ rec {
     options ? {},
   }:
     let
-      coggie = coggiebot-setup features-list;
+      coggie = (coggiebot-setup features-list);
 
       pkg =
         lib.foldl (c: f: c // (f.pkg-override c))
