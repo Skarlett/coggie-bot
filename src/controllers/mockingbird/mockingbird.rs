@@ -17,7 +17,6 @@ use std::{
 };
 
 use serenity::{
-    async_trait,
     client::Context,
     framework::{
         standard::{
@@ -26,28 +25,12 @@ use serenity::{
             CommandResult,
         },
     },
-    http::Http,
     model::{channel::Message, prelude::ChannelId},
     prelude::Mentionable,
     Result as SerenityResult,
 };
 
-use songbird::{
-    input::{
-        self,
-        restartable::{Restartable, Restart},
-        Input,
-        Container,
-        Codec,
-        Metadata,
-        error::Error as InputError,
-        children_to_reader,
-    },
-    Event,
-    EventContext,
-    EventHandler as VoiceEventHandler,
-    TrackEvent,
-};
+use songbird::input::restartable::Restartable;
 
 #[group]
 #[commands(

@@ -45,6 +45,9 @@ use songbird::{
     TrackEvent,
 };
 
+#[group]
+struct Demix;
+
 /// ARL tokens are used for deezer API access
 struct ArlToken;
 impl TypeMapKey for ArlToken {
@@ -61,6 +64,7 @@ struct DeezerConfig
 {
     pub arl_token: String,
 }
+
 
 fn deezer(uri: &str, arl: &str, pre_args: &[&str]) -> Result<Input, InputError>
 {
@@ -163,5 +167,3 @@ fn deezer_hook() {
 
 
 
-#[group]
-struct Demix;
