@@ -27,9 +27,6 @@ pub struct Configuration {
     #[config(env = "COGGIEBOT_FEATURE_FILE")]
     feature_file: String,
 
-    #[cfg(feature = "mockingbird")]
-    mockingbird: crate::controllers::mockingbird::MockingbirdConfig,
-
     #[cfg(feature = "dj-room")]
     #[config(path = "dj-room")]
     dj_room: Vec<DjRoom>,

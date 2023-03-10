@@ -50,16 +50,17 @@ struct ArlToken;
 impl TypeMapKey for ArlToken {
     type Value = String;
 }
+
 struct DeezerRestarter<P>
 {
     uri: P,
     arl: String
 }
+
 struct DeezerConfig
 {
     pub arl_token: String,
 }
-
 
 fn deezer(uri: &str, arl: &str, pre_args: &[&str]) -> Result<Input, InputError>
 {
@@ -125,8 +126,40 @@ impl Restart for DeezerRestarter<String>
 }
 
 
+#[command("arl")]
+async fn get_arl(ctx: &Context, msg: &Message) -> CommandResult {
+    let arl = ctx.data.read().await.get::<ArlToken>().expect("Expected CommandCounter in TypeMap.").clone();
+    msg.channel_id.say(&ctx.http, arl).await?;
+    Ok(())
+}
 
-fn play_deezer() {}
+
+fn deezer_hook() {
+    let arl = match ctx.data.read().await.get::<ArlToken>() {
+        Some(arl) => arl.clone(),
+        None => {
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, "No ARL token found")
+                    .await,
+            );
+
+            return Ok(());
+        }
+    };
+
+    let restarter = match deezer(&url, &arl, &[] ){
+        Ok(src) => src,
+        Err(e) => {
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, format!("Error: {}", e))
+                    .await,
+            );
+            return Ok(());
+        }
+    };
+}
 
 
 
