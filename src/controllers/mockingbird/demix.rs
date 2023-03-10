@@ -65,7 +65,6 @@ struct DeezerConfig
     pub arl_token: String,
 }
 
-
 fn deezer(uri: &str, arl: &str, pre_args: &[&str]) -> Result<Input, InputError>
 {
     let demix_args = [

@@ -39,7 +39,6 @@
           };
 
           packages.default = packages.coggiebot-stable;
-
           hydraJobs = packages.coggiebot;
           devShell =
             pkgs.mkShell packages.canary;
