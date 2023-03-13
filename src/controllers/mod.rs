@@ -13,6 +13,10 @@ mod basic;
 #[path = "features.rs"]
 pub mod features;
 
+#[cfg(feature = "prerelease")]
+#[path = "prerelease.rs"]
+pub mod prerelease;
+
 use serenity::model::prelude::Message;
 use serenity::{framework::StandardFramework, client::ClientBuilder};
 use serenity::async_trait;
@@ -36,6 +40,9 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
 
     #[cfg(feature = "list-feature-cmd")]
     { cfg = cfg.group(&features::FEATURES_GROUP); }
+
+    #[cfg(feature = "prerelease")]
+    { cfg = cfg.group(&features::PRERELEASE_GROUP); }
 
     cfg
 }

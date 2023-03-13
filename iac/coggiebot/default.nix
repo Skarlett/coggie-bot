@@ -46,6 +46,12 @@ let
           { name = "bookmark"; }
           { name = "list-feature-cmd"; }
           {
+            name = "prerelease";
+            pkg-override = (prev: {
+              prev.buildInputs = prev.buildInputs ++ [ pkgs.git ];
+            });
+          }
+          {
             name = "mockingbird";
             pkg-override = mockingbird-lib.mockingbird-fn;
           }
@@ -114,23 +120,48 @@ rec {
   ####
   dependency-check = coggiebot:
     let
+      nodeps-filter =  lib.filter (f: f.dependencies != []);
+      enabled-filter = lib.filter (f: f.enabled);
+
       marked-features-list = (which-features-list coggiebot);
       marked-features = lib.foldl (s: x: (s // { ${x.featureName} = x;}))
         {}
         marked-features-list;
 
+      map-features = map (x:
+        map (x: marked-features.${x}) x
+      );
+
+      recursive-missing-step = filter-fn: deps:
+        let
+          missing-deps = lib.filter filter-fn (map-features deps);
+        in
+          if missing-deps == [] then
+            []
+          else
+            missing-deps ++ (recursive-missing-step (map (x: x.dependencies) missing-deps));
+
+      recursive-missing-deps = filter-fn: deps:
+        let
+          missing-deps = recursive-missing-step filter-fn deps;
+        in
+          if missing-deps == [] then
+            []
+          else
+            missing-deps ++ (recursive-missing-deps (map (x: x.dependencies) missing-deps));
+
       nonexistent-deps =
-        let dependents = lib.filter (x: x.dependencies != []) all-features-list;
+        let dependents = lib.filter nodeps-filter all-features-list;
         in
           lib.filter (f: !lib.all(dep: (builtins.hasAttr dep features)) f.dependencies) dependents;
 
       enabled-features-with-missing-dependencies =
-        let nodeps-filter =  lib.filter (f: f.dependencies != []);
-            enabled-filter = lib.filter (f: f.enabled);
-        in
-        lib.filter
-          (f: lib.lists.all (dep: marked-features.${dep}.enabled) f.dependencies)
-          (debug enabled-filter (nodeps-filter marked-features-list));
+          recursive-missing-deps enabled-filter
+            (map (f: f.dependencies)
+              (lib.filter
+              (f: lib.lists.all (dep: marked-features.${dep}.enabled) f.dependencies)
+                (enabled-filter (nodeps-filter marked-features-list)))
+            );
 
       # check that `f.dependencies` are initialized prior to `f`
       enabled-features-with-wrong-order =
@@ -148,7 +179,7 @@ rec {
                   (lib.optional (!all-deps-enabled)
                     [
                       (f // {
-                        missing=lib.lists.filter (x: !(lib.lists.elem x s.ok)) f.dependencies;
+                        missing=recursive-missing-deps (x: !(lib.lists.elem x s.ok)) f.dependencies;
                       })
                     ]);
             }
@@ -162,7 +193,7 @@ rec {
           The following features do not exist within the final "features" set:
           ${lib.concatMapStrings (f: "  ${f.featureName} ->  ${lib.concatMapStrings (x: "${x}, ") f.dependencies}\n") nonexistent-deps}
         ''
-      else if (enabled-features-with-missing-dependencies != []) then
+      else if ((debug enabled-features-with-missing-dependencies) != []) then
         throw ''
           The following features are enabled but have missing dependencies:
           ${lib.concatMapStrings (f: "  ${f.featureName}\n") enabled-features-with-missing-dependencies}
@@ -173,9 +204,13 @@ rec {
           The following features are enabled but have dependencies that are not enabled in the correct order:
 
             ${lib.concatMapStrings (f:
-              "  ${lib.concatMapStrings (x: "${(debug x).featureName}, -> ${
-                lib.concatMapStrings (z: "${z}, ") x.missing}") f}\n")
-              (builtins.trace "XXX: " (debug ( enabled-features-with-wrong-order.err)))}
+              "  ${
+                lib.concatMapStrings (f: "${f.featureName}, -> ${
+                    lib.concatMapStrings (z: "${z}, ") f.missing
+                  }") f
+              }\n")
+              (enabled-features-with-wrong-order.err)
+             }
           ''
       else
         coggiebot;

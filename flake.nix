@@ -32,6 +32,12 @@
             ];
           };
 
+          packages.coggiebot-prerelease = cogpkgs.mkCoggiebot {
+            features-list = with cogpkgs.features; [
+              mockingbird
+            ];
+          };
+
           # Deployment environment for normal linux machines.
           packages.deploy = vanilla-linux.deploy {
             inherit installDir;
