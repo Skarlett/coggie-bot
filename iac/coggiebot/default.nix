@@ -7,6 +7,8 @@
   , recursiveMerge
 }:
 let
+  debug = expr: builtins.trace expr expr;
+
   coggiebot-setup = features-list:
     {
       name = "coggiebot";
@@ -93,6 +95,7 @@ let
 in
 rec {
   inherit
+    debug
     which-features-list
     all-features-list
     featurelist
@@ -122,25 +125,37 @@ rec {
           lib.filter (f: !lib.all(dep: (builtins.hasAttr dep features)) f.dependencies) dependents;
 
       enabled-features-with-missing-dependencies =
+        let nodeps-filter =  lib.filter (f: f.dependencies != []);
+            enabled-filter = lib.filter (f: f.enabled);
+        in
         lib.filter
-          (f: lib.lists.any (dep: marked-features.${dep}.enabled) f.dependencies)
-        marked-features-list;
+          (f: lib.lists.all (dep: marked-features.${dep}.enabled) f.dependencies)
+          (debug enabled-filter (nodeps-filter marked-features-list));
 
+      # check that `f.dependencies` are initialized prior to `f`
       enabled-features-with-wrong-order =
         (lib.foldl' (s: f:
-              {
-                ok = s.ok ++ lib.optional (lib.list.all s f.dependencies) [f.name];
-                err =
-                  s.err ++ [{
-                    name=f.featureName;
-                    dependencies=f.dependencies;
-                    missing=lib.lists.filter (x: !lib.lists.elem x s) f.dependencies;
-                  }];
-              }
+          let
+            deps = f.dependencies;
+
+            contains-all = a: lib.lists.all (x: lib.lists.elem x a);
+            all-deps-enabled = contains-all s.ok f.dependencies;
+          in
+            {
+              ok = s.ok ++ (lib.optional all-deps-enabled [f.featureName]);
+              err =
+                s.err ++
+                  (lib.optional (!all-deps-enabled)
+                    [
+                      (f // {
+                        missing=lib.lists.filter (x: !(lib.lists.elem x s.ok)) f.dependencies;
+                      })
+                    ]);
+            }
         )
           { ok=[]; err=[]; }
-          (lib.filter (x: !x.enabled) (marked-features-list))
-        ).err;
+          (lib.filter (x: x.enabled) (marked-features-list))
+        );
     in
       if (nonexistent-deps != []) then
         throw ''
@@ -152,10 +167,15 @@ rec {
           The following features are enabled but have missing dependencies:
           ${lib.concatMapStrings (f: "  ${f.featureName}\n") enabled-features-with-missing-dependencies}
           ''
-      else if (enabled-features-with-wrong-order != []) then
+      else if (enabled-features-with-wrong-order.err != []) then
+
         throw ''
           The following features are enabled but have dependencies that are not enabled in the correct order:
-          ${lib.concatMapStrings (f: "  ${f.featureName} -> ${lib.concatMapStrings (x: "${x}, ") f.dependencies}\n") enabled-features-with-wrong-order}
+
+            ${lib.concatMapStrings (f:
+              "  ${lib.concatMapStrings (x: "${(debug x).featureName}, -> ${
+                lib.concatMapStrings (z: "${z}, ") x.missing}") f}\n")
+              (builtins.trace "XXX: " (debug ( enabled-features-with-wrong-order.err)))}
           ''
       else
         coggiebot;
