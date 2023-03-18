@@ -25,12 +25,6 @@
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; };
-          vanilla-linux = pkgs.callPackages ./iac/vanilla-linux/default.nix {};
-
-          # x = all-features-set:
-          #   lib.foldr (s: x: s ++ [])
-          #     []
-          #     (lib.mapAttrsToList (k: v: v) all-features-set);
 
           features = with cogpkgs.features; [
             basic-cmds
@@ -53,6 +47,11 @@
             features-list = features;
           };
 
+          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix
+          {
+            inherit installDir;
+          });
+
           # Automatically adds a pre-release if able to
           # beta-features is hard coded with the purpose of
           # each branch specifying the exact features its developing
@@ -64,24 +63,20 @@
         in
           (if (lib.lists.elem cogpkgs.features.pre-release features)
             then { packages.coggiebot-pre-release = coggiebot-pre-release; }
-           else {}) //
+           else {} //
 
         rec {
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
 
           # Deployment environment for normal linux machines.
-          # packages.deploy = vanilla-linux.deploy
-          # {
-          #  inherit installDir;
-          #   coggiebot = packages.coggiebot-stable;
-          # }
-
+          packages.deploy = (vanilla-linux
+            coggiebot-stable);
 
           # hydraJobs = packages.coggiebot;
           #devShell.default =
           #  pkgs.mkShell coggiebot-pre-release;
-        }))
+        })))
         packages; # devShell;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
