@@ -67,6 +67,7 @@
            else {}) //
 
         rec {
+          packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
 
           # Deployment environment for normal linux machines.
@@ -77,7 +78,6 @@
           # }
 
 
-          # packages.default = coggiebot-stable;
           # hydraJobs = packages.coggiebot;
           #devShell.default =
           #  pkgs.mkShell coggiebot-pre-release;
