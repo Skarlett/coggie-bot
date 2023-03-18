@@ -26,9 +26,14 @@
           features = with cogpkgs.features; [
             basic-cmds
             bookmark
-            dj-room
             mockingbird
           ];
+
+          config = {
+            prefixes = [];
+            dj_room = [ 123456789 ];
+            bookmark_emoji = "\u{1F516}";
+          };
 
           coggiebot-core = cogpkgs.mkCoggiebot {
             features-list = [];
@@ -57,13 +62,13 @@
         rec {
           inherit cogpkgs coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
+          packages.default = packages.coggiebot-stable;
+
           # Deployment environment for normal linux machines.
           packages.deploy = vanilla-linux.deploy {
             inherit installDir;
-            coggiebot = packages.coggiebot;
+            coggiebot = packages.coggiebot-stable;
           };
-
-          packages.default = packages.coggiebot-stable;
 
           hydraJobs = packages.coggiebot;
           devShell =
