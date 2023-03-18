@@ -1,22 +1,69 @@
-name: update-flake-lock
+---
+name: Nix Flake update
+
 on:
-  workflow_dispatch: # allows manual triggering
   schedule:
-    - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
+    - cron: "0 0 * * 0"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: read
+
+env:
+  NIXPKGS_ALLOW_UNFREE: 1
 
 jobs:
-  lockfile:
+  nix:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v1
-      - name: Update flake.lock
-        uses: DeterminateSystems/update-flake-lock@vX
+      - id: checkout
+        name: Checkout repository
+        uses: actions/checkout@v3
+
+      - id: install_nix
+        name: "Install Nix ❄️"
+        uses: cachix/install-nix-action@v20
+
+      - id: cachix
+        name: "Enable Cachix ❄️"
+        uses: cachix/cachix-action@v12
         with:
-          token: ${{ secrets.GH_TOKEN_FOR_UPDATES }}
-          pr-title: "Update flake.lock" # Title of PR to be created
-          pr-labels: |                  # Labels to be set on the PR
-            dependencies
-          pr-assignees: skarlett
+          name: salt-labs
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - id: update_nix_flake
+        name: Update flake.lock
+        uses: DeterminateSystems/update-flake-lock@v17
+        with:
+          sign-commits: false
+          gpg-fingerprint: ${{ secrets.GPG_FINGERPRINT }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          git-author-email: "github-actions@users.noreply.github.com"
+          git-author-name: "Nix Flake Bot"
+          git-committer-email: "github-actions@users.noreply.github.com"
+          git-committer-name: "Nix Flake Bot"
+
+      - id: print_pr_number
+        name: Pull request number
+        run: |
+          echo PR number: ${{ steps.update_nix_flake.outputs.pull-request-number }}
+      #- name: Nix Flake update
+      #  run: >
+      #    nix flake update --verbose
+
+      #- name: Update flake.lock
+      #  uses: stefanzweifel/git-auto-commit-action@v4
+      #  with:
+      #    commit_message: Update flake.lock
+      #    branch: trunk
+      #    commit_options: '--no-verify --signoff'
+      #    file_pattern: flake.lock
+      #    commit_user_name: Nix Flake Bot
+      #    commit_author: Nix Flake Bot <github-actions@users.noreply.github.com>
+      #    skip_dirty_check: false
+      #    skip_fetch: true
