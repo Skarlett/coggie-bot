@@ -1,4 +1,4 @@
-{ lib, pkgs }:
+{ config, lib, pkgs }:
 rec {
   deploy = {installDir, coggiebot}:
     let
@@ -21,7 +21,7 @@ rec {
       builder = pkgs.writeShellScript "builder.sh" ''
       mkdir -p $out
       ln -s ${starter}/bin/start $out/start-bin
-      ln -s ${systemd.updater}/bin/update $out/update
+      ln -s ${systemd.updater installDir}/bin/update $out/update
       ln -s ${coggiebot}/bin/coggiebot $out/coggiebot
       ln -s ${systemd.systemd-enable}/bin/systemd-enable $out/enable
       ln -s ${systemd.systemd-disable}/bin/systemd-disable $out/disable

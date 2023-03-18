@@ -6,11 +6,11 @@
   , coggiebot
 }:
 rec {
-  coggiebotd = pkgs.stdenv.mkDerivation rec {
+  coggiebotd = install-dir: {
     name = "coggiebotd.service";
     phases = "buildPhase";
 
-    builder = pkgs.writeShellScript name ''
+    builder = pkgs.writeShellScript starter.name ''
       #!/bin/sh
       mkdir -p $out/etc/
 
@@ -31,8 +31,8 @@ rec {
       NoNewPrivileges=true
       PrivateTmp=true
 
-      WorkingDirectory=${starter}
-      ExecStart=${starter}/bin/start
+      WorkingDirectory=${starter install-dir}
+      ExecStart=${starter install-dir}/bin/start
 
       [Install]
       WantedBy=multi-user.target
@@ -44,7 +44,7 @@ rec {
     nativeBuildInputs = [ pkgs.coreutils starter ];
   };
 
-  coggiebotd-update = pkgs.stdenv.mkDerivation rec {
+  coggiebotd-update = updater: pkgs.stdenv.mkDerivation rec {
     name = "coggiebotd-update.service";
     phases = "buildPhase";
 
@@ -95,7 +95,7 @@ rec {
     nativeBuildInputs = [ pkgs.coreutils ];
   };
 
-  starter = installDir: pkgs.stdenv.mkDerivation rec {
+  starter = install-dir: pkgs.stdenv.mkDerivation rec {
     name = "start";
     phases = "buildPhase";
 
@@ -104,8 +104,8 @@ rec {
       mkdir -p $out/bin/
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      . ${installDir}/.env
-      ${installDir}/result/coggiebot
+      . ${install-dir}/.env
+      ${install-dir}/result/coggiebot
       EOF
       chmod +x $out/bin/${name}
       '';
@@ -114,23 +114,24 @@ rec {
     PATH = lib.makeBinPath nativeBuildInputs;
   };
 
-  updater = stdenv.mkDerivation rec {
+  updater = install-dir: stdenv.mkDerivation rec {
     name = "update";
     phases = "buildPhase";
-    builder = ./sbin/update-builder.sh;
+    builder = ../../sbin/update-builder.sh;
     nativeBuildInputs = [
       pkgs.coreutils
       pkgs.git
       pkgs.nix
       coggiebot
+      (coggiebotd install-dir)
+      coggiebotd-update-timer
     ];
-
-    coggiebot=coggiebot;
+    inherit coggiebot;
     origin_url="https://github.com/Skarlett/coggie-bot.git";
     branch = "master";
 
-    coggiebotd = coggiebotd.name;
-    coggiebotd-update-timer = coggiebotd-update-timer.name;
+    # coggiebotd = (coggiebotd.name);
+    # coggiebotd-update-timer = coggiebotd-update-timer.name;
   };
 
   systemd-enable = pkgs.stdenv.mkDerivation rec {
