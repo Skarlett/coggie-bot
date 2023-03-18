@@ -10,6 +10,16 @@ let
   debug = expr: builtins.trace expr expr;
   meta = pkgs.callPackage ./meta.nix { };
 
+  deemix-extractor = stdenv.mkDerivation {
+    name = "deemix-extractor";
+    installCommand = ''
+      mkdir -p $out/bin
+      cp pipe_demix $out/bin/pipe_demix
+      chmod +x $out/bin/pipe_demix
+    '';
+    # pythonPackages = (py: [ py.deemaix py.click ]);
+  };
+
   mkCommand = {
     # list of strings
     aliases ? [],
@@ -84,7 +94,21 @@ let
           }
           {
             name = "mockingbird";
-            pkg-override = mockingbird-lib.mockingbird-fn;
+            pkg-override =
+              (prev:
+                {
+                  buildInputs = with pkgs; prev.buildInputs ++ [
+                    libopus
+                    ffmpeg
+                    youtube-dl
+                  ];
+
+                  nativeBuildInputs = with pkgs; prev.nativeBuildInputs ++ [
+                    makeWrapper
+                    cmake
+                    gnumake
+                  ];
+                });
             commands = map(x: (mkCommand x))
               [
                 { aliases = ["queue" "play"];
@@ -118,7 +142,14 @@ let
           }
           {
             name = "demix";
-            pkg-override = mockingbird-lib.demix-fn;
+            pkg-override =
+              (prev:
+                {
+                  buildInputs = prev.buildInputs ++ [ deemix-extractor ];
+                  nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake];
+                }
+              );
+
             dependencies = [ "mockingbird" ];
             commands = map(x: (mkCommand x))
               [{
@@ -198,8 +229,7 @@ rec {
     all-features-list
     build-profile
     genericFeature
-    features
-    ;
+    features;
 
   raw-mockingbird = builtins.removeAttrs (pkgs.callPackage ./mockingbird.nix { inherit genericFeature naerk-lib ; }) ["override" "overrideDerivation"];
 
@@ -244,25 +274,6 @@ rec {
           missing = lib.flatten (lib.concatMap (recursive-missing (x: x.enabled)) enabled-features);
         in
           missing;
-
-      # check that `f.dependencies` are initialized prior to `f`
-      # enabled-features-with-wrong-order =
-      #   (lib.foldl' (s: f:
-      #     let
-      #       contains-all = a: lib.lists.all (x: lib.lists.elem x a);
-      #       all-deps-enabled = debug (contains-all s.ok f.dependencies);
-      #       missing = recursive-missing (x: !(lib.lists.elem x s.ok)) f;
-      #     in
-      #       {
-      #         ok = s.ok ++ (lib.optional (missing == []) [f.featureName]);
-      #         err =
-      #           s.err ++ (lib.optional (missing != [])
-      #             [ (f // ({ inherit missing; })) ]);
-      #       }
-      # )
-      #     { ok=[]; err=[]; }
-      #     (lib.filter (x: x.enabled) (marked-features-list))
-      # );
     in
       if (nonexistent-deps != []) then
         throw
@@ -289,20 +300,6 @@ rec {
           ${lib.concatMapStrings (f: "  ${f.name} missing: ${lib.concatMapStrings (x: "${x.name} , ") (debug f.missing)}\n") enabled-features-with-missing-dependencies}
          ''
 
-      # else if (( debug enabled-features-with-wrong-order.err) != []) then
-
-      #   throw ''
-      #     The following features are enabled but have dependencies that are not enabled in the correct order:
-
-      #       ${lib.concatMapStrings (f:
-      #         "  ${
-      #           lib.concatMapStrings (f: "${(debug f).featureName}, -> ${
-      #             lib.concatMapStrings (z: "${z.name}, ") (debug f.missing)
-      #             }") f
-      #         }\n")
-      #         (enabled-features-with-wrong-order.err)
-      #        }
-      # ''
       else
         coggiebot;
 
