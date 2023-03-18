@@ -37,6 +37,8 @@ use songbird::input::restartable::Restartable;
     deafen, join, leave, mute, queue, skip, stop, undeafen, unmute
 )]
 struct MockingBird;
+
+#[cfg(feature="dj-room")]
 pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
     let url = match &msg.content
     {

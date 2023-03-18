@@ -24,27 +24,25 @@ use serenity::model::{channel::Reaction, gateway::Ready};
 use serenity::prelude::*;
 
 macro_rules! add_commands {
-    ($framework:expr,
-        { $( [ $($feature:literal),* ] => [ $($group:expr),* ]),*}
-    )=>
-    {
-        $(#[cfg(all( $(feature = $feature),* ))]
-        { $framework = $framework$(.group(&$group))*; })*
-    }
+    ($framework:expr, { $( [ $($feature:literal),* ] => [ $($group:expr),* ]),* })
+        => {
+            $(#[cfg(all( $(feature = $feature),* ))]
+              { $framework = $framework$(.group(&$group))*; })*
+        }
 }
 
 #[allow(unused_mut)]
-pub fn setup_framework(mut cfg: StandardFramework, client: ClientBuilder) -> StandardFramework {
+pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
     add_commands!(
         cfg,
         {
             ["mockingbird"] => [mockingbird::MOCKINGBIRD_GROUP],
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
-            ["demix"] => [mockingbird::DEMIX_GROUP],
             ["bookmark-emoji"] => [bookmark::BOOKMARK_GROUP],
             ["list-feature-cmds"] => [features::LIST_FEATURE_CMDS_GROUP],
-            ["help-cmd"] => [features::HELP_GROUP]
+            ["help-cmd"] => [features::HELP_GROUP],
+            ["mockingbird", "demix"] => [mockingbird::DEMIX_GROUP]
         }
     );
     cfg

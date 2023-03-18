@@ -16,28 +16,47 @@
         let
           installDir = "/var/coggiebot";
           pkgs = import nixpkgs { inherit system; };
+          lib = pkgs.lib;
           stdenv = pkgs.stdenv;
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; };
           vanilla-linux = pkgs.callPackages ./iac/vanilla-linux/default.nix {};
 
-        in rec {
-          inherit cogpkgs;
-          packages.coggiebot-stable = cogpkgs.mkCoggiebot {
-            features-list = with cogpkgs.features; [
-              basic-cmds
-              bookmark
-              mockingbird
-            ];
+          features = with cogpkgs.features; [
+            basic-cmds
+            bookmark
+            dj-room
+            mockingbird
+          ];
+
+          coggiebot-core = cogpkgs.mkCoggiebot {
+            features-list = [];
           };
 
-          packages.coggiebot-prerelease = cogpkgs.mkCoggiebot {
-            features-list = with cogpkgs.features; [
-              mockingbird
-            ];
+          coggiebot-stable = cogpkgs.mkCoggiebot {
+            features-list = features;
           };
 
+          # Automatically adds a pre-release if able to
+          # beta-features is hard coded with the purpose of
+          # each branch specifying the exact features its developing
+          coggiebot-pre-release =
+            cogpkgs.mkCoggiebot {
+              features-list = with cogpkgs.features;
+                [ mockingbird ];
+            };
+
+          debug = x: builtins.trace x x;
+
+        in
+          (if (lib.lists.elem cogpkgs.features.pre-release features)
+            then { packages.coggiebot-pre-release = coggiebot-stable.prerelease; }
+           else {}) //
+
+        rec {
+          inherit cogpkgs coggiebot-stable;
+          packages.coggiebot-stable = coggiebot-stable;
           # Deployment environment for normal linux machines.
           packages.deploy = vanilla-linux.deploy {
             inherit installDir;
@@ -45,6 +64,7 @@
           };
 
           packages.default = packages.coggiebot-stable;
+
           hydraJobs = packages.coggiebot;
           devShell =
             pkgs.mkShell packages.canary;

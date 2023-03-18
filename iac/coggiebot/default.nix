@@ -8,28 +8,35 @@
 }:
 let
   debug = expr: builtins.trace expr expr;
+  meta = pkgs.callPackage ./meta.nix { };
 
-  coggiebot-setup = features-list:
-    {
-      name = "coggiebot";
-      nativeBuildInputs = [];
-      buildInputs = [];
-
-      REV=(self.rev or "canary");
-      src = ../../.;
-
-      passthru = {
-        inherit features-list;
-      };
-    };
+  mkCommand = {
+    # list of strings
+    aliases ? [],
+    # string
+    doc ? "undocumented",
+    # strings
+    examples ? [],
+    action ? "message",
+    reply ? "message",
+    config ? {},
+    filters ? [],
+  }: { inherit action examples doc filters; };
 
   # these are
-  genericFeature = {name, pkg-override ? (c: c), dependencies ? [], config-options ? {}}:
+  genericFeature = {
+    name
+    # override function
+    , pkg-override ? (c: c)
+    , maintainers ? [meta.maintainers.lunarix]
+    # list of strings in the features
+    , dependencies ? []
+    , commands ? []
+  }:
     {
       ${name} = {
         featureName = "${name}";
-
-        inherit dependencies pkg-override config-options;
+        inherit dependencies pkg-override commands maintainers;
       };
     };
 
@@ -42,8 +49,32 @@ let
       recursiveMerge (
         (lib.foldl (s: x: s ++ [(genericFeature x)]) []
         [
-          { name = "basic-cmds"; }
-          { name = "bookmark"; }
+          {
+            name = "basic-cmds";
+            commands = [
+              mkCommand {
+                aliases = [ "help" ];
+                doc = "Displays this help message";
+                examples = [ "help" ];
+            }];
+          }
+          {
+            name = "pre-release";
+            commands = [
+              mkCommand {
+                aliases = [ "prerelease" ];
+                doc = "Displays this help message";
+                examples = [ "@botname prerelease <github-uri>" ];
+            }];
+          }
+
+          { name = "bookmark";
+            commands = [(mkCommand {
+              config.emote = "\u{1F516}";
+              doc = "bookmark a message";
+              action = "emote";
+            })];
+          }
           { name = "list-feature-cmd"; }
           {
             name = "prerelease";
@@ -54,15 +85,71 @@ let
           {
             name = "mockingbird";
             pkg-override = mockingbird-lib.mockingbird-fn;
+            commands = map(x: (mkCommand x))
+              [
+                { aliases = ["queue" "play"];
+                  doc = ''
+                    uses ytdl's backend to stream audio.
+                    https://github.com/ytdl-org/youtube-dl/blob/master/docs/supportedsites.md";
+                    '';
+                  examples = [ "\@botname play <supported-uri>" ];
+                }
+                { aliases = ["skip"];
+                  doc = "skips the current song"; }
+                { aliases = ["pause"];
+                  doc = "pauses the current song"; }
+                { aliases = ["resume"];
+                  doc = "resumes the current song"; }
+                { aliases = ["stop"];
+                  doc = "stops the current song"; }
+                { aliases = ["mute"];
+                  doc = "self mutes the bot (discord action)"; }
+                { aliases = ["deafen"];
+                  doc = "self deafens the bot (discord action)"; }
+                { aliases = ["unmute"];
+                  doc = "self unmutes the bot (discord action)"; }
+                { aliases = ["undeafen"];
+                  doc = "self undeafens the bot (discord action)"; }
+                { aliases = ["leave"];
+                  doc = "leaves the voice channel"; }
+                { aliases = ["join"];
+                  doc = "joins the voice channel"; }
+            ];
           }
           {
             name = "demix";
-            pkg-override = coggiebot: mockingbird-lib.demix-fn coggiebot;
+            pkg-override = mockingbird-lib.demix-fn;
             dependencies = [ "mockingbird" ];
+            commands = map(x: (mkCommand x))
+              [{
+                aliases = ["overlay:queue"];
+                doc = "modifies the play/queue commands to use deezer's backend to stream audio";
+                examples = [ "@botname <deezer/spotify uri>" ];
+                config = {
+                  arl = {
+                    default = "";
+                    type = "string";
+                    description = "deezer arl token";
+                  };
+                };
+              }];
           }
           {
-            name = "dj-channel";
-            dependencies = [ "demix" ];
+            name = "dj-room";
+            dependencies = [ "mockingbird" ];
+            commands = map(x: (mkCommand x))
+              [{
+                doc = "setups channels to be uri paste dumps for queueing audio";
+                examples = [ "<supported uri>" ];
+                filters = [ "single-channel-only" ];
+                config = {
+                  channels = {
+                    default = [];
+                    type = lib.types.listOf lib.types.int;
+                    description = "channel id";
+                  };
+                };
+              }];
           }
           # { name = "fake"; dependencies = [ "nonexist" ]; }
         ])
@@ -79,150 +166,155 @@ let
       ++ [({enabled = lib.lists.any (x: x == f) coggiebot.passthru.features-list;} // f)])
       [] all-features-list;
 
+  coggiebot-default-args = features-list: {
+    name = "coggiebot";
+    nativeBuildInputs = [];
+    buildInputs = [];
+
+    REV=(self.rev or "canary");
+    src = ../../.;
+
+    passthru = {
+      inherit features-list meta;
+    };
+  };
+
   # New line separated.
   # The suffix number describes if the feature name was enabled. (1: enabled, 0: disabled)
   # The delimiter ':' is used to separate the feature name from the suffix.
-  featurelist = coggiebot: pkgs.writeTextDir
-    "share/coggiebot-features.list"
-    ''
-      # This file is automatically generated by coggiebot.
-      ################################################################
-      # It contains a list of features that were enabled for this build.
-      # The suffix number describes if the feature name was enabled. (1: enabled, 0: disabled)
-      # The delimiter ':' is used to separate the feature name from the suffix.
-      #
-      # This file is read by coggiebot to determine which features are enabled.
-      ${
-        lib.concatMapStrings (feature:
-          "${feature.featureName}:${if feature.enabled then "1" else "0"}\n")
-           (which-features-list coggiebot)
-      }
-    '';
+  build-profile =
+    (coggiebot-drv: (pkgs.writeTextDir
+      "share/coggiebot-profile.json"
+      builtins.toJSON (meta // {
+        features = (which-features-list coggiebot-drv);
+        buildInputs = map (drv: drv.name || drv.pname) coggiebot-drv.buildInputs;
+        nativeBuildInputs = map (drv: drv.name || drv.pname) coggiebot-drv.nativeBuildInputs;
+      })));
 in
 rec {
   inherit
-    debug
+    meta
     which-features-list
     all-features-list
-    featurelist
+    build-profile
     genericFeature
     features
-    coggiebot-setup;
+    ;
 
   raw-mockingbird = builtins.removeAttrs (pkgs.callPackage ./mockingbird.nix { inherit genericFeature naerk-lib ; }) ["override" "overrideDerivation"];
-  ####
-  # coggiebotWrapped = pkgs.writeShellScriptBin "coggiebot" ''
-  # #!${pkgs.stdenv.shell}
-  # export LD_LIBRARY_PATH=${pkgs.libopus}/lib
-  # export PATH=${pkgs.ffmpeg}/bin:${pkgs.youtube-dl}/bin:${mockingbird.deemix-extractor}/bin
-  # exec ${coggiebot}/bin/coggiebot $@
-  # '';
-  ####
+
   dependency-check = coggiebot:
     let
       nodeps-filter =  lib.filter (f: f.dependencies != []);
       enabled-filter = lib.filter (f: f.enabled);
 
-      marked-features-list = (which-features-list coggiebot);
+      marked-features-list = which-features-list coggiebot;
       marked-features = lib.foldl (s: x: (s // { ${x.featureName} = x;}))
         {}
         marked-features-list;
 
-      map-features = map (x:
-        map (x: marked-features.${x}) x
-      );
+      map-features = map (x: marked-features.${x});
 
-      recursive-missing-step = filter-fn: deps:
-        let
-          missing-deps = lib.filter filter-fn (map-features deps);
-        in
-          if missing-deps == [] then
-            []
-          else
-            missing-deps ++ (recursive-missing-step (map (x: x.dependencies) missing-deps));
+      deps-on-self = lib.filter (f: lib.lists.any (x: x == f.featureName) f.dependencies) all-features-list;
 
-      recursive-missing-deps = filter-fn: deps:
+      recursive-missing = filter: f:
         let
-          missing-deps = recursive-missing-step filter-fn deps;
+          deps = map-features f.dependencies;
+          part = lib.partition filter deps;
+          missing = (map (x: {
+            name = x.featureName;
+            missing = part.wrong;
+          }
+          )) part.wrong
+          ++ (lib.concatMap (recursive-missing filter) part.right);
         in
-          if missing-deps == [] then
-            []
+          if (part.wrong != []) then
+            map (x: {name = x.featureName; inherit missing; }) part.wrong
           else
-            missing-deps ++ (recursive-missing-deps (map (x: x.dependencies) missing-deps));
+            [];
 
       nonexistent-deps =
-        let dependents = lib.filter nodeps-filter all-features-list;
+        let dependents = nodeps-filter all-features-list;
         in
           lib.filter (f: !lib.all(dep: (builtins.hasAttr dep features)) f.dependencies) dependents;
 
       enabled-features-with-missing-dependencies =
-          recursive-missing-deps enabled-filter
-            (map (f: f.dependencies)
-              (lib.filter
-              (f: lib.lists.all (dep: marked-features.${dep}.enabled) f.dependencies)
-                (enabled-filter (nodeps-filter marked-features-list)))
-            );
+        let
+          enabled-features = nodeps-filter (enabled-filter marked-features-list);
+          missing = lib.flatten (lib.concatMap (recursive-missing (x: x.enabled)) enabled-features);
+        in
+          missing;
 
       # check that `f.dependencies` are initialized prior to `f`
-      enabled-features-with-wrong-order =
-        (lib.foldl' (s: f:
-          let
-            deps = f.dependencies;
-
-            contains-all = a: lib.lists.all (x: lib.lists.elem x a);
-            all-deps-enabled = contains-all s.ok f.dependencies;
-          in
-            {
-              ok = s.ok ++ (lib.optional all-deps-enabled [f.featureName]);
-              err =
-                s.err ++
-                  (lib.optional (!all-deps-enabled)
-                    [
-                      (f // {
-                        missing=recursive-missing-deps (x: !(lib.lists.elem x s.ok)) f.dependencies;
-                      })
-                    ]);
-            }
-        )
-          { ok=[]; err=[]; }
-          (lib.filter (x: x.enabled) (marked-features-list))
-        );
+      # enabled-features-with-wrong-order =
+      #   (lib.foldl' (s: f:
+      #     let
+      #       contains-all = a: lib.lists.all (x: lib.lists.elem x a);
+      #       all-deps-enabled = debug (contains-all s.ok f.dependencies);
+      #       missing = recursive-missing (x: !(lib.lists.elem x s.ok)) f;
+      #     in
+      #       {
+      #         ok = s.ok ++ (lib.optional (missing == []) [f.featureName]);
+      #         err =
+      #           s.err ++ (lib.optional (missing != [])
+      #             [ (f // ({ inherit missing; })) ]);
+      #       }
+      # )
+      #     { ok=[]; err=[]; }
+      #     (lib.filter (x: x.enabled) (marked-features-list))
+      # );
     in
       if (nonexistent-deps != []) then
-        throw ''
-          The following features do not exist within the final "features" set:
-          ${lib.concatMapStrings (f: "  ${f.featureName} ->  ${lib.concatMapStrings (x: "${x}, ") f.dependencies}\n") nonexistent-deps}
+        throw
         ''
-      else if ((debug enabled-features-with-missing-dependencies) != []) then
+          The following features do not exist within the final "features" set:
+          ${
+            lib.concatMapStrings (f: "  ${f.featureName} ->  ${lib.concatMapStrings (x: "${x}, ") f.dependencies}\n")
+            nonexistent-deps
+          }
+        ''
+
+      else if (deps-on-self != []) then
+        throw ''
+          The following features depend on themselves:
+          ${
+            lib.concatMapStrings (f: "  ${f.featureName} ->  ${lib.concatMapStrings (x: "${x}, ") f.dependencies}\n")
+            deps-on-self
+          }
+        ''
+
+      else if ((enabled-features-with-missing-dependencies) != []) then
         throw ''
           The following features are enabled but have missing dependencies:
-          ${lib.concatMapStrings (f: "  ${f.featureName}\n") enabled-features-with-missing-dependencies}
-          ''
-      else if (enabled-features-with-wrong-order.err != []) then
+          ${lib.concatMapStrings (f: "  ${f.name} missing: ${lib.concatMapStrings (x: "${x.name} , ") (debug f.missing)}\n") enabled-features-with-missing-dependencies}
+         ''
 
-        throw ''
-          The following features are enabled but have dependencies that are not enabled in the correct order:
+      # else if (( debug enabled-features-with-wrong-order.err) != []) then
 
-            ${lib.concatMapStrings (f:
-              "  ${
-                lib.concatMapStrings (f: "${f.featureName}, -> ${
-                    lib.concatMapStrings (z: "${z}, ") f.missing
-                  }") f
-              }\n")
-              (enabled-features-with-wrong-order.err)
-             }
-          ''
+      #   throw ''
+      #     The following features are enabled but have dependencies that are not enabled in the correct order:
+
+      #       ${lib.concatMapStrings (f:
+      #         "  ${
+      #           lib.concatMapStrings (f: "${(debug f).featureName}, -> ${
+      #             lib.concatMapStrings (z: "${z.name}, ") (debug f.missing)
+      #             }") f
+      #         }\n")
+      #         (enabled-features-with-wrong-order.err)
+      #        }
+      # ''
       else
         coggiebot;
 
   # Force build to have no default features enabled
   # MkCoggiebot' { } -> naesrk-lib.buildPackage -> mkDerivation
   mkCoggiebot = {
+    coggiebot ? coggiebot-default-args,
     features-list ? [],
     options ? {},
   }:
     let
-      coggie = (coggiebot-setup features-list);
+      coggie = coggiebot features-list;
 
       pkg =
         lib.foldl (c: f: c // (f.pkg-override c))
@@ -243,7 +335,7 @@ rec {
           name = "coggiebot";
           paths = [
             drv
-            ( featurelist coggie )
+            # ( build-profile coggie )
 
           ];
         };

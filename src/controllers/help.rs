@@ -10,8 +10,6 @@ use serenity::prelude::*;
 
 static RESP: &'static str = "https://tenor.com/view/ambulance-paramedic-simpsons-cliff-fall-gif-11291625";
 
-
-
 #[group]
 pub struct Help;
 

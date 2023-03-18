@@ -14,7 +14,7 @@ let
       cp pipe_demix $out/bin/pipe_demix
       chmod +x $out/bin/pipe_demix
     '';
-    pythonPackages = (py: [ py.deemix py.click ]);
+    # pythonPackages = (py: [ py.deemaix py.click ]);
   };
 
   mockingbird-fn = (prev:
@@ -30,25 +30,12 @@ let
         cmake
         gnumake
       ];
-
-      # PATH = lib.makeBinPath buildInputs;
-      # fixupPhase =
-      #   (prev.fixupPhase or "") + ''
-      #     wrapProgram $out/bin/coggiebot \
-      #         --prefix PATH : ${lib.makeBinPath (buildInputs ++ nativeBuildInputs)}
-      #         --prefix LD_LOAD_LIBRARY_PATH : ${lib.makeLibraryPath buildInputs}
-      #     '';
     });
 
   demix-fn = (prev:
      {
       buildInputs = prev.buildInputs ++ [ deemix-extractor ];
       nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake];
-
-      # fixupPhase = (prev.fixupPhase or "") + ''
-      #      wrapProgram $out/bin/coggiebot \
-      #        --prefix PATH : ${deemix-extractor}/bin
-      #      '';
     });
 
 in
