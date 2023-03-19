@@ -13,6 +13,7 @@
 
   outputs =
     { self, nixpkgs, flake-utils, naersk, crane }:
+
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
         let
@@ -31,20 +32,22 @@
             mockingbird
           ];
 
-          config = {
-            prefixes = [];
-            dj_room = [ 123456789 ];
-            bookmark_emoji = "\u{1F516}";
-            rebuild-time = 1500;
-          };
-
           coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = features;
+            # version = "1.4.0";
           };
 
-          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix {
+          config = {
+            prefixes = [];
+            bookmark_emoji = "\u{1F516}";
+            dj_room = [ 123456789 ];
+            features = (cogpkgs.which-features coggiebot-stable);
+          };
+
+          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             inherit installDir;
-          });
+            coggiebot = coggiebot-stable;
+          } ;
 
           # Automatically adds a pre-release if able to
           # beta-features is hard coded with the purpose of
@@ -60,9 +63,10 @@
            else {} //
 
         rec {
+          packages.systemd = vanilla-linux.systemd;
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
-          packages.deploy = (vanilla-linux coggiebot-stable);
+          packages.deploy = vanilla-linux.deploy;
         }))) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
