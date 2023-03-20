@@ -63,7 +63,7 @@
            else {} //
 
         rec {
-          packages.systemd = vanilla-linux.systemd;
+          # packages.systemd = vanilla-linux.systemd;
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.deploy = vanilla-linux.deploy;
