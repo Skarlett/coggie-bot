@@ -42,11 +42,16 @@ let
     # list of strings in the features
     , dependencies ? []
     , commands ? []
+    , config ? {}
   }:
     {
       ${name} = {
+        inherit dependencies
+          pkg-override
+          commands
+          maintainers
+          config;
         featureName = "${name}";
-        inherit dependencies pkg-override commands maintainers;
       };
     };
 
@@ -63,10 +68,10 @@ let
             name = "basic-cmds";
             commands = [
               mkCommand {
-                aliases = [ "help" ];
-                doc = "Displays this help message";
-                examples = [ "help" ];
-            }];
+                aliases = [ "rev" ];
+                doc = "display the current revision";
+                default = "canary build";
+              }];
           }
           {
             name = "pre-release";
@@ -127,7 +132,7 @@ let
                 { aliases = ["stop"];
                   doc = "stops the current song"; }
                 { aliases = ["mute"];
-                  doc = "self mutes the bot (discord action)"; }
+                  doc = "self mutes the bot (discord vc action)"; }
                 { aliases = ["deafen"];
                   doc = "self deafens the bot (discord action)"; }
                 { aliases = ["unmute"];
@@ -182,7 +187,6 @@ let
                 };
               }];
           }
-          # { name = "fake"; dependencies = [ "nonexist" ]; }
         ])
       );
 

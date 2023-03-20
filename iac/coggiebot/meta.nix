@@ -1,21 +1,19 @@
 { config, lib, pkgs, ... }:
 let
   mkDeveloper = {
-    discord-id
+    discordid
     , github ? null
-    , desc ? "NA"
     , languages ? []
   }:
   {
-    inherit github discord-id desc languages;
+    inherit github discordid languages;
   };
 in
 {
   maintainers = {
     lunarix = (mkDeveloper {
         github = "Skarlett";
-        discord-id = 10293123910391039;
-        desc = "leading shipwreck";
+        discordid = 10293123910391039;
         languages = ["nix" "rust" "python"];
     });
   };

@@ -9,9 +9,9 @@
 rec {
   coggiebotd = pkgs.stdenv.mkDerivation rec {
     name = "coggiebotd.service";
-    phases = "buildPhase";
 
-    builder = pkgs.writeShellScript name ''
+    phases = "buildPhase";
+    buildPhase = ''
       #!/bin/sh
       mkdir -p $out/etc/
 
@@ -47,9 +47,9 @@ rec {
 
   coggiebotd-update = pkgs.stdenv.mkDerivation rec {
     name = "coggiebotd-update.service";
-    phases = "buildPhase";
 
-    builder = pkgs.writeShellScript name ''
+    phases = "buildPhase";
+    buildPhase = ''
       #!/bin/sh
       mkdir -p $out/etc
       cat >> $out/etc/$name <<EOF
@@ -74,8 +74,8 @@ rec {
   coggiebotd-update-timer = pkgs.stdenv.mkDerivation rec {
     name = "coggiebotd-update.timer";
     phases = "buildPhase";
-
-    builder = pkgs.writeShellScript name ''
+    buildPhase =
+      ''
       #!/bin/sh
       mkdir -p $out/etc
       cat >> $out/etc/$name <<EOF
@@ -100,7 +100,7 @@ rec {
     name = "start";
     phases = "buildPhase";
 
-    builder = pkgs.writeShellScript "builder.sh" ''
+    buildPhase = ''
       #!/bin/sh
       mkdir -p $out/bin/
       cat >> $out/bin/$name <<EOF
@@ -109,8 +109,7 @@ rec {
       ${installDir}/result/coggiebot
       EOF
       chmod +x $out/bin/${name}
-      '';
-
+    '';
     nativeBuildInputs = [ pkgs.coreutils pkgs.nix ];
     PATH = lib.makeBinPath nativeBuildInputs;
   };
@@ -126,16 +125,16 @@ rec {
       coggiebot
     ];
 
+    PATH=lib.makeBinPath nativeBuildInputs;
     origin_url="https://github.com/Skarlett/coggie-bot.git";
     branch = "master";
-
   };
 
   systemd-enable = pkgs.stdenv.mkDerivation rec {
     name = "systemd-enable";
     phases = "buildPhase";
 
-    builder = pkgs.writeShellScript name ''
+    buildPhase = ''
       #!/bin/sh
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
@@ -159,7 +158,7 @@ rec {
     name = "systemd-disable";
     phases = "buildPhase";
 
-    builder = pkgs.writeShellScript name ''
+    buildPhase =  ''
       #!/bin/sh
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
@@ -171,7 +170,8 @@ rec {
       chmod +x $out/bin/$name
     '';
 
-    buildInputs = [
+    PATH = lib.makeBinPath nativeBuildInputs;
+    nativeBuildInputs = [
       pkgs.coreutils
       coggiebotd
       coggiebotd-update
@@ -193,6 +193,7 @@ rec {
       EOF
       chmod +x $out/bin/$name
     '';
+
     nativeBuildInputs = [
       pkgs.coreutils
       coggiebotd
@@ -218,6 +219,7 @@ rec {
       chmod +x $out/bin/$name
     '';
 
+    PATH = lib.makeBinPath nativeBuildInputs;
     nativeBuildInputs = [
       pkgs.coreutils
       coggiebotd
@@ -240,6 +242,8 @@ rec {
       EOF
       chmod +x $out/bin/$name
     '';
+
+    PATH = lib.makeBinPath nativeBuildInputs;
     nativeBuildInputs = [
       pkgs.coreutils
       coggiebotd
