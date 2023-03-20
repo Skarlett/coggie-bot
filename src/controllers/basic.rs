@@ -45,7 +45,7 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
                         ("License", "BSD2", false),
                         ("Version", VERSION, false),
                         ("Revision", get_rev(), false),
-                        ("Contribute", &format!("{}/contribute.md", REPO), false),
+                        ("Tickets", &format!("{}/issues", REPO), false),
                    ])
             )
        ).await?;
