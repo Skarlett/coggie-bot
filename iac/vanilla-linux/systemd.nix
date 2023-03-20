@@ -115,19 +115,82 @@ rec {
   };
 
   updater = stdenv.mkDerivation rec {
+    inherit coggiebot;
     name = "update";
     phases = "buildPhase";
-    builder = ../../sbin/update-builder.sh;
+    buildPhase = ''
+      mkdir -p $out/bin
+      cat >> $out/bin/$name <<EOF
+      #!/usr/bin/env bash
+      ###################
+      # lazy script
+
+      if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
+        echo "DEBUG ON"
+        set -xe
+      fi
+
+      LOCKFILE=/tmp/coggiebot.update.lock
+      touch \$LOCKFILE
+      exec {FD}<>\$LOCKFILE
+
+      if ! flock -x -w 1 \$FD; then
+        echo "Failed to obtain a lock"
+        echo "Another instance of `basename \$0` is probably running."
+        exit 1
+      else
+        echo "Lock acquired"
+      fi
+
+      #
+      # Fetch latest commit origin/$branch
+      #
+      FETCH_DIR=\$(mktemp -d -t "coggie-bot.update.XXXXXXXX")
+      pushd \$FETCH_DIR
+      git init .
+      git remote add origin $origin_url
+      git fetch origin $branch
+      LHASH=\$(git show -s --pretty='format:%H' origin/$branch | sort -r | head -n 1)
+      popd
+      rm -rf \$FETCH_DIR
+      CHASH=\$(${coggiebot}/bin/coggiebot --built-from --token "")
+
+      #
+      # Dont replace canary (in source build)
+      #
+      if [[ \$CHASH == "canary" || \$LHASH == "canary" ]]; then
+          echo "canary build -- nonapplicable"
+          exit 0
+      fi
+
+      if [[ "\$CHASH" != "\$LHASH" ]]; then
+        echo "start migrating"
+        ${installDir}/result/disable
+        ${nix}/bin/nix build --refresh --out-link ${installDir}/result github:skarlett/coggie-bot/$branch
+        ${installDir}/result/enable
+        /bin/systemctl daemon-reload
+        /bin/systemctl restart ${coggiebotd.name}
+        /bin/systemctl start ${coggiebotd-update-timer.name}
+        echo "migrating finished"
+      fi
+
+      rm -f \$LOCKFILE
+      EOF
+      chmod +x $out/bin/$name
+      '';
+
     nativeBuildInputs = [
       pkgs.coreutils
       pkgs.git
-      pkgs.nix
       coggiebot
     ];
 
-    PATH=lib.makeBinPath nativeBuildInputs;
     origin_url="https://github.com/Skarlett/coggie-bot.git";
     branch = "master";
+    nix = pkgs.nix;
+    coggiebotd-name = coggiebotd.name;
+    coggiebotd-update-timer-name = coggiebotd-update-timer.name;
+    PATH = lib.makeBinPath nativeBuildInputs;
   };
 
   systemd-enable = pkgs.stdenv.mkDerivation rec {
