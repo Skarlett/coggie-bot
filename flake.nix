@@ -47,7 +47,33 @@
           vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             inherit installDir;
             coggiebot = coggiebot-stable;
-          } ;
+          };
+
+          deploy-workflow-ci = (pkgs.callPackage ./iac/workflow-update-ci/default.nix) {
+            installDir = ./.;
+            coggiebot = stdenv.mkDerivation {
+              name = "coggiebot";
+              phases = "buildPhase";
+              buildPhase = ''
+                mkdir -p $out/bin/
+                cat > $out/bin/$name <<EOF
+                #!${pkgs.runtimeShell}
+
+                containsElement () {
+                  local e match="$1"
+                  shift
+                  for e; do
+                    [[ "$e" == "$match" ]] && return 0;
+                  done
+                  return 1
+                }
+
+                containsElement "--built-from" "$@" && echo "Built from source" && exit 0
+
+                EOF
+              '';
+            };
+          };
 
           # Automatically adds a pre-release if able to
           # beta-features is hard coded with the purpose of
@@ -115,5 +141,34 @@
             };
           };
         };
+
+      checks = flake-utils.lib.eachDefaultSystem (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          tests = pkgs.callPackage (nixpkgs + "/nixos/lib/testing-python.nix") {};
+        in
+        {
+          vmTest = tests.makeTest {
+            nodes = {
+
+              client = { ... }: {
+                imports = [ ];
+              };
+            };
+
+            testScript =
+              ''
+                start_all()
+                client.wait_for_unit("multi-user.target")
+
+                client.run("nix build github:skarlett/coggie-bot#deploy")
+
+
+                assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
+              '';
+            };
+        });
+
+
     };
 }
