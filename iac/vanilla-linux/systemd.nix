@@ -122,9 +122,10 @@ rec {
       mkdir -p $out/bin/
       cat >> $out/bin/${name} <<EOF
       #!/bin/sh
-      [[ -e ${installDir}/result/disable ]] && ${installDir}/result/disable
-      ${pkgs.nix}/bin/nix build --refresh --out-link ${installDir}/result ${pull}
-      ${installDir}/result/enable
+      local target=''${"TARGET":-${installDir}/result};
+      [[ -e $target/disable ]] && $target/disable
+      ${pkgs.nix}/bin/nix build --refresh --out-link $target ${pull}
+      $target/enable
       systemctl daemon-reload
       systemctl restart ${coggiebotd.name}
       systemctl start ${coggiebotd-update-timer.name}

@@ -32,6 +32,8 @@ jobs:
       - run: cp result/* .
 
       - name: "run update"
+        env:
+          TARGET: "."
         run: sudo ./update
 
       - run: file coggiebot
