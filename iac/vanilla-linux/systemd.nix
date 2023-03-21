@@ -122,7 +122,7 @@ rec {
       mkdir -p $out/bin/
       cat >> $out/bin/${name} <<EOF
       #!/bin/sh
-      ${installDir}/result/disable
+      [[ -e ${installDir}/result/disable ]] && ${installDir}/result/disable
       ${pkgs.nix}/bin/nix build --refresh --out-link ${installDir}/result ${pull}
       ${installDir}/result/enable
       systemctl daemon-reload
