@@ -1,0 +1,50 @@
+name: "build vanilla deployment"
+on:
+  pull_request:
+  push:
+  # workflow_dispatch:
+
+jobs:
+  needs: [cachix]
+  update-self:
+    runs-on: ubuntu-latest
+    steps:
+      # - uses: actions/checkout@v3
+      # - uses: cachix/install-nix-action@v20
+      #   with:
+      #     nix_path: nixpkgs=channel:nixos-unstable
+      #     github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # - uses: cachix/cachix-action@v12
+      #   with:
+      #     name: coggiebot
+      #     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      # - uses: cachix/install-nix-action@v20
+      #   with:
+      #     github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # build project with "bad rev"
+      # this will cause the self-updater script
+      # to trigger
+      - name: "build vanilla linux deployment"
+      - run:
+          nix build .#deploy-workflow-ci
+
+      - name: "deployment hooks exist"
+      - uses: andstor/file-existence-action@v2
+        with:
+          files: "result/enable, result/coggiebot, result/disable, result/start, result/stop, result/update, result/restart"
+
+      - name: "run update"
+        run: ./result/update
+
+      - name: get version info
+        id: version_info
+        run: |
+           echo "::set-output name=COG_REV::$(./result/coggiebot --token '' --built-from)"
+           echo "::set-output name=GIT_REV::$(git rev-parse HEAD)"
+
+      - name: verify version is correct
+         if: ${{ steps.version_info.outputs.COG_REV == steps.version_info.outputs.GIT_REV }}
+         run: echo "version tag is alined"
