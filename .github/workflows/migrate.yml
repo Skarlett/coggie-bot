@@ -32,6 +32,8 @@ jobs:
         with:
           files: "result/enable, result/coggiebot, result/disable, result/start, result/stop, result/update, result/restart"
 
+      - run: chmod +x ./result/update
+
       - name: "run update"
         run: ./result/update
 
