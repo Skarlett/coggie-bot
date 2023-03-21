@@ -40,7 +40,7 @@ jobs:
         id: version_info
         run: |
            echo "COG_REV=$(./coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
-           echo "GIT_REV=$(git rev-parse HEAD) >> $GITHUB_OUTPUT"
+           echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: "verify version is correct"
         if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
