@@ -40,7 +40,7 @@ jobs:
       - name: "get version info"
         id: version_info
         run: |
-           echo "::set-output name=COG_REV::$(./result/coggiebot --token '' --built-from)"
+           echo "::set-output name=COG_REV::$(./coggiebot --token '' --built-from)"
            echo "::set-output name=GIT_REV::$(git rev-parse HEAD)"
 
       - name: "verify version is correct"
