@@ -1,10 +1,10 @@
 name: "build vanilla deployment"
 on:
-  # pull_request:
-  # push:
+  pull_request:
+  push:
   # workflow_dispatch:
-  repository_dispatch:
-    types: [trigger-workflow-2]
+  # repository_dispatch:
+  #  types: [trigger-workflow-2]
 jobs:
   update-self:
     runs-on: ubuntu-latest
