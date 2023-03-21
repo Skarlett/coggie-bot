@@ -32,10 +32,10 @@ jobs:
         with:
           files: "result/enable, result/coggiebot, result/disable, result/start, result/stop, result/update, result/restart"
 
-      - run: chmod +x ./result/update
+      - run: cp result/* .
 
       - name: "run update"
-        run: sudo ./result/update
+        run: ./update
 
       - name: "get version info"
         id: version_info
