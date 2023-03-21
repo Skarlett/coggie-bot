@@ -35,7 +35,7 @@ jobs:
       - run: chmod +x ./result/update
 
       - name: "run update"
-        run: ./result/update
+        run: sudo ./result/update
 
       - name: "get version info"
         id: version_info
