@@ -122,7 +122,7 @@ rec {
       mkdir -p $out/bin/
       cat >> $out/bin/${name} <<EOF
       #!/bin/sh
-      local target=''${"TARGET":-${installDir}/result};
+      local target="''${TARGET:-${installDir}/result}";
       [[ -e $target/disable ]] && $target/disable
       ${pkgs.nix}/bin/nix build --refresh --out-link $target ${pull}
       $target/enable
