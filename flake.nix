@@ -69,8 +69,8 @@
                 }
 
                 containsElement "--built-from" "$@" && echo "Built from source" && exit 0
-
                 EOF
+                chmod +x $out/bin/$name
               '';
             };
           };
