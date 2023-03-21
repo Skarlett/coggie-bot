@@ -49,7 +49,7 @@
             coggiebot = coggiebot-stable;
           };
 
-          deploy-workflow-ci = (pkgs.callPackage ./iac/workflow-update-ci/default.nix) {
+          deploy-workflow-ci = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             installDir = ./.;
             coggiebot = stdenv.mkDerivation {
               name = "coggiebot";
