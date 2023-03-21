@@ -37,12 +37,14 @@ jobs:
       - name: "run update"
         run: ./update
 
+      - run: file coggiebot
+
       - name: "get version info"
         id: version_info
         run: |
-           echo "::set-output name=COG_REV::$(./coggiebot --token '' --built-from)"
+           echo "::set-output name=COG_REV::$(./coggiebot --built-from --token '')"
            echo "::set-output name=GIT_REV::$(git rev-parse HEAD)"
 
       - name: "verify version is correct"
-        run: echo "version tag is alined"
         if: ${{ steps.version_info.outputs.COG_REV == steps.version_info.outputs.GIT_REV }}
+        run: echo "version tag is alined"

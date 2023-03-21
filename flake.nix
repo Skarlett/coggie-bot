@@ -74,7 +74,6 @@
               '';
             };
           };
-
           # Automatically adds a pre-release if able to
           # beta-features is hard coded with the purpose of
           # each branch specifying the exact features its developing
@@ -90,7 +89,9 @@
 
         rec {
           # packages.systemd = vanilla-linux.systemd;
-          packages.deploy-workflow-ci = deploy-workflow-ci.deploy;
+          packages.workflow.deploy = deploy-workflow-ci.deploy;
+          packages.workflow.update = deploy-workflow-ci.update;
+
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.deploy = vanilla-linux.deploy;
