@@ -2,9 +2,6 @@ name: "build vanilla deployment"
 on:
   pull_request:
   push:
-  # workflow_dispatch:
-  # repository_dispatch:
-  #  types: [trigger-workflow-2]
 jobs:
   update-self:
     runs-on: ubuntu-latest
@@ -42,9 +39,9 @@ jobs:
       - name: "get version info"
         id: version_info
         run: |
-           echo "::set-output name=COG_REV::$(./coggiebot --built-from --token '')"
-           echo "::set-output name=GIT_REV::$(git rev-parse HEAD)"
+           echo "COG_REV=$(./coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
+           echo "GIT_REV=$(git rev-parse HEAD) >> $GITHUB_OUTPUT"
 
       - name: "verify version is correct"
-        if: ${{ steps.version_info.outputs.COG_REV == steps.version_info.outputs.GIT_REV }}
-        run: echo "version tag is alined"
+        if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
+        run: exit 1
