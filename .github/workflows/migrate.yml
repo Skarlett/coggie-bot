@@ -28,11 +28,11 @@ jobs:
       # this will cause the self-updater script
       # to trigger
       - name: "build vanilla linux deployment"
-      - run:
+        run:
           nix build .#deploy-workflow-ci
 
       - name: "deployment hooks exist"
-      - uses: andstor/file-existence-action@v2
+        uses: andstor/file-existence-action@v2
         with:
           files: "result/enable, result/coggiebot, result/disable, result/start, result/stop, result/update, result/restart"
 
@@ -46,5 +46,5 @@ jobs:
            echo "::set-output name=GIT_REV::$(git rev-parse HEAD)"
 
       - name: "verify version is correct"
-        if: ${{ steps.version_info.outputs.COG_REV == steps.version_info.outputs.GIT_REV }}
         run: echo "version tag is alined"
+        if: ${{ steps.version_info.outputs.COG_REV == steps.version_info.outputs.GIT_REV }}
