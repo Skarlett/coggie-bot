@@ -90,7 +90,7 @@
 
         rec {
           # packages.systemd = vanilla-linux.systemd;
-          packages.deploy-workflow-ci = deploy-workflow-ci;
+          packages.deploy-workflow-ci = deploy-workflow-ci.deploy;
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.deploy = vanilla-linux.deploy;
