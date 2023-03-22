@@ -40,7 +40,7 @@ jobs:
         id: version_info
         run: |
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
-
+           git fetch origin $GITHUB_HEAD_REF
            if [[ $GITHUB_EVENT_NAME == "push" ]]; then
             echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
            else
