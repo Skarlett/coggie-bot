@@ -114,7 +114,7 @@ let
                     gnumake
                   ];
 
-                  postfixup = prev.postfixup ++ ''
+                  postInstall = prev.postInstall + ''
                     wrapProgram $out/bin/coggiebot \
                       --prefix PATH : ${lib.makeBinPath buildInputs}
                   '';
@@ -213,7 +213,7 @@ let
 
     REV=(self.rev or "canary");
     src = ../../.;
-
+    postInstall = "";
     passthru = {
       inherit features-list meta;
     };
