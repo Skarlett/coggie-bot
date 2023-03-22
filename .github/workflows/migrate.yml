@@ -25,9 +25,12 @@ jobs:
       - name: "build vanilla linux deployment"
         run: nix build .#deploy-workflow-ci
 
+      - run: echo ${{ GITHUB_REF_NAME }}
+
       - name: "run update"
         run: |
-          sudo ./result/update
+          sudo su
+          ./result/update
 
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2
