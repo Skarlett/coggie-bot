@@ -213,7 +213,6 @@ let
 
     REV=(self.rev or "canary");
     src = ../../.;
-
     doCheck = true;
     postInstall = "";
     passthru = {

@@ -123,9 +123,9 @@ rec {
       cat >> $out/bin/${name} <<EOF
       #!/bin/sh
       local target="''${TARGET:-${installDir}/result}";
-      [[ -e $target/disable ]] && $target/disable
-      ${pkgs.nix}/bin/nix build --refresh --out-link $target ${pull}
-      $target/enable
+      [[ -e \$target/disable ]] && \$target/disable
+      ${pkgs.nix}/bin/nix build --refresh --out-link \$target ${pull}
+      \$target/enable
       systemctl daemon-reload
       systemctl restart ${coggiebotd.name}
       systemctl start ${coggiebotd-update-timer.name}
