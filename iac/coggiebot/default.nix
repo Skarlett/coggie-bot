@@ -101,7 +101,7 @@ let
             name = "mockingbird";
             pkg-override =
               (prev:
-                {
+                rec {
                   buildInputs = with pkgs; prev.buildInputs ++ [
                     libopus
                     ffmpeg
@@ -113,6 +113,11 @@ let
                     cmake
                     gnumake
                   ];
+
+                  postInstall = prev.postInstall + ''
+                    wrapProgram $out/bin/coggiebot \
+                      --prefix PATH : ${lib.makeBinPath buildInputs}
+                  '';
                 });
             commands = map(x: (mkCommand x))
               [
@@ -209,6 +214,8 @@ let
     REV=(self.rev or "canary");
     src = ../../.;
 
+    doCheck = true;
+    postInstall = "";
     passthru = {
       inherit features-list meta;
     };
