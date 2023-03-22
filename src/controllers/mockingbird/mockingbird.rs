@@ -454,12 +454,13 @@ fn check_msg(result: SerenityResult<Message>) {
     }
 }
 
-#[cfg(tests)]
+#[cfg(test)]
 mod tests {
     #[test]
     fn it_works() {
         use std::env::var;
+        use std::path::PathBuf;
         let paths = var("PATH").unwrap();
-        assert!(paths.filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() == 1);
+        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() == 1);
     }
 }
