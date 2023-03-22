@@ -1,4 +1,4 @@
-#[cfg(feature = "bookmark-emoji")]
+#[cfg(feature = "bookmark")]
 #[path = "bookmark.rs"]
 mod bookmark;
 
@@ -39,7 +39,6 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["mockingbird"] => [mockingbird::MOCKINGBIRD_GROUP],
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
-            ["bookmark-emoji"] => [bookmark::BOOKMARK_GROUP],
             ["list-feature-cmds"] => [features::LIST_FEATURE_CMDS_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird", "demix"] => [mockingbird::DEMIX_GROUP]
@@ -71,8 +70,8 @@ impl EventHandler for EvHandler {
 
     #[allow(unused_variables)]
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
-        #[cfg(feature="bookmark-emoji")]
-        tokio::spawn(async {
+        #[cfg(feature="bookmark")]
+        tokio::spawn(async move {
             use bookmark::bookmark_on_react_add;
             match bookmark_on_react_add(&ctx, &ev).await {
                 Ok(_) => {},
@@ -84,7 +83,7 @@ impl EventHandler for EvHandler {
     #[allow(unused_variables)]
     async fn message(&self, ctx: Context, msg: Message) {
         #[cfg(feature="enable-dj-room")]
-        tokio::spawn(async {
+        tokio::spawn(async move {
             const DJ_CHANNEL: u64 = 960044319476179055;
             let bot_id = ctx.cache.current_user_id().0;
             if msg.channel_id.0 == DJ_CHANNEL && msg.author.id.0 != bot_id {
