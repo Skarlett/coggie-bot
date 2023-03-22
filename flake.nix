@@ -63,7 +63,7 @@
             repo = {
               name = "coggie-bot";
               owner = "skarlett";
-              branch = "master";
+              branch = "better-ci";
             };
 
             coggiebot = stdenv.mkDerivation {

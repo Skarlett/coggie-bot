@@ -172,9 +172,7 @@ rec {
         echo "Lock acquired"
       fi
 
-      #
-      # Fetch latest commit origin/\$branch
-      #
+      # Fetch latest commit
       FETCH_DIR=\$(mktemp -d -t "coggie-bot.update.XXXXXXXX")
       pushd \$FETCH_DIR
       git init .
@@ -197,7 +195,7 @@ rec {
 
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
-        PULL=github:\$AUTHOR/\$REPO/\$BRANCH . ${migrate}/bin/migrate
+        PULL="github:\$AUTHOR/\$REPO/\$BRANCH" . ${migrate}/bin/migrate
         echo "migrating finished"
       fi
 
