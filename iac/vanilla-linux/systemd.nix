@@ -118,14 +118,15 @@ rec {
     name = "migrate";
     phases = "buildPhase";
     pull = "github:Skarlett/coggie-bot/master";
+
     buildPhase = ''
       mkdir -p $out/bin/
       cat >> $out/bin/${name} <<EOF
       #!/bin/sh
+      PULL="\''${PULL:-${pull}}"
       target="\''${TARGET:-${installDir}/result}";
       [[ -e \$target/disable ]] && \$target/disable
-      [[ -e \$target ]] && rm \$target
-      ${pkgs.nix}/bin/nix build --refresh --out-link \$target ${pull}#deploy
+      ${pkgs.nix}/bin/nix build --refresh --out-link \$target \$PULL#deploy
       \$target/enable
       systemctl daemon-reload
       systemctl restart ${coggiebotd.name}
