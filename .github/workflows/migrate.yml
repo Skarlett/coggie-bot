@@ -26,7 +26,7 @@ jobs:
         run: nix build .#deploy-workflow-ci
 
       - name: "print stuff"
-      - run: echo $GITHUB_BASE_REF $GITHUB_HEAD_REF
+        run: echo $GITHUB_BASE_REF $GITHUB_HEAD_REF
 
       - name: "get branch info"
         id: branch_info
