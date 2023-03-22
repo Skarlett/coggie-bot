@@ -71,7 +71,7 @@ impl EventHandler for EvHandler {
     #[allow(unused_variables)]
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
         #[cfg(feature="bookmark")]
-        tokio::spawn(async {
+        tokio::spawn(async move {
             use bookmark::bookmark_on_react_add;
             match bookmark_on_react_add(&ctx, &ev).await {
                 Ok(_) => {},
@@ -83,7 +83,7 @@ impl EventHandler for EvHandler {
     #[allow(unused_variables)]
     async fn message(&self, ctx: Context, msg: Message) {
         #[cfg(feature="enable-dj-room")]
-        tokio::spawn(async {
+        tokio::spawn(async move {
             const DJ_CHANNEL: u64 = 960044319476179055;
             let bot_id = ctx.cache.current_user_id().0;
             if msg.channel_id.0 == DJ_CHANNEL && msg.author.id.0 != bot_id {
