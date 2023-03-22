@@ -1,6 +1,6 @@
-{ config, lib, pkgs, stdenv, installDir, coggiebot }:
+{ config, lib, pkgs, stdenv, installDir, coggiebot, repo }:
 let
-  systemd = pkgs.callPackage ./systemd.nix { inherit coggiebot installDir; };
+  systemd = pkgs.callPackage ./systemd.nix { inherit coggiebot installDir repo; };
 in
 {
   inherit systemd;

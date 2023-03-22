@@ -35,8 +35,10 @@ jobs:
       - name: "run update"
         run: |
           sudo su
-          echo "${{steps.branch_info.outputs.PULL}}"
-          PULL="${{steps.branch_info.outputs.PULL}}" ./result/update
+          export AUTHOR=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 1)
+          export REPO=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 2)
+          export BRANCH=$GITHUB_HEAD_REF
+          ./result/update
 
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2

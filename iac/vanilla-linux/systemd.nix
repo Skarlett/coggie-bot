@@ -4,6 +4,7 @@
   , pkgs
   , stdenv
   , coggiebot
+  , repo
   , installDir ? "/opt/coggiebot"
 }:
 rec {
@@ -149,6 +150,10 @@ rec {
       #!/usr/bin/env bash
       ###################
       # lazy script
+      AUTHOR="\''${AUTHOR:-${repo.owner}}"
+      REPO="\''${REPO:-${repo.name}}"
+      BRANCH="\''${BRANCH:-${repo.branch}}"
+      URI="\''${URI:-https://github.com/\$AUTHOR/\$REPO.git}"
 
       if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
         echo "DEBUG ON"
@@ -168,16 +173,18 @@ rec {
       fi
 
       #
-      # Fetch latest commit origin/$branch
+      # Fetch latest commit origin/\$branch
       #
       FETCH_DIR=\$(mktemp -d -t "coggie-bot.update.XXXXXXXX")
       pushd \$FETCH_DIR
       git init .
-      git remote add origin $origin_url
-      git fetch origin $branch
-      LHASH=\$(git show -s --pretty='format:%H' origin/$branch | sort -r | head -n 1)
+      git remote add origin \$URI
+      git fetch origin \$BRANCH
+      LHASH=\$(git show -s --pretty='format:%H' origin/\$BRANCH | sort -r | head -n 1)
       popd
       rm -rf \$FETCH_DIR
+
+      # hard coded link into nix store
       CHASH=\$(${coggiebot}/bin/coggiebot --built-from --token "")
 
       #
@@ -190,7 +197,7 @@ rec {
 
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
-        . ${migrate}/bin/migrate
+        PULL=github:\$AUTHOR/\$REPO/\$BRANCH . ${migrate}/bin/migrate
         echo "migrating finished"
       fi
 
@@ -206,11 +213,6 @@ rec {
       migrate
     ];
 
-    origin_url="https://github.com/Skarlett/coggie-bot.git";
-    branch = "master";
-    nix = pkgs.nix;
-    coggiebotd-name = coggiebotd.name;
-    coggiebotd-update-timer-name = coggiebotd-update-timer.name;
     PATH = lib.makeBinPath nativeBuildInputs;
   };
 

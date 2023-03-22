@@ -46,6 +46,12 @@
           vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             inherit installDir;
             coggiebot = coggiebot-stable;
+
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "master";
+            };
           };
 
           deploy-workflow-ci = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
@@ -53,6 +59,12 @@
             #  FIXME:
             #     **installDir is pointing to the wrong place**
             inherit installDir;
+
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "master";
+            };
 
             coggiebot = stdenv.mkDerivation {
               name = "coggiebot";
