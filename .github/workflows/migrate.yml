@@ -1,6 +1,5 @@
 name: "build vanilla deployment"
 on:
-  pull_request:
   push:
 jobs:
   update-self:
