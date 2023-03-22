@@ -308,7 +308,10 @@ rec {
       else if ((enabled-features-with-missing-dependencies) != []) then
         throw ''
           The following features are enabled but have missing dependencies:
-          ${lib.concatMapStrings (f: "  ${f.name} missing: ${lib.concatMapStrings (x: "${x.name} , ") (debug f.missing)}\n") enabled-features-with-missing-dependencies}
+          ${
+            lib.concatMapStrings (f: "  ${f.name} missing: ${lib.concatMapStrings (x: "${x.name} , ") (debug f.missing)}\n")
+            enabled-features-with-missing-dependencies
+          }
          ''
 
       else
