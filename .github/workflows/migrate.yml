@@ -30,7 +30,7 @@ jobs:
 
       - name: "get branch info"
         id: branch_info
-        run: echo "PULL=\"github:$GITHUB_REPOSITORY/$GITHUB_REF_NAME\"" >> $GITHUB_OUTPUT
+        run: echo "PULL=\"github:$GITHUB_REPOSITORY/$GITHUB_HEAD_REF\"" >> $GITHUB_OUTPUT
 
       - name: "run update"
         run: |
