@@ -131,8 +131,9 @@ rec {
       ${pkgs.nix}/bin/nix build --refresh --out-link \$target \$PULL#deploy
       \$target/enable
       systemctl daemon-reload
-      systemctl restart ${coggiebotd.name}
-      systemctl start ${coggiebotd-update-timer.name}
+      \$target/start
+      # systemctl restart ${coggiebotd.name}
+      # systemctl start ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/${name}
     '';
@@ -367,7 +368,7 @@ rec {
         fi
       done
 
-      [[ $strict == 1 ]] && exit 1
+      [[ \$strict == 1 ]] && exit 1
       EOF
       chmod +x $out/bin/$name
     '';
