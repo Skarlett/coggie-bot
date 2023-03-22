@@ -345,7 +345,7 @@ rec {
       #!/bin/sh
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
-      #!/bin/sh
+      #!/usr/bin/env bash
       strict=0
       if [[ $1 == "-ci" ]]; then
         strict=1
