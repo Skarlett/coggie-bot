@@ -22,13 +22,14 @@ jobs:
       # to trigger
       - name: "run update"
         run: |
-          sudo su
           nix build .#deploy-workflow-ci
+          sudo -E bash <<EOF
           mkdir -p /var/coggiebot
           export AUTHOR=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 1)
           export REPO=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 2)
           export BRANCH=$GITHUB_HEAD_REF
           ./result/update
+          EOF
 
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2
