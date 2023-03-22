@@ -25,7 +25,10 @@ jobs:
       - name: "build vanilla linux deployment"
         run: nix build .#deploy-workflow-ci
 
-      - run: echo $GITHUB_REF_NAME $GITHUB_BASE_REF $GITHUB_HEAD_REF $GITHUB_REPOSITORY
+      - run: echo $GITHUB_REF_NAME
+      - run: echo $GITHUB_BASE_REF
+      - run: echo $GITHUB_HEAD_REF
+      - run: echo $GITHUB_REPOSITORY
 
       - name: "run update"
         run: |
