@@ -23,8 +23,9 @@ jobs:
       # this will cause the self-updater script
       # to trigger
       - name: "build vanilla linux deployment"
-        run:
-          sudo nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
+        run: |
+          sudo su
+          nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
 
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2
