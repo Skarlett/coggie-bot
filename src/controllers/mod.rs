@@ -70,7 +70,7 @@ impl EventHandler for EvHandler {
 
     #[allow(unused_variables)]
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
-        #[cfg(feature="bookmark-emoji")]
+        #[cfg(feature="bookmark")]
         tokio::spawn(async {
             use bookmark::bookmark_on_react_add;
             match bookmark_on_react_add(&ctx, &ev).await {
