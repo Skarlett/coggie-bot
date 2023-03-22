@@ -17,7 +17,7 @@ jobs:
           name: coggiebot
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-      - run: mkdir -p /var/coggiebot
+      - run: sudo mkdir -p /var/coggiebot
 
       # build project with "bad rev"
       # this will cause the self-updater script
