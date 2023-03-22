@@ -342,12 +342,11 @@ rec {
     phases = "buildPhase";
 
     builder = pkgs.writeShellScript "builder.sh" ''
-      #!/bin/sh
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/usr/bin/env bash
       strict=0
-      if [[ $1 == "-ci" ]]; then
+      if [[ \$1 == "-ci" ]]; then
         strict=1
       fi
 
