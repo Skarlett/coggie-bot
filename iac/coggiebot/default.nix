@@ -101,7 +101,7 @@ let
             name = "mockingbird";
             pkg-override =
               (prev:
-                {
+                rec {
                   buildInputs = with pkgs; prev.buildInputs ++ [
                     libopus
                     ffmpeg
@@ -113,6 +113,11 @@ let
                     cmake
                     gnumake
                   ];
+
+                  postfixup = prev.postfixup ++ ''
+                    wrapProgram $out/bin/coggiebot \
+                      --prefix PATH : ${lib.makeBinPath buildInputs}
+                  '';
                 });
             commands = map(x: (mkCommand x))
               [
