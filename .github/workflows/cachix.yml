@@ -60,18 +60,11 @@ jobs:
         id: version_info
         run: |
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
-           git fetch origin $GITHUB_HEAD_REF
-           if [[ $GITHUB_EVENT_NAME == "push" ]]; then
-            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-           else
-
-            echo "GIT_REV=$(git show -s --pretty='format:%H' origin/\$GITHUB_HEAD_REF | sort -r | head -n 1)" >> $GITHUB_OUTPUT
-           fi
-
-      - run: echo " COGGIEBOT ${{ steps.version_info.outputs.COG_REV }} "
-      - run: echo "GITHUB ${{ steps.version_info.outputs.GIT_REV }} "
-      - run: echo "GITHUB_SHA $GITHUB_SHA "
+           echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: "verify version is correct"
         if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
         run: exit 1
+
+      - name: "verify systemd timer is operating"
+        run: /var/coggiebot/result/systemd-check -ci

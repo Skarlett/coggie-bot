@@ -18,11 +18,14 @@ in
       systemd.systemd-start
       systemd.systemd-stop
       systemd.systemd-restart
+      systemd.systemd-check
     ];
 
     PATH = lib.makeBinPath nativeBuildInputs;
     buildPhase = ''
       mkdir -p $out
+
+      ln -s ${systemd.systemd-check}/bin/systemd-check $out/systemd-check
       ln -s ${systemd.starter}/bin/start $out/start-bin
       ln -s ${systemd.updater}/bin/update $out/update
       ln -s ${coggiebot}/bin/${coggiebot.name} $out/coggiebot
@@ -33,5 +36,7 @@ in
       ln -s ${systemd.systemd-restart}/bin/systemd-restart $out/restart
       ln -s ${systemd.migrate}/bin/migrate $out/migrate
       '';
+
+
   };
 }

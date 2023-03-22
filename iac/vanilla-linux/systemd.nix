@@ -6,6 +6,7 @@
   , coggiebot
   , repo
   , installDir ? "/opt/coggiebot"
+  , update-heartbeat ? "15min"
 }:
 rec {
   coggiebotd = stdenv.mkDerivation rec {
@@ -84,8 +85,8 @@ rec {
       Description=automatically run self update checks on coggiebotd
 
       [Timer]
-      OnBootSec=15min
-      OnUnitActiveSec=15min
+      OnBootSec=${update-heartbeat}
+      OnUnitActiveSec=${update-heartbeat}
 
       [Install]
       WantedBy=timers.target
@@ -323,6 +324,52 @@ rec {
       #!/bin/sh
       systemctl stop ${coggiebotd.name}
       systemctl stop ${coggiebotd-update-timer.name}
+      EOF
+      chmod +x $out/bin/$name
+    '';
+
+    PATH = lib.makeBinPath nativeBuildInputs;
+    nativeBuildInputs = [
+      pkgs.coreutils
+      coggiebotd
+      coggiebotd-update
+      coggiebotd-update-timer
+    ];
+  };
+
+  systemd-check = pkgs.stdenv.mkDerivation rec {
+    name = "systemd-check";
+    phases = "buildPhase";
+
+    builder = pkgs.writeShellScript "builder.sh" ''
+      #!/bin/sh
+      mkdir -p $out/bin
+      cat >> $out/bin/$name <<EOF
+      #!/bin/sh
+      strict=0
+      if [[ $1 == "-ci" ]]; them
+        strict=1
+      fi
+
+      units=(
+        ${lib.strings.concatStringsSep " " (map (x: "${x.name}") [
+          coggiebotd
+          coggiebotd-update
+          coggiebotd-update-timer
+        ])}
+      );
+
+      for unit in "\''${units[@]}"; do
+        if [[ "\$(systemctl is-enabled \$unit)" != "enabled" ]]; then
+          echo "\$unit is not enabled"
+          [[ $strict == 1 ]] && exit 1
+        fi
+        if [[ "\$(systemctl is-active \$unit)" != "active" ]]; then
+          echo "\$unit is not active"
+          [[ $strict == 1 ]] && exit 1
+        fi
+      done
+
       EOF
       chmod +x $out/bin/$name
     '';
