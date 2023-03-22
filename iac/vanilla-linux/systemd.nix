@@ -122,8 +122,9 @@ rec {
       mkdir -p $out/bin/
       cat >> $out/bin/${name} <<EOF
       #!/bin/sh
-      local target="''${TARGET:-${installDir}/result}";
+      target="\''${TARGET:-${installDir}/result}";
       [[ -e \$target/disable ]] && \$target/disable
+      [[ -e \$target ]] && rm \$target
       ${pkgs.nix}/bin/nix build --refresh --out-link \$target ${pull}
       \$target/enable
       systemctl daemon-reload
