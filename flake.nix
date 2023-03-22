@@ -34,7 +34,6 @@
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = features;
-            # version = "1.4.0";
           };
 
           config = {
