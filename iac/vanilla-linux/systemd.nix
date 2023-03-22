@@ -347,7 +347,7 @@ rec {
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
       strict=0
-      if [[ $1 == "-ci" ]]; them
+      if [[ $1 == "-ci" ]]; then
         strict=1
       fi
 
