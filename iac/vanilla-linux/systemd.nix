@@ -7,7 +7,7 @@
   , installDir ? "/opt/coggiebot"
 }:
 rec {
-  coggiebotd = pkgs.stdenv.mkDerivation rec {
+  coggiebotd = stdenv.mkDerivation rec {
     name = "coggiebotd.service";
 
     phases = "buildPhase";
@@ -45,7 +45,7 @@ rec {
     nativeBuildInputs = [ pkgs.coreutils starter ];
   };
 
-  coggiebotd-update = pkgs.stdenv.mkDerivation rec {
+  coggiebotd-update = stdenv.mkDerivation rec {
     name = "coggiebotd-update.service";
 
     phases = "buildPhase";
@@ -114,6 +114,29 @@ rec {
     PATH = lib.makeBinPath nativeBuildInputs;
   };
 
+  migrate = pkgs.stdenv.mkDerivation rec {
+    name = "migrate";
+    phases = "buildPhase";
+    pull = "github:Skarlett/coggie-bot/master";
+    buildPhase = ''
+      mkdir -p $out/bin/
+      cat >> $out/bin/${name} <<EOF
+      #!/bin/sh
+      local target="''${TARGET:-${installDir}/result}";
+      [[ -e $target/disable ]] && $target/disable
+      ${pkgs.nix}/bin/nix build --refresh --out-link $target ${pull}
+      $target/enable
+      systemctl daemon-reload
+      systemctl restart ${coggiebotd.name}
+      systemctl start ${coggiebotd-update-timer.name}
+      EOF
+      chmod +x $out/bin/${name}
+    '';
+    nativeBuildInputs = [ pkgs.coreutils pkgs.nix coggiebotd-update-timer coggiebotd ];
+    PATH = lib.makeBinPath nativeBuildInputs;
+  };
+
+  
   updater = stdenv.mkDerivation rec {
     inherit coggiebot;
     name = "update";
@@ -165,12 +188,7 @@ rec {
 
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
-        ${installDir}/result/disable
-        ${nix}/bin/nix build --refresh --out-link ${installDir}/result github:skarlett/coggie-bot/$branch
-        ${installDir}/result/enable
-        /bin/systemctl daemon-reload
-        /bin/systemctl restart ${coggiebotd.name}
-        /bin/systemctl start ${coggiebotd-update-timer.name}
+        . ${migrate}/bin/migrate
         echo "migrating finished"
       fi
 
@@ -183,6 +201,7 @@ rec {
       pkgs.coreutils
       pkgs.git
       coggiebot
+      migrate
     ];
 
     origin_url="https://github.com/Skarlett/coggie-bot.git";
@@ -202,9 +221,9 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl enable ${coggiebotd}/etc/${coggiebotd.name}
-      /bin/systemctl enable ${coggiebotd-update}/etc/${coggiebotd-update.name}
-      /bin/systemctl enable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
+      systemctl enable ${coggiebotd}/etc/${coggiebotd.name}
+      systemctl enable ${coggiebotd-update}/etc/${coggiebotd-update.name}
+      systemctl enable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -226,9 +245,9 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl disable ${coggiebotd}/etc/${coggiebotd.name}
-      /bin/systemctl disable ${coggiebotd-update}/etc/${coggiebotd-update.name}
-      /bin/systemctl disable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
+      systemctl disable ${coggiebotd}/etc/${coggiebotd.name}
+      systemctl disable ${coggiebotd-update}/etc/${coggiebotd-update.name}
+      systemctl disable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -251,8 +270,8 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl restart ${coggiebotd.name}
-      /bin/systemctl restart ${coggiebotd-update-timer.name}
+      systemctl restart ${coggiebotd.name}
+      systemctl restart ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -276,8 +295,8 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl start ${coggiebotd.name}
-      /bin/systemctl start ${coggiebotd-update-timer.name}
+      systemctl start ${coggiebotd.name}
+      systemctl start ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -300,8 +319,8 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl stop ${coggiebotd.name}
-      /bin/systemctl stop ${coggiebotd-update-timer.name}
+      systemctl stop ${coggiebotd.name}
+      systemctl stop ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
