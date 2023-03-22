@@ -33,7 +33,9 @@ jobs:
           files: "/var/coggiebot/result/enable, /var/coggiebot/result/disable, /var/coggiebot/result/start, /var/coggiebot/result/stop, /var/coggiebot/result/update"
 
       - name: "run update"
-        run: sudo /var/coggiebot/update
+        run: |
+          sudo su
+          /var/coggiebot/update
 
       - run: file coggiebot
 
