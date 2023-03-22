@@ -25,21 +25,19 @@ jobs:
       - name: "build vanilla linux deployment"
         run: nix build .#deploy-workflow-ci
 
+      - name: "run update"
+        run: |
+          sudo ./result/update
+
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2
         with:
           files: "/var/coggiebot/result/enable, /var/coggiebot/result/disable, /var/coggiebot/result/start, /var/coggiebot/result/stop, /var/coggiebot/result/update"
 
-      - name: "run update"
-        run: |
-          sudo ./result/update
-
-      - run: file coggiebot
-
       - name: "get version info"
         id: version_info
         run: |
-           echo "COG_REV=$(./result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
+           echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - run: echo ${{ steps.version_info.outputs.COG_REV }}
