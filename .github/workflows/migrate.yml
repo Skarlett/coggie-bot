@@ -40,7 +40,12 @@ jobs:
         id: version_info
         run: |
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
-           echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+           if [[ $GITHUB_EVENT_NAME == "push" ]]; then
+            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+           else
+            echo "GIT_REV=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
+           fi
 
       - run: echo " COGGIEBOT ${{ steps.version_info.outputs.COG_REV }} "
       - run: echo "GITHUB ${{ steps.version_info.outputs.GIT_REV }} "
