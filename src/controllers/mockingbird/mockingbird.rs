@@ -453,3 +453,13 @@ fn check_msg(result: SerenityResult<Message>) {
         println!("Error sending message: {:?}", why);
     }
 }
+
+#[cfg(tests)]
+mod tests {
+    #[test]
+    fn it_works() {
+        use std::env::var;
+        let paths = var("PATH").unwrap();
+        assert!(paths.filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() == 1);
+    }
+}

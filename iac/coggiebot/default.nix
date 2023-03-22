@@ -214,8 +214,8 @@ let
     REV=(self.rev or "canary");
     src = ../../.;
 
+    doCheck = true;
     postInstall = "";
-    # postBuild = "";
     passthru = {
       inherit features-list meta;
     };
