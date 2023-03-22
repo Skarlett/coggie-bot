@@ -1,8 +1,6 @@
 name: "store on cachix"
 on:
-  pull_request:
   push:
-  workflow_dispatch:
 jobs:
   cachix:
     runs-on: ubuntu-latest
@@ -23,12 +21,3 @@ jobs:
 
     - run: nix build .#deploy-workflow-ci
     - run: ./result/update
-
-    # - name: Trigger next workflow
-    #   if: success()
-    #   uses: peter-evans/repository-dispatch@v2
-    #   with:
-    #     token: ${{ secrets.PAT_TOKEN }}
-    #     repository: ${{ github.repository }}
-    #     event-type: trigger-workflow-2
-    #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
