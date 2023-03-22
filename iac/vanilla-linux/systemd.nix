@@ -125,7 +125,7 @@ rec {
       target="\''${TARGET:-${installDir}/result}";
       [[ -e \$target/disable ]] && \$target/disable
       [[ -e \$target ]] && rm \$target
-      ${pkgs.nix}/bin/nix build --refresh --out-link \$target ${pull}
+      ${pkgs.nix}/bin/nix build --refresh --out-link \$target ${pull}#deploy
       \$target/enable
       systemctl daemon-reload
       systemctl restart ${coggiebotd.name}
