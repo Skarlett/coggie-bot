@@ -362,14 +362,13 @@ rec {
       for unit in "\''${units[@]}"; do
         if [[ "\$(systemctl is-enabled \$unit)" != "enabled" ]]; then
           echo "\$unit is not enabled"
-          [[ $strict == 1 ]] && exit 1
         fi
         if [[ "\$(systemctl is-active \$unit)" != "active" ]]; then
           echo "\$unit is not active"
-          [[ $strict == 1 ]] && exit 1
         fi
       done
 
+      [[ $strict == 1 ]] && exit 1
       EOF
       chmod +x $out/bin/$name
     '';
