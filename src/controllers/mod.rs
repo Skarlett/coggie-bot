@@ -39,7 +39,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["mockingbird"] => [mockingbird::MOCKINGBIRD_GROUP],
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
-            ["bookmark-emoji"] => [bookmark::BOOKMARK_GROUP],
+            ["bookmark"] => [bookmark::BOOKMARK_GROUP],
             ["list-feature-cmds"] => [features::LIST_FEATURE_CMDS_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird", "demix"] => [mockingbird::DEMIX_GROUP]
