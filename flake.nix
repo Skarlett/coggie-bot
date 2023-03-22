@@ -49,7 +49,11 @@
           };
 
           deploy-workflow-ci = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
-            installDir = ./.;
+            #  TODO:
+            #  FIXME:
+            #     **installDir is pointing to the wrong place**
+            inherit installDir;
+
             coggiebot = stdenv.mkDerivation {
               name = "coggiebot";
               phases = "buildPhase";

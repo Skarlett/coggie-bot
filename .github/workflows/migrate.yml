@@ -17,24 +17,22 @@ jobs:
           name: coggiebot
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
+      - run: mkdir -p /var/coggiebot
+
       # build project with "bad rev"
       # this will cause the self-updater script
       # to trigger
       - name: "build vanilla linux deployment"
         run:
-          nix build .#deploy-workflow-ci
+          sudo nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
 
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2
         with:
-          files: "result/enable, result/coggiebot, result/disable, result/start, result/stop, result/update, result/restart"
-
-      - run: cp result/* .
+          files: "/var/coggiebot/result/enable, /var/coggiebot/result/disable, /var/coggiebot/result/start, /var/coggiebot/result/stop, /var/coggiebot/result/update"
 
       - name: "run update"
-        env:
-          TARGET: "./result"
-        run: sudo ./update
+        run: sudo /var/coggiebot/update
 
       - run: file coggiebot
 
@@ -46,6 +44,7 @@ jobs:
 
       - run: echo ${{ steps.version_info.outputs.COG_REV }}
       - run: echo ${{ steps.version_info.outputs.GIT_REV }}
+
       - name: "verify version is correct"
         if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
         run: exit 1
