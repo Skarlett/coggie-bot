@@ -25,15 +25,15 @@ jobs:
       - name: "build vanilla linux deployment"
         run: nix build .#deploy-workflow-ci
 
-      - run: echo $GITHUB_REF_NAME
-      - run: echo $GITHUB_BASE_REF
-      - run: echo $GITHUB_HEAD_REF
-      - run: echo $GITHUB_REPOSITORY
+      - name: "get branch info"
+        id: branch_info
+        run: echo "PULL=\"github:$GITHUB_REPOSITORY/$GITHUB_REF_NAME\"" >> $GITHUB_OUTPUT
 
       - name: "run update"
         run: |
           sudo su
-          ./result/update
+          echo "${{steps.branch_info.outputs.PULL}}"
+          PULL="${{steps.branch_info.outputs.PULL}}" ./result/update
 
       - name: "deployment hooks exist"
         uses: andstor/file-existence-action@v2
