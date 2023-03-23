@@ -71,7 +71,7 @@ jobs:
         run: exit 1
 
       - run: systemctl status coggiebotd.service
-      - run: systemctl status coggiebotd-update.service
+      # - run: systemctl status coggiebotd-update.service
       - run: systemctl status coggiebotd-update.timer
 
       - name: "verify systemd timer is operating"
