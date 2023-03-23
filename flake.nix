@@ -55,9 +55,9 @@
                   local e match="\$1"
                   shift
                   for e; do
-                    [[ "\$e" == "\$match" ]] && return 0;
+                    [[ \$e == \$match ]] && echo 0 && return;
                   done
-                  return 1
+                  echo 1 && return;
                 }
 
                 if [[ \$(containsElement "--built-from" "\$@") == 0 ]]; then
@@ -111,7 +111,7 @@
 
         rec {
           packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
-          packages.deploy-workflow-ci-stage-2 = (deploy-dummy self.rev).deploy;
+          packages.deploy-workflow-ci-stage-2 = (deploy-dummy (self.rev or "canary")).deploy;
           # packages.systemd = vanilla-linux.systemd;
           # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
           # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
