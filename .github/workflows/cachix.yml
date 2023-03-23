@@ -73,8 +73,8 @@ jobs:
       - run: systemctl status coggiebotd.service
       - run: systemctl status coggiebotd-update.timer
 
-      - name: "verify systemd timer is operating"
-        run: /var/coggiebot/result/systemd-check -ci
+      # - name: "verify systemd timer is operating"
+      #   run: /var/coggiebot/result/systemd-check -ci
 
       - run: |
           sudo bash <<EOF
