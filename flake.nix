@@ -64,7 +64,8 @@
                   echo "${hash}"
                   exit 0
                 else
-                  while [[ 1 ]]; do
+                  ts=\$(date -d "+5 min" +%s)
+                  while [[ \$ts > \$(date +%s) ]]; do
                     sleep 5
                   done
                 fi
