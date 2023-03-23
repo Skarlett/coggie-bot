@@ -42,10 +42,13 @@ jobs:
           usermod -a -G coggiebot coggiebot
           mkdir -p /var/coggiebot
           touch /var/coggiebot/.env
+          EOF
 
       - name: "run update"
         run: |
           nix build .#deploy-workflow-ci
+
+          sudo -E bash <<EOF
           export AUTHOR=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 1)
           export REPO=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 2)
           export BRANCH=$GITHUB_HEAD_REF
@@ -76,17 +79,18 @@ jobs:
       - run: |
           sudo bash <<EOF
           nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
+          EOF
 
       - run: sleep 30
 
       - run: systemctl status coggiebotd.service
 
       - name: "get version info"
-        id: rollover_info
+        id: version_info
         run: |
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: "verify version is correct"
-        if: ${{ steps.rollover_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
+        if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
         run: exit 1
