@@ -48,6 +48,7 @@ jobs:
           usermod -a -G coggiebot coggiebot
 
           mkdir -p /var/coggiebot
+          touch /var/coggiebot/.env
           export AUTHOR=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 1)
           export REPO=$(echo $GITHUB_ACTION_REPOSITORY | cut -d '/' -f 2)
           export BRANCH=$GITHUB_HEAD_REF
