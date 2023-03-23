@@ -25,6 +25,11 @@ DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot#coggiebot
 
 ## Build
 
+### Use public build cache [Nix] (Optional)
+``` sh
+cachix use coggiebot
+```
+
 #### native
 ```sh
 nix build github:skarlett/coggie-bot

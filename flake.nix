@@ -43,10 +43,59 @@
             features = (cogpkgs.which-features coggiebot-stable);
           };
 
+          coggiebot-dummy = hash: stdenv.mkDerivation {
+              name = "coggiebot";
+              phases = "buildPhase";
+              buildPhase = ''
+                mkdir -p $out/bin/
+                cat > $out/bin/$name <<EOF
+                #!${pkgs.runtimeShell}
+
+                containsElement () {
+                  local e match="\$1"
+                  shift
+                  for e; do
+                    [[ \$e == \$match ]] && echo 0 && return;
+                  done
+                  echo 1 && return;
+                }
+
+                if [[ \$(containsElement "--built-from" "\$@") == 0 ]]; then
+                  echo "${hash}"
+                  exit 0
+                else
+                  ts=\$(date -d "+5 min" +%s)
+                  while [[ \$ts > \$(date +%s) ]]; do
+                    sleep 5
+                  done
+                fi
+                EOF
+                chmod +x $out/bin/$name
+              '';
+            };
+
           vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             inherit installDir;
             coggiebot = coggiebot-stable;
-          } ;
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "master";
+              deploy = "deploy";
+            };
+          };
+
+          deploy-dummy = hash: (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
+            inherit installDir;
+            update-heartbeat = "2sec";
+            coggiebot = (coggiebot-dummy hash);
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "better-ci";
+              deploy = "deploy-workflow-ci-stage-2";
+            };
+          };
 
           # Automatically adds a pre-release if able to
           # beta-features is hard coded with the purpose of
@@ -62,7 +111,12 @@
            else {} //
 
         rec {
+          packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
+          packages.deploy-workflow-ci-stage-2 = (deploy-dummy (self.rev or "canary")).deploy;
           # packages.systemd = vanilla-linux.systemd;
+          # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
+          # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
+
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.deploy = vanilla-linux.deploy;
@@ -114,5 +168,30 @@
             };
           };
         };
+
+      checks = flake-utils.lib.eachDefaultSystem (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          tests = pkgs.callPackage (nixpkgs + "/nixos/lib/testing-python.nix") {};
+        in
+        {
+          vmTest = tests.makeTest {
+            nodes = {
+
+              client = { ... }: {
+                imports = [ ];
+              };
+            };
+
+            testScript =
+              ''
+                start_all()
+                client.wait_for_unit("multi-user.target")
+                assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
+              '';
+            };
+        });
+
+
     };
 }

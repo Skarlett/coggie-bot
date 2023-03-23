@@ -4,10 +4,12 @@
   , pkgs
   , stdenv
   , coggiebot
+  , repo
+  , update-heartbeat
   , installDir ? "/opt/coggiebot"
 }:
 rec {
-  coggiebotd = pkgs.stdenv.mkDerivation rec {
+  coggiebotd = stdenv.mkDerivation rec {
     name = "coggiebotd.service";
 
     phases = "buildPhase";
@@ -27,6 +29,7 @@ rec {
       User=coggiebot
       Group=coggiebot
       SuccessExitStatus=0 1
+      Nice=10
 
       PrivateDevices=true
       NoNewPrivileges=true
@@ -45,7 +48,7 @@ rec {
     nativeBuildInputs = [ pkgs.coreutils starter ];
   };
 
-  coggiebotd-update = pkgs.stdenv.mkDerivation rec {
+  coggiebotd-update = stdenv.mkDerivation rec {
     name = "coggiebotd-update.service";
 
     phases = "buildPhase";
@@ -83,8 +86,8 @@ rec {
       Description=automatically run self update checks on coggiebotd
 
       [Timer]
-      OnBootSec=15min
-      OnUnitActiveSec=15min
+      OnBootSec=${update-heartbeat}
+      OnUnitActiveSec=${update-heartbeat}
 
       [Install]
       WantedBy=timers.target
@@ -114,6 +117,32 @@ rec {
     PATH = lib.makeBinPath nativeBuildInputs;
   };
 
+  migrate = pkgs.stdenv.mkDerivation rec {
+    name = "migrate";
+    phases = "buildPhase";
+    pull = "github:Skarlett/coggie-bot/master#deploy";
+
+    buildPhase = ''
+      mkdir -p $out/bin/
+      cat >> $out/bin/${name} <<EOF
+      #!/bin/sh
+      PULL="\''${PULL:-${pull}}"
+      target="\''${TARGET:-${installDir}/result}";
+      [[ -e \$target/disable ]] && \$target/disable
+      ${pkgs.nix}/bin/nix build --refresh --out-link \$target \$PULL
+      \$target/enable
+      systemctl daemon-reload
+      #\$target/start
+      systemctl restart ${coggiebotd.name}
+      systemctl start ${coggiebotd-update-timer.name}
+      EOF
+      chmod +x $out/bin/${name}
+    '';
+    nativeBuildInputs = [ pkgs.coreutils pkgs.nix coggiebotd-update-timer coggiebotd ];
+    PATH = lib.makeBinPath nativeBuildInputs;
+  };
+
+  
   updater = stdenv.mkDerivation rec {
     inherit coggiebot;
     name = "update";
@@ -124,6 +153,12 @@ rec {
       #!/usr/bin/env bash
       ###################
       # lazy script
+      AUTHOR="\''${AUTHOR:-${repo.owner}}"
+      REPO="\''${REPO:-${repo.name}}"
+      BRANCH="\''${BRANCH:-${repo.branch}}"
+      DEPLOY_PKG="\''${DEPLOY_PKG:-${repo.deploy}}"
+
+      URI="\''${URI:-https://github.com/\$AUTHOR/\$REPO.git}"
 
       if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
         echo "DEBUG ON"
@@ -142,17 +177,17 @@ rec {
         echo "Lock acquired"
       fi
 
-      #
-      # Fetch latest commit origin/$branch
-      #
+      # Fetch latest commit
       FETCH_DIR=\$(mktemp -d -t "coggie-bot.update.XXXXXXXX")
       pushd \$FETCH_DIR
       git init .
-      git remote add origin $origin_url
-      git fetch origin $branch
-      LHASH=\$(git show -s --pretty='format:%H' origin/$branch | sort -r | head -n 1)
+      git remote add origin \$URI
+      git fetch origin \$BRANCH
+      LHASH=\$(git show -s --pretty='format:%H' origin/\$BRANCH | sort -r | head -n 1)
       popd
       rm -rf \$FETCH_DIR
+
+      # hard coded link into nix store
       CHASH=\$(${coggiebot}/bin/coggiebot --built-from --token "")
 
       #
@@ -165,12 +200,7 @@ rec {
 
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
-        ${installDir}/result/disable
-        ${nix}/bin/nix build --refresh --out-link ${installDir}/result github:skarlett/coggie-bot/$branch#deploy
-        ${installDir}/result/enable
-        /bin/systemctl daemon-reload
-        /bin/systemctl restart ${coggiebotd.name}
-        /bin/systemctl start ${coggiebotd-update-timer.name}
+        PULL="github:\$AUTHOR/\$REPO/\$BRANCH#\$DEPLOY_PKG " . ${migrate}/bin/migrate
         echo "migrating finished"
       fi
 
@@ -183,13 +213,9 @@ rec {
       pkgs.coreutils
       pkgs.git
       coggiebot
+      migrate
     ];
 
-    origin_url="https://github.com/Skarlett/coggie-bot.git";
-    branch = "master";
-    nix = pkgs.nix;
-    coggiebotd-name = coggiebotd.name;
-    coggiebotd-update-timer-name = coggiebotd-update-timer.name;
     PATH = lib.makeBinPath nativeBuildInputs;
   };
 
@@ -202,9 +228,9 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl enable ${coggiebotd}/etc/${coggiebotd.name}
-      /bin/systemctl enable ${coggiebotd-update}/etc/${coggiebotd-update.name}
-      /bin/systemctl enable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
+      systemctl enable ${coggiebotd}/etc/${coggiebotd.name}
+      systemctl enable ${coggiebotd-update}/etc/${coggiebotd-update.name}
+      systemctl enable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -226,9 +252,9 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl disable ${coggiebotd}/etc/${coggiebotd.name}
-      /bin/systemctl disable ${coggiebotd-update}/etc/${coggiebotd-update.name}
-      /bin/systemctl disable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
+      systemctl disable ${coggiebotd}/etc/${coggiebotd.name}
+      systemctl disable ${coggiebotd-update}/etc/${coggiebotd-update.name}
+      systemctl disable ${coggiebotd-update-timer}/etc/${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -251,8 +277,8 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl restart ${coggiebotd.name}
-      /bin/systemctl restart ${coggiebotd-update-timer.name}
+      systemctl restart ${coggiebotd.name}
+      systemctl restart ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -276,8 +302,8 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl start ${coggiebotd.name}
-      /bin/systemctl start ${coggiebotd-update-timer.name}
+      systemctl start ${coggiebotd.name}
+      systemctl start ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/$name
     '';
@@ -300,8 +326,52 @@ rec {
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
-      /bin/systemctl stop ${coggiebotd.name}
-      /bin/systemctl stop ${coggiebotd-update-timer.name}
+      systemctl stop ${coggiebotd.name}
+      systemctl stop ${coggiebotd-update-timer.name}
+      EOF
+      chmod +x $out/bin/$name
+    '';
+
+    PATH = lib.makeBinPath nativeBuildInputs;
+    nativeBuildInputs = [
+      pkgs.coreutils
+      coggiebotd
+      coggiebotd-update
+      coggiebotd-update-timer
+    ];
+  };
+
+  systemd-check = pkgs.stdenv.mkDerivation rec {
+    name = "systemd-check";
+    phases = "buildPhase";
+
+    builder = pkgs.writeShellScript "builder.sh" ''
+      mkdir -p $out/bin
+      cat >> $out/bin/$name <<EOF
+      #!/usr/bin/env bash
+      strict=0
+      if [[ \$1 == "-ci" ]]; then
+        strict=1
+      fi
+
+      units=(
+        ${lib.strings.concatStringsSep " " (map (x: "${x.name}") [
+          coggiebotd
+          # coggiebotd-update
+          coggiebotd-update-timer
+        ])}
+      );
+
+      for unit in "\''${units[@]}"; do
+        if [[ "\$(systemctl is-enabled \$unit)" != "enabled" ]]; then
+          echo "\$unit is not enabled"
+        fi
+        if [[ "\$(systemctl is-active \$unit)" != "active" ]]; then
+          echo "\$unit is not active"
+        fi
+      done
+
+      [[ \$strict == 1 ]] && exit 1
       EOF
       chmod +x $out/bin/$name
     '';
