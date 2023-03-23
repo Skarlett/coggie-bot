@@ -166,7 +166,7 @@ rec {
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
         ${installDir}/result/disable
-        ${nix}/bin/nix build --refresh --out-link ${installDir}/result github:skarlett/coggie-bot/$branch
+        ${nix}/bin/nix build --refresh --out-link ${installDir}/result github:skarlett/coggie-bot/$branch#deploy
         ${installDir}/result/enable
         /bin/systemctl daemon-reload
         /bin/systemctl restart ${coggiebotd.name}
