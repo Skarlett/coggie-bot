@@ -74,6 +74,8 @@ jobs:
 
       - run: systemctl status coggiebotd.service
       - run: systemctl status coggiebotd-update.timer
+
+      - run: sleep 2
       - run: systemctl status coggiebotd-update.service
 
       - run: |
