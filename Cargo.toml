@@ -14,7 +14,7 @@ toml = "0.7"
 serde = "1.0"
 serde_derive = "*"
 serde_json = "*"
-songbird = { version = "0.3.0", optional=true, features=["builtin-queue"] }
+songbird = { version = "0.3.0", optional=true, features=["builtin-queue", "yt-dlp"] }
 
 
 [features]
