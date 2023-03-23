@@ -29,6 +29,7 @@ rec {
       User=coggiebot
       Group=coggiebot
       SuccessExitStatus=0 1
+      Nice=10
 
       PrivateDevices=true
       NoNewPrivileges=true
