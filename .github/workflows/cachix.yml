@@ -77,8 +77,8 @@ jobs:
       #   run: /var/coggiebot/result/systemd-check -ci
 
       - run: |
-          sudo -E bash <<EOF
-          nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
+          nix build .#deploy-workflow-ci
+          sudo mv result /var/coggiebot
           EOF
 
       - run: sleep 30
