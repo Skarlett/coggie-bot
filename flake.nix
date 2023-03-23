@@ -43,7 +43,7 @@
             features = (cogpkgs.which-features coggiebot-stable);
           };
 
-          coggiebot-dummy = stdenv.mkDerivation {
+          coggiebot-dummy = hash: stdenv.mkDerivation {
               name = "coggiebot";
               phases = "buildPhase";
               buildPhase = ''
@@ -61,7 +61,7 @@
                 }
 
                 if [[ \$(containsElement "--built-from" "$@") == 0 ]]; then
-                  echo "00000000000000000000000000000000000000"
+                  echo "${hash}"
                   exit 0
                 else
                   while [[ 1 ]]; do
@@ -84,14 +84,14 @@
             };
           };
 
-          deploy-dummy = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
+          deploy-dummy = hash: (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             inherit installDir;
-            coggiebot = coggiebot-dummy;
+            coggiebot = (coggiebot-dummy hash);
             repo = {
               name = "coggie-bot";
               owner = "skarlett";
               branch = "better-ci";
-              deploy = "deploy-dummy";
+              deploy = "deploy-workflow-ci-stage-2";
             };
           };
 
@@ -109,7 +109,8 @@
            else {} //
 
         rec {
-          packages.deploy-workflow-ci = deploy-dummy.deploy;
+          packages.deploy-workflow-ci = (deploy-dummy.deploy "00000000000000000000000000");
+          packages.deploy-workflow-ci-stage-2 = (deploy-dummy.deploy self.rev);
           # packages.systemd = vanilla-linux.systemd;
           # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
           # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
