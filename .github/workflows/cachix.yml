@@ -79,7 +79,6 @@ jobs:
       - run: |
           nix build .#deploy-workflow-ci
           sudo mv result /var/coggiebot
-          EOF
 
       - run: sleep 30
 
