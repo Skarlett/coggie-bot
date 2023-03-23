@@ -105,7 +105,7 @@ let
                   buildInputs = with pkgs; prev.buildInputs ++ [
                     libopus
                     ffmpeg
-                    youtube-dl
+                    yt-dlp
                   ];
 
                   nativeBuildInputs = with pkgs; prev.nativeBuildInputs ++ [
