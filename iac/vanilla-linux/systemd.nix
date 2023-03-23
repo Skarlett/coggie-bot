@@ -5,8 +5,8 @@
   , stdenv
   , coggiebot
   , repo
+  , update-heartbeat
   , installDir ? "/opt/coggiebot"
-  , update-heartbeat ? "15min"
 }:
 rec {
   coggiebotd = stdenv.mkDerivation rec {

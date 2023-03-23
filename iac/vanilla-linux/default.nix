@@ -1,6 +1,6 @@
-{ config, lib, pkgs, stdenv, installDir, coggiebot, repo }:
+{ config, lib, pkgs, stdenv, installDir, coggiebot, repo, update-heartbeat ? "15min" }:
 let
-  systemd = pkgs.callPackage ./systemd.nix { inherit coggiebot installDir repo; };
+  systemd = pkgs.callPackage ./systemd.nix { inherit coggiebot installDir repo update-heartbeat; };
 in
 {
   inherit systemd;
