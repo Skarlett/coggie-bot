@@ -87,6 +87,7 @@
 
           deploy-dummy = hash: (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
             inherit installDir;
+            update-heartbeat = "30sec";
             coggiebot = (coggiebot-dummy hash);
             repo = {
               name = "coggie-bot";
