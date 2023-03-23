@@ -80,8 +80,10 @@ jobs:
           nix build .#deploy-workflow-ci
           sudo mv result /var/coggiebot
 
-      - run: sleep 30
+      - run: sleep 10
       - run: systemctl status coggiebotd.service
+      - run: systemctl status coggiebotd-update.timer
+
       - name: "get version info"
         id: rollover_info
         run: |
