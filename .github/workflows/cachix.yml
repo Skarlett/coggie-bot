@@ -88,7 +88,7 @@ jobs:
             elif [[ $line == "coggiebotd-update.service: Succeeded" ]]; then
               exit 1
             fi
-          done < $(journalctl -fu coggiebotd-update.service)
+          done < $(sudo journalctl -fu coggiebotd-update.service)
 
       - run: systemctl status coggiebotd.service
       - run: systemctl status coggiebotd-update.timer
