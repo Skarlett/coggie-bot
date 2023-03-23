@@ -86,11 +86,11 @@ jobs:
       - run: systemctl status coggiebotd.service
 
       - name: "get version info"
-        id: version_info
+        id: rollover_info
         run: |
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: "verify version is correct"
-        if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
+        if: ${{ steps.rollover_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
         run: exit 1
