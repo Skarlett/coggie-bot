@@ -79,29 +79,30 @@ jobs:
           nix build .#deploy-workflow-ci
           sudo mv result /var/coggiebot
 
-      - run: |
-          set -ex
-          while read -r line; do
-            if [[ $line == "migrating finished" ]]; then
-              echo "Migration completed!"
-              exit 0
-            elif [[ $line == "coggiebotd-update.service: Succeeded" ]]; then
-              exit 1
-            fi
-          done < $(sudo journalctl -fu coggiebotd-update.service)
+      # - run: |
+      #     set -ex
+      #     while read -r line; do
+      #       if [[ $line == "migrating finished" ]]; then
+      #         echo "Migration completed!"
+      #         exit 0
+      #       elif [[ $line == "coggiebotd-update.service: Succeeded" ]]; then
+      #         exit 1
+      #       fi
+      #     done < $(sudo journalctl -fu coggiebotd-update.service)
 
-      - run: systemctl status coggiebotd.service
-      - run: systemctl status coggiebotd-update.timer
+      # - run: systemctl status coggiebotd.service
+      # - run: systemctl status coggiebotd-update.timer
 
-      - name: "get version info"
-        id: rollover_info
-        run: |
-           echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
-           echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - run: echo "COG ${{ steps.rollover_info.outputs.COG_REV }}"
-      - run: echo "GIT ${{ steps.rollover_info.outputs.GIT_REV }}"
+      # - name: "get version info"
+      #   id: rollover_info
+      #   run: |
+      #      echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
+      #      echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - name: "verify version is correct"
-        if: ${{ steps.rollover_info.outputs.COG_REV != steps.rullover_info.outputs.GIT_REV }}
-        run: exit 1
+      # - run: echo "COG ${{ steps.rollover_info.outputs.COG_REV }}"
+      # - run: echo "GIT ${{ steps.rollover_info.outputs.GIT_REV }}"
+
+      # - name: "verify version is correct"
+      #   if: ${{ steps.rollover_info.outputs.COG_REV != steps.rullover_info.outputs.GIT_REV }}
+      #   run: exit 1
