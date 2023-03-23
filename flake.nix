@@ -187,10 +187,6 @@
               ''
                 start_all()
                 client.wait_for_unit("multi-user.target")
-
-                client.run("nix build github:skarlett/coggie-bot#deploy")
-
-
                 assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
               '';
             };

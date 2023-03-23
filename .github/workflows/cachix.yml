@@ -73,8 +73,10 @@ jobs:
       - name: "verify systemd timer is operating"
         run: /var/coggiebot/result/systemd-check -ci
 
-      - run: nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
-
+      - run: |
+        sudo bash <<EOF
+        nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
+        EOF
       - run: sleep 30
 
       - run: systemctl status coggiebotd.service
