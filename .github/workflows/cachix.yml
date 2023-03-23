@@ -74,9 +74,9 @@ jobs:
         run: /var/coggiebot/result/systemd-check -ci
 
       - run: |
-        sudo bash <<EOF
-        nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
-        EOF
+          sudo bash <<EOF
+          nix build .#deploy-workflow-ci --out-link /var/coggiebot/result
+          EOF
       - run: sleep 30
 
       - run: systemctl status coggiebotd.service
