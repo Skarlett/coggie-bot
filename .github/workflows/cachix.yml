@@ -75,14 +75,21 @@ jobs:
       - run: systemctl status coggiebotd.service
       - run: systemctl status coggiebotd-update.timer
 
-      - run: sleep 2
-      - run: systemctl status coggiebotd-update.service
-
       - run: |
           nix build .#deploy-workflow-ci
           sudo mv result /var/coggiebot
 
-      - run: sleep 10
+      - run: |
+          set -ex
+          while read -r line; do
+            if [[ $line == "migrating finished" ]]; then
+              echo "Migration completed!"
+              exit 0
+            elif [[ $line == "coggiebotd-update.service: Succeeded" ]]; then
+              exit 1
+            fi
+          done << journalctl -fu coggiebotd-update.service
+
       - run: systemctl status coggiebotd.service
       - run: systemctl status coggiebotd-update.timer
 
