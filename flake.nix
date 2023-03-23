@@ -109,8 +109,8 @@
            else {} //
 
         rec {
-          packages.deploy-workflow-ci = (deploy-dummy.deploy "00000000000000000000000000");
-          packages.deploy-workflow-ci-stage-2 = (deploy-dummy.deploy self.rev);
+          packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
+          packages.deploy-workflow-ci-stage-2 = (deploy-dummy self.rev).deploy;
           # packages.systemd = vanilla-linux.systemd;
           # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
           # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
