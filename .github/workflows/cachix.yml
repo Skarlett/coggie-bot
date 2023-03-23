@@ -70,6 +70,9 @@ jobs:
         if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
         run: exit 1
 
+      - run: echo "COG ${{ steps.version_info.outputs.COG_REV }}"
+      - run: echo "GIT ${{ steps.version_info.outputs.GIT_REV }}"
+
       - run: systemctl status coggiebotd.service
       - run: systemctl status coggiebotd-update.timer
 
@@ -89,6 +92,10 @@ jobs:
         run: |
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+
+      - run: echo "COG ${{ steps.version_info.outputs.COG_REV }}"
+      - run: echo "GIT ${{ steps.version_info.outputs.GIT_REV }}"
 
       - name: "verify version is correct"
         if: ${{ steps.rollover_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
