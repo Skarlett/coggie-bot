@@ -356,7 +356,7 @@ rec {
       units=(
         ${lib.strings.concatStringsSep " " (map (x: "${x.name}") [
           coggiebotd
-          coggiebotd-update
+          # coggiebotd-update
           coggiebotd-update-timer
         ])}
       );
