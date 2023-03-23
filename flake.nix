@@ -52,15 +52,15 @@
                 #!${pkgs.runtimeShell}
 
                 containsElement () {
-                  local e match="$1"
+                  local e match="\$1"
                   shift
                   for e; do
-                    [[ "$e" == "$match" ]] && return 0;
+                    [[ "\$e" == "\$match" ]] && return 0;
                   done
                   return 1
                 }
 
-                if [[ \$(containsElement "--built-from" "$@") == 0 ]]; then
+                if [[ \$(containsElement "--built-from" "\$@") == 0 ]]; then
                   echo "${hash}"
                   exit 0
                 else
