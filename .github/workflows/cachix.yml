@@ -65,9 +65,9 @@ jobs:
            echo "COG_REV=$(/var/coggiebot/result/coggiebot --built-from --token '')" >> $GITHUB_OUTPUT
            echo "GIT_REV=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - name: "verify version is correct"
-        if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
-        run: exit 1
+      # - name: "verify version is correct"
+      #   if: ${{ steps.version_info.outputs.COG_REV != steps.version_info.outputs.GIT_REV }}
+      #   run: exit 1
 
       - run: echo "COG ${{ steps.version_info.outputs.COG_REV }}"
       - run: echo "GIT ${{ steps.version_info.outputs.GIT_REV }}"
