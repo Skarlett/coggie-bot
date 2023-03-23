@@ -119,7 +119,7 @@ rec {
   migrate = pkgs.stdenv.mkDerivation rec {
     name = "migrate";
     phases = "buildPhase";
-    pull = "github:Skarlett/coggie-bot/master";
+    pull = "github:Skarlett/coggie-bot/master#deploy";
 
     buildPhase = ''
       mkdir -p $out/bin/
@@ -128,12 +128,12 @@ rec {
       PULL="\''${PULL:-${pull}}"
       target="\''${TARGET:-${installDir}/result}";
       [[ -e \$target/disable ]] && \$target/disable
-      ${pkgs.nix}/bin/nix build --refresh --out-link \$target \$PULL#deploy
+      ${pkgs.nix}/bin/nix build --refresh --out-link \$target \$PULL
       \$target/enable
       systemctl daemon-reload
-      \$target/start
-      # systemctl restart ${coggiebotd.name}
-      # systemctl start ${coggiebotd-update-timer.name}
+      #\$target/start
+      systemctl restart ${coggiebotd.name}
+      systemctl start ${coggiebotd-update-timer.name}
       EOF
       chmod +x $out/bin/${name}
     '';
@@ -155,6 +155,8 @@ rec {
       AUTHOR="\''${AUTHOR:-${repo.owner}}"
       REPO="\''${REPO:-${repo.name}}"
       BRANCH="\''${BRANCH:-${repo.branch}}"
+      DEPLOY_PKG="\''${DEPLOY_PKG:-${repo.deploy}}"
+
       URI="\''${URI:-https://github.com/\$AUTHOR/\$REPO.git}"
 
       if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
@@ -197,7 +199,7 @@ rec {
 
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
-        PULL="github:\$AUTHOR/\$REPO/\$BRANCH" . ${migrate}/bin/migrate
+        PULL="github:\$AUTHOR/\$REPO/\$BRANCH#\$DEPLOY_PKG " . ${migrate}/bin/migrate
         echo "migrating finished"
       fi
 

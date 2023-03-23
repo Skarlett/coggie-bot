@@ -43,30 +43,7 @@
             features = (cogpkgs.which-features coggiebot-stable);
           };
 
-          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
-            inherit installDir;
-            coggiebot = coggiebot-stable;
-
-            repo = {
-              name = "coggie-bot";
-              owner = "skarlett";
-              branch = "master";
-            };
-          };
-
-          deploy-workflow-ci = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
-            #  TODO:
-            #  FIXME:
-            #     **installDir is pointing to the wrong place**
-            inherit installDir;
-
-            repo = {
-              name = "coggie-bot";
-              owner = "skarlett";
-              branch = "better-ci";
-            };
-
-            coggiebot = stdenv.mkDerivation {
+          coggiebot-dummy = stdenv.mkDerivation {
               name = "coggiebot";
               phases = "buildPhase";
               buildPhase = ''
@@ -83,12 +60,41 @@
                   return 1
                 }
 
-                containsElement "--built-from" "$@" && echo "Built from source" && exit 0
+                if [[ \$(containsElement "--built-from" "$@") == 0 ]]; then
+                  echo "00000000000000000000000000000000000000"
+                  exit 0
+                else
+                  while [[ 1 ]]; do
+                    sleep 5
+                  done
+                fi
                 EOF
                 chmod +x $out/bin/$name
               '';
             };
+
+          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
+            inherit installDir;
+            coggiebot = coggiebot-stable;
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "master";
+              deploy = "deploy";
+            };
           };
+
+          deploy-dummy = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
+            inherit installDir;
+            coggiebot = coggiebot-dummy;
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "better-ci";
+              deploy = "deploy-dummy";
+            };
+          };
+
           # Automatically adds a pre-release if able to
           # beta-features is hard coded with the purpose of
           # each branch specifying the exact features its developing
@@ -103,9 +109,10 @@
            else {} //
 
         rec {
+          packages.deploy-workflow-ci = deploy-dummy.deploy;
           # packages.systemd = vanilla-linux.systemd;
-          packages.deploy-workflow-ci = deploy-workflow-ci.deploy;
-          packages.workflow.update = deploy-workflow-ci.update;
+          # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
+          # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
 
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
