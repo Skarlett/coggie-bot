@@ -82,7 +82,7 @@ impl EventHandler for EvHandler {
 
     #[allow(unused_variables)]
     async fn message(&self, ctx: Context, msg: Message) {
-        #[cfg(feature="enable-dj-room")]
+        #[cfg(feature="dj-room")]
         tokio::spawn(async move {
             const DJ_CHANNEL: u64 = 960044319476179055;
             let bot_id = ctx.cache.current_user_id().0;
