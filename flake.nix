@@ -30,6 +30,7 @@
             basic-cmds
             bookmark
             mockingbird
+            dj-room
           ];
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
