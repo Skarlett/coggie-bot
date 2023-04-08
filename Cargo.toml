@@ -37,3 +37,7 @@ systems = [
     "x86_64-darwin",
     "x86_64-linux",
 ]
+
+
+[patch.crates-io]
+songbird = { git = "https://github.com/Erk-/songbird", branch="do-not-fail-if-new-opcode" }
