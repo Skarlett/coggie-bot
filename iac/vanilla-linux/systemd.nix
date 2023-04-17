@@ -61,7 +61,6 @@ rec {
       Wants=bookmark-bot-update.timer
 
       [Service]
-      Type=oneshot
       ExecStart=${updater}/bin/update
       TimeoutStartSec=9999
 
