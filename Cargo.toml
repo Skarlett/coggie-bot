@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.5"
+version = "1.4.6"
 edition = "2021"
 
 [dependencies]
@@ -14,7 +14,7 @@ toml = "0.7"
 serde = "1.0"
 serde_derive = "*"
 serde_json = "*"
-songbird = { version = "0.3.0", optional=true, features=["builtin-queue", "yt-dlp"] }
+songbird = { version = "0.3", optional=true, features=["builtin-queue", "yt-dlp"] }
 
 
 [features]
@@ -38,6 +38,3 @@ systems = [
     "x86_64-linux",
 ]
 
-
-[patch.crates-io]
-songbird = { git = "https://github.com/Erk-/songbird", branch="do-not-fail-if-new-opcode" }
