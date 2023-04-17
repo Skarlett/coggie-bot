@@ -1,6 +1,9 @@
 name: "nix build deployment test"
 on:
   push:
+    branches: [ "master", "next" ]
+  pull_request:
+    branches: [ "master", "next"]
 jobs:
   cachix:
     runs-on: ubuntu-latest
