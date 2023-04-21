@@ -6,7 +6,8 @@
   , coggiebot
   , repo
   , update-heartbeat
-  , installDir ? "/opt/coggiebot"
+  , installDir ? "/var/coggiebot"
+  , buildFromSrc ? true
 }:
 rec {
   coggiebotd = stdenv.mkDerivation rec {
@@ -156,12 +157,22 @@ rec {
       REPO="\''${REPO:-${repo.name}}"
       BRANCH="\''${BRANCH:-${repo.branch}}"
       DEPLOY_PKG="\''${DEPLOY_PKG:-${repo.deploy}}"
-
+      BUILD_FROM_SRC="\''${BUILD_FROM_SRC:-${buildFromSrc}}"
+      BASEPULL="\''${BASEPULL:-github:\$AUTHOR/\$REPO/\$BRANCH}"
+      PULL="\$BASEPULL#\$DEPLOY_PKG"
       URI="\''${URI:-https://github.com/\$AUTHOR/\$REPO.git}"
 
       if [[ \$1 == "--debug" || \$1 == "-d" ]]; then
         echo "DEBUG ON"
         set -xe
+      fi
+
+      ${pkgs.nix}/bin/nix run \$(BASEPULL)#check-cache
+      cached=$?
+
+      if [[ $BUILD_FROM_SRC == 0 && cached == 1 ]]; then
+        echo "Building from source disabled. \$(BASEPULL)#check-cache returned with exit status \$cached"
+        exit 1
       fi
 
       LOCKFILE=/tmp/coggiebot.update.lock
@@ -356,7 +367,6 @@ rec {
       units=(
         ${lib.strings.concatStringsSep " " (map (x: "${x.name}") [
           coggiebotd
-          # coggiebotd-update
           coggiebotd-update-timer
         ])}
       );

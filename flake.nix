@@ -117,6 +117,32 @@
           # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
           # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
 
+          packages.check-cache = caches: packages: pkgs.writeShellScriptBin "check-cache" ''
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "Checking server caches..."
+            exitFlag=0
+
+            for package in ${lib.strings.concatStringsSep " " (map (p: builtins.substring 11 32 p.outPath) packages)}; do
+              found=0
+              for cache in ${lib.strings.concatStringsSep " " caches}; do
+                response=\$(${pkgs.curl}/bin/curl \
+                    --write-out '%{http_code}\n' -s \
+                    \$cache/\$package.narinfo)
+
+                if [[ \$response >= 200 && 400 >= \$response ]]; then
+                  found=1
+                  break
+                fi
+                done
+
+              if [[ \$found == 0 ]]; then
+                echo "Package \$package not found in any cache"
+                exitFlag=1
+              fi
+            done
+            exit \$exitFlag
+          '';
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.deploy = vanilla-linux.deploy;
