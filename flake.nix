@@ -143,6 +143,14 @@
             done
             exit \$exitFlag
           '';
+
+          packages.pipe-demix = pkgs.callPackage ./sbin/deemix-stream {
+            inherit (pkgs.python39.pkgs) buildPythonApplication;
+          };
+          packages.cleanup-downloads = pkgs.callPackage ./sbin/cleanup-dl {
+            perlPackages = pkgs.perl534Packages;
+          };
+
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.deploy = vanilla-linux.deploy;
@@ -217,7 +225,5 @@
               '';
             };
         });
-
-
     };
 }

@@ -288,10 +288,8 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         let source = match Restartable::ytdl(url, true).await {
             Ok(source) => source,
             Err(why) => {
-                println!("Err starting source: {:?}", why);
-
+                eprintln!("Err starting source: {:?}", why);
                 check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
                 return Ok(());
             },
         };

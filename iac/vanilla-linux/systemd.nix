@@ -210,7 +210,7 @@ rec {
 
       if [[ "\$CHASH" != "\$LHASH" ]]; then
         echo "start migrating"
-        PULL="github:\$AUTHOR/\$REPO/\$BRANCH#\$DEPLOY_PKG " . ${migrate}/bin/migrate
+        ${migrate}/bin/migrate
         echo "migrating finished"
       fi
 
