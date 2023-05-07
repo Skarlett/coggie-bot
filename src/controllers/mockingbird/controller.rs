@@ -1,102 +1,23 @@
-//! Example demonstrating how to make use of individual track audio events,
-//! and how to use the `TrackQueue` system.
-//!
-//! Requires the "cache", "standard_framework", and "voice" features be enabled in your
-//! Cargo.toml, like so:
-//!
-//! ```toml
-//! [dependencies.serenity]
-//! git = "https://github.com/serenity-rs/serenity.git"
-//! features = ["cache", "framework", "standard_framework", "voice"]
-//! ```
-//use super::lib::ArlToken;
-
-use std::{
-    sync::Arc,
-    time::Duration,
+use crate::{
+    get_rev, VERSION, REPO,
+    pkglib::{CoggiebotError}
 };
 
-use serenity::{
-    client::Context,
-    framework::{
-        standard::{
-            macros::{command, group},
-            Args,
-            CommandResult,
-        },
-    },
-    model::{channel::Message, prelude::ChannelId},
-    prelude::Mentionable,
-    Result as SerenityResult,
+use serenity::framework::standard::{
+    macros::{command, group},
+    CommandResult, Args,
 };
 
-use songbird::input::restartable::Restartable;
+use serenity::model::channel::Message;
+use serenity::prelude::*;
+
+use super::extractor::{play_source, DxConfigKey, DxConfig};
 
 #[group]
 #[commands(
-    deafen, join, leave, mute, queue, skip, stop, undeafen, unmute
+    deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
-struct MockingBird;
-
-#[cfg(feature="dj-room")]
-pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
-    let url = match &msg.content
-    {
-        url if url.starts_with("http") => url.to_string(),
-        _ => {
-            check_msg(
-                msg.channel_id
-                    .say(&ctx.http, "Must provide a URL to a video or audio")
-                    .await,
-            );
-
-            return Ok(());
-        },
-    };
-
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
-
-           // Here, we use lazy restartable sources to make sure that we don't pay
-            // for decoding, playback on tracks which aren't actually live yet.
-            let source = match Restartable::ytdl(url, true).await {
-                Ok(source) => source,
-                Err(why) => {
-                    println!("Err starting source: {:?}", why);
-                    check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                    return Ok(());
-                },
-            };
-            handler.enqueue_source(source.into());
-
-        check_msg(
-            msg.channel_id
-                .say(
-                    &ctx.http,
-                    format!("Added song to queue: position {}", handler.queue().len()),
-                )
-                .await,
-        );
-    }
-    else {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, "Not in a voice channel to play in")
-                .await,
-        );
-    }
-
-    Ok(())
-}
+struct Deemix;
 
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
@@ -118,7 +39,6 @@ async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
     };
 
     let mut handler = handler_lock.lock().await;
-
     if handler.is_deaf() {
         check_msg(msg.channel_id.say(&ctx.http, "Already deafened").await);
     } else {
@@ -280,22 +200,16 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
+
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        // Here, we use lazy restartable sources to make sure that we don't pay
-        // for decoding, playback on tracks which aren't actually live yet.
-        let source = match Restartable::ytdl(url, true).await {
-            Ok(source) => source,
-            Err(why) => {
-                eprintln!("Err starting source: {:?}", why);
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-                return Ok(());
-            },
+        let dx_lock = ctx.data.read().await;
+        let dxc: &DxConfig = dx_lock.get::<DxConfigKey>().unwrap();
+
+        for track in play_source(&url, dxc).await.unwrap().to_restartable().await {
+            handler.enqueue_source(track.into());
         };
-
-        handler.enqueue_source(source.into());
-
         check_msg(
             msg.channel_id
                 .say(
@@ -445,20 +359,10 @@ async fn unmute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+use serenity::Result as SerenityResult;
 /// Checks that a message successfully sent; if not, then logs why to stdout.
 fn check_msg(result: SerenityResult<Message>) {
     if let Err(why) = result {
         println!("Error sending message: {:?}", why);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        use std::env::var;
-        use std::path::PathBuf;
-        let paths = var("PATH").unwrap();
-        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() == 1);
     }
 }

@@ -1,0 +1,55 @@
+{
+  lib
+  , pkgs
+  , stdenv
+  , hasFeature
+  , coggiebotd
+  , features
+  , coggiebotd-update-timer
+  , auto-update
+}:
+let
+  mkSystemdHelpScript = {cmd, usePath ? false}: stdenv.mkDerivation rec {
+    name = "systemd-${cmd}";
+    phases = "buildPhase";
+
+    buildPhase = ''
+      #!/bin/sh
+      mkdir -p $out/bin
+      cat >> $out/bin/$name <<EOF
+      #!/bin/sh
+      systemctl ${cmd} ${coggiebotd.name}
+      ${
+        lib.optional
+          hasFeature features.auto-update
+          "systemctl ${cmd} ${
+            if usePath then
+              "${coggiebotd-update-timer.outPath}/etc/${coggiebotd-update-timer.name}"
+            else
+              coggiebotd-update-timer.name
+          }"
+      }
+      EOF
+      chmod 755 $out/bin/$name
+    '';
+
+    nativeBuildInputs = [
+      pkgs.coreutils
+      coggiebotd
+    ]
+    ++ lib.optional (hasFeature features.auto-update)
+      (with auto-update; [
+        coggiebotd-update
+        coggiebotd-update-timer
+      ]);
+
+    PATH = lib.makeBinPath nativeBuildInputs;
+  };
+in {
+  systemd-restart = mkSystemdHelpScript {cmd="restart";};
+  systemd-start = mkSystemdHelpScript {cmd="start";};
+  systemd-stop = mkSystemdHelpScript {cmd="stop";};
+  systemd-status = mkSystemdHelpScript {cmd="status";};
+  systemd-enable = mkSystemdHelpScript {cmd="enable"; usePath=true;};
+  systemd-disable = mkSystemdHelpScript {cmd="disable";};
+}

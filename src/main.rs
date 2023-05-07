@@ -72,6 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
         println!("{}", get_rev());
         return Ok(());
     }
+
     #[cfg(feature="list-feature-cmd")]
     if cli.features {
         println!("{:?}", controllers::features::feature_list());
@@ -79,6 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
     }
 
     println!("{}", LICENSE);
+
+    tracing_subscriber::fmt::init();   
 
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
@@ -99,6 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
         Client::builder(&cli.token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
         .framework(framework)
         .event_handler(controllers::EvHandler))
+        .await
         .await?;
 
     client.start().await?;

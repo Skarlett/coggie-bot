@@ -1,4 +1,4 @@
-{ pkgs, python39Packages, buildPythonApplication, ... }:
+{ pkgs, python39Packages, buildPythonApplication }:
 buildPythonApplication {
   pname = "deemix-stream";
   version = "0.1.0";

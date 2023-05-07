@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.6"
+version = "1.4.7"
 edition = "2021"
 
 [dependencies]
@@ -12,19 +12,66 @@ thiserror = "1.0"
 anyhow = "1.0"
 toml = "0.7"
 serde = "1.0"
-serde_derive = "*"
-serde_json = "*"
-songbird = { version = "0.3", optional=true, features=["builtin-queue", "yt-dlp"] }
+serde_derive = "1.0"
+serde_json = "1.0"
 
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+songbird = { version = "0.3", optional=true, features = ["builtin-queue"] }
+file-lock = { version = "2.1", optional=true }
+async-walkdir = { version="0.2.0", optional=true }
+reqwest = { version = "0.11", optional = true }
+tempfile = { version = "3", optional = true }
 
 [features]
-default = ["mockingbird"]
+default = ["mockingbird-core", "mockingbird-playback", "mockingbird-ytdl", "mockingbird-mp3", "mockingbird-deemix", "mockingbird-spotify"]
+list-feature-cmd = []
 basic-cmds = []
 bookmark = []
-mockingbird = ["dep:songbird"]
-dj-room = ["mockingbird"]
-demix = ["mockingbird"]
-list-feature-cmd = []
+
+################
+# mockingbird features
+mockingbird-core = ["dep:songbird"]
+
+################
+# playback commands queue/play/stop/mute/deafen
+mockingbird-playback = ["mockingbird-core"]
+
+################
+# Setup mocking bird to "own" a channel so users
+# may just paste compatiable links into it
+mockingbird-channel = ["mockingbird-core"]
+
+################
+# mockingbird is compatiable with youtube & soundcloud
+mockingbird-ytdl = ["mockingbird-core", "songbird?/yt-dlp"]
+
+################
+# mockingbird compatiable with raw MP3 http uris
+mockingbird-mp3 = ["mockingbird-core", "dep:reqwest", "dep:tempfile"]
+
+################
+# mockingbird compatiable with deep-mixer
+mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir", "dep:tempfile" ] 
+
+################
+# mockingbird compatiable with spotify
+mockingbird-spotify = ["mockingbird-deemix"]
+
+###########
+# find similar music, and play playlists +24/7 loop
+# mockingbird-dj = ["mockingbird"]
+
+#########
+# write queue file to filesystem
+# mockingbird-shm = ["mockingbird", "dep:file-lock"]
+
+#########
+# allow downloads
+# add environment variables
+# mockingbird-export = ["mockingbird", "mockingbird-shm"]
+
 
 [package.metadata.nix]
 app = true
