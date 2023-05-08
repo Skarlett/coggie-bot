@@ -4,13 +4,13 @@ use tempfile::tempfile;
 use thiserror::Error;
 use async_walkdir::WalkDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::log::warn;
 use std::process::Stdio;
 use serenity::{
     futures::StreamExt,
     client::ClientBuilder
 };
 use serde::Serialize;
-
 
 pub struct DxConfigKey;
 impl TypeMapKey for DxConfigKey {
@@ -39,11 +39,8 @@ pub async fn deemix(
     dx: &DxConfig
 ) -> Result<PlaySource, DxError>
 {
-    // let tmpdir = tempfile::tempdir()?;
+    let tmpdir = tempfile::tempdir()?; 
     
-    let tmpdir = PathBuf::from("/tmp/try-again");
-    tokio::fs::create_dir_all("/tmp/try-again").await?;
-
     tracing::info!("RUNNING: deemix --portable -p {} {}", tmpdir.as_path().display(), uri);
     let child = tokio::process::Command::new("deemix")
         .current_dir(dx.cache.as_ref().unwrap())
@@ -66,14 +63,15 @@ pub async fn deemix(
         ).read_to_string(&mut error_buf).await?;
     }
 
-    // tracing::info!("deemix errors file: {}", error_buf);
     tracing::info!("deemix exit code: {}", out.status);
-    tracing::info!("deemix stderr: {}", String::from_utf8_lossy(&out.stderr[..]));
-    tracing::info!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
+    tracing::warn!("deemix stderr: {}", String::from_utf8_lossy(&out.stderr[..]));
+    tracing::debug!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
     
     let paths = process_dir(&tmpdir.as_path(), &dx.cache.as_ref().unwrap().join("music") ).await?;
+    tokio::fs::remove_dir_all(tmpdir).await?;
     
-    // tokio::fs::remove_dir_all(tmpdir).await?;
+    tmpdir.close()?;    
+    
     return Ok(PlaySource::FileSystem {
         errlog: error_buf, 
         ok_paths: paths,
@@ -100,8 +98,7 @@ impl DxConfig {
     }
 
     #[cfg(feature="mockingbird-spotify")]
-    pub fn with_spotify(arl: Option<String>, cache: Option<PathBuf>, spotify: DxSpotifyCfg) -> Self
-    {
+    pub fn with_spotify(arl: Option<String>, cache: Option<PathBuf>, spotify: DxSpotifyCfg) -> Self {
         Self {
             arl,
             cache,
@@ -203,8 +200,6 @@ pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
 
     tracing::info!("mockingbird-deemix Initialized");
 
-    workspace(&dx).await.unwrap();
-
     cfg.type_map_insert::<DxConfigKey>(dx)
 }
 
@@ -220,14 +215,7 @@ pub fn is_spotify(uri: &str) -> bool {
         .any(|x| uri.contains(x))
 }
 
-
-struct DxWorkspace {
-    root: PathBuf,
-    music_dir: PathBuf,
-    config: PathBuf,
-}
-
-async fn workspace(dx: &DxConfig) -> Result<DxWorkspace, DxError> {
+async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
     let conf_data = include_str!("deemix.json");
 
     if dx.arl.is_none() {
@@ -276,11 +264,7 @@ async fn workspace(dx: &DxConfig) -> Result<DxWorkspace, DxError> {
         spotify_workspace(spot_cfg, &pconfig).await?;
     }
 
-    Ok(DxWorkspace {
-        root: root.clone(),
-        music_dir: pbank,
-        config: pconfig,
-    })
+    return Ok(())
 }
 
 //#[tracing::instrument]
@@ -290,7 +274,7 @@ async fn process_dir(tmpdir: &Path, pbank: &Path) -> Result<Vec<PathBuf>, DxErro
     let mut entries = WalkDir::new(tmpdir);
     let mut data: Vec<(u32, async_walkdir::DirEntry)> = Vec::new();
     let mut ret = Vec::new();
-    let mut n: u32 = 1;
+    let mut match_tn: u32 = 1;
 
     while let Some(x) = entries.next().await {
         match x {
@@ -302,23 +286,19 @@ async fn process_dir(tmpdir: &Path, pbank: &Path) -> Result<Vec<PathBuf>, DxErro
 
                 let tn = match track_num {
                     Ok(tn) => {
-                        if n != tn {
-                            tracing::warn!("Track number mismatch: {} != {}", n, tn);
-                            n += 1;
-                            n
+                        if match_tn != tn {
+                            match_tn = tn;
                         }
-                        else { 
-                            tn + n            
-                        }
-                    },
-                    Err(e) => {
-                        tracing::error!("No Track number, assuming: {}", n);
-                        n += 1;
-                        n-1
+                        tn
+                    }
+                    Err(_) => {
+                        tracing::warn!("Failed to parse track number. Assuming value {}", match_tn);
+                        match_tn
                     }
                 };
                 
-                data.push((n, entry));
+                matched_tn += 1;
+                data.push((tn, entry));
             },
             Err(e) => tracing::error!("Error: {}", e)
         }
