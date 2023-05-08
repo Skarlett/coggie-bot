@@ -1,6 +1,4 @@
 mod controllers;
-mod pkglib;
-mod config;
 use std::env;
 
 //
@@ -83,8 +81,6 @@ struct CLI {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>
 {
-    let conf = config::Configuration::default();
-
     let cli = CLI::from_args();
     if cli.version {
         println!("{VERSION}");

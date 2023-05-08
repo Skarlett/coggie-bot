@@ -41,11 +41,11 @@ pub async fn deemix(
 {
     let tmpdir = tempfile::tempdir()?; 
     
-    tracing::info!("RUNNING: deemix --portable -p {} {}", tmpdir.as_path().display(), uri);
+    tracing::info!("RUNNING: deemix --portable -p {} {}", tmpdir.path().display(), uri);
     let child = tokio::process::Command::new("deemix")
         .current_dir(dx.cache.as_ref().unwrap())
         .arg("--portable")
-        .arg("-p").arg(&tmpdir.as_path())
+        .arg("-p").arg(&tmpdir.path())
         .arg(uri)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -56,7 +56,7 @@ pub async fn deemix(
     let out = child.wait_with_output().await?;
     let mut error_buf = String::new();
    
-    let error_file = tmpdir.as_path().join("errors.txt");
+    let error_file = tmpdir.path().join("errors.txt");
     if error_file.exists() {
         tokio::io::BufReader::new(
             tokio::fs::File::open(error_file).await?
@@ -67,8 +67,8 @@ pub async fn deemix(
     tracing::warn!("deemix stderr: {}", String::from_utf8_lossy(&out.stderr[..]));
     tracing::debug!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
     
-    let paths = process_dir(&tmpdir.as_path(), &dx.cache.as_ref().unwrap().join("music") ).await?;
-    tokio::fs::remove_dir_all(tmpdir).await?;
+    let paths = process_dir(&tmpdir.path(), &dx.cache.as_ref().unwrap().join("music") ).await?;
+    tokio::fs::remove_dir_all(&tmpdir).await?;
     
     tmpdir.close()?;    
     
@@ -297,7 +297,7 @@ async fn process_dir(tmpdir: &Path, pbank: &Path) -> Result<Vec<PathBuf>, DxErro
                     }
                 };
                 
-                matched_tn += 1;
+                match_tn += 1;
                 data.push((tn, entry));
             },
             Err(e) => tracing::error!("Error: {}", e)
@@ -371,6 +371,23 @@ pub async fn spotify_workspace(spotify: &DxSpotifyCfg, pconfig: &PathBuf) -> std
 fn track_number(name: &str) -> Result<u32, std::num::ParseIntError> {
     name.split(" - ").collect::<Vec<&str>>().get(0).unwrap().parse::<u32>()
 }
+
+
+// struct HardDelete(Option<PathBuf>);
+
+// #[async_trait::async_trait]
+// impl VoiceEventHandler for TrackEndNotifier {
+//     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+
+//         if let EventContext::Track((a, track_list)) = ctx {
+//             if let Some(path) = self.fs {
+//                 tokio::fs::remove_file(path).await.unwrap();
+//             }
+//         }
+
+//         None
+//     }
+// }
 
 
 #[cfg(test)]

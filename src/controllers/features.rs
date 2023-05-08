@@ -1,4 +1,4 @@
-use crate::{REPO, pkglib::{CoggiebotError}};
+use crate::REPO;
 use serenity::model::prelude::Message;
 use serenity::framework::standard::{
     macros::{command, group},
