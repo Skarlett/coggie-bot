@@ -182,9 +182,13 @@ let
 
           {
             name = "mockingbird-deemix";
-            pkg-override = (prev: {
+            pkg-override = (prev: rec {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
               nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
+              postInstall = prev.postInstall + ''
+                wrapProgram $out/bin/coggiebot \
+                   --prefix PATH : ${lib.makeBinPath buildInputs}
+              '';
             });
 
             dependencies = [ "mockingbird" ];

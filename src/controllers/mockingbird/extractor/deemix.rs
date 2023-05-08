@@ -32,6 +32,19 @@ pub enum DxError {
     BadCacheDir,
 }
 
+pub fn is_deemix(uri: &str) -> bool {
+    ["deezer.com", "deezer.page.link"]
+        .iter()
+        .any(|x| uri.contains(x))
+}
+
+pub fn is_spotify(uri: &str) -> bool {
+    ["spotify.com", "open.spotify"]
+        .iter()
+        .any(|x| uri.contains(x))
+}
+
+
 // #[tracing::instrument]
 pub async fn deemix(
     uri: &str,
@@ -41,7 +54,7 @@ pub async fn deemix(
 {
     let tmpdir = tempfile::tempdir()?; 
     
-    tracing::info!("RUNNING: deemix --portable -p {} {}", tmpdir.path().display(), uri);
+    tracing::info!("RUNNING: deemix --portable -p {} {}", &tmpdir.path().display(), uri);
     let child = tokio::process::Command::new("deemix")
         .current_dir(dx.cache.as_ref().unwrap())
         .arg("--portable")
@@ -68,9 +81,8 @@ pub async fn deemix(
     tracing::debug!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
     
     let paths = process_dir(&tmpdir.path(), &dx.cache.as_ref().unwrap().join("music") ).await?;
-    tokio::fs::remove_dir_all(&tmpdir).await?;
+    // tokio::fs::remove_dir_all(&tmpdir).await?;
     
-    tmpdir.close()?;    
     
     return Ok(PlaySource::FileSystem {
         errlog: error_buf, 
@@ -96,16 +108,7 @@ impl DxConfig {
             spotify: None,
         }
     }
-
-    #[cfg(feature="mockingbird-spotify")]
-    pub fn with_spotify(arl: Option<String>, cache: Option<PathBuf>, spotify: DxSpotifyCfg) -> Self {
-        Self {
-            arl,
-            cache,
-            spotify: Some(spotify)
-        }
-    }
-
+ 
     pub async fn init_cache(&self) -> Result<(), DxError> {
         if self.cache.is_none() {
             return Err(DxError::BadCacheDir);
@@ -161,10 +164,10 @@ pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
     #[allow(unused_mut)]
     let mut dx = DxConfig::new(
         env::var("DEEMIX_ARL").ok(),
-        dbg!(match dbg!(env::var("DEEMIX_CACHE")) {
+        match env::var("DEEMIX_CACHE") {
                 Ok(s) => Some(PathBuf::from(s)),
                 Err(e) => None,
-            })       
+        }       
     );
 
     tracing::debug!("INIT DEEMIX-CONFIG: {:?}", dx);
@@ -201,18 +204,6 @@ pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("mockingbird-deemix Initialized");
 
     cfg.type_map_insert::<DxConfigKey>(dx)
-}
-
-pub fn is_deemix(uri: &str) -> bool {
-    ["deezer.com", "deezer.page.link"]
-        .iter()
-        .any(|x| uri.contains(x))
-}
-
-pub fn is_spotify(uri: &str) -> bool {
-    ["spotify.com", "open.spotify"]
-        .iter()
-        .any(|x| uri.contains(x))
 }
 
 async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
@@ -378,13 +369,11 @@ fn track_number(name: &str) -> Result<u32, std::num::ParseIntError> {
 // #[async_trait::async_trait]
 // impl VoiceEventHandler for TrackEndNotifier {
 //     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-
 //         if let EventContext::Track((a, track_list)) = ctx {
 //             if let Some(path) = self.fs {
 //                 tokio::fs::remove_file(path).await.unwrap();
 //             }
 //         }
-
 //         None
 //     }
 // }

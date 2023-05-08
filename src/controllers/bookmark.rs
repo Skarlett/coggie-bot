@@ -6,7 +6,7 @@ use serenity::model::{
     Timestamp,
 };
 use serenity::framework::standard::{
-    Args, CommandResult, macros::{command, group},
+    CommandResult,
 };
 
 
@@ -98,8 +98,7 @@ pub async fn bookmark_on_react_add(ctx: &Context, ev: &Reaction) -> CommandResul
                     build_embed(&msg, b, ev);
                     build_message_reply(&msg, b)
                 })
-                .await
-                .unwrap();
+                .await?;
         }
     }
     return Ok(());

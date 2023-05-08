@@ -1,5 +1,4 @@
-pub use deemix::{DxConfig, DxConfigKey, DxError};
-pub use mp3::Mp3Error;
+
 
 use thiserror::Error;
 use std::path::PathBuf;
@@ -9,11 +8,17 @@ use songbird::input::Restartable;
 #[cfg(feature="mockingbird-deemix")]
 mod deemix;
 
+#[cfg(feature="mockingbird-deemix")]
+pub use deemix::{DxConfig, DxConfigKey, DxError};
+
 #[cfg(feature="mockingbird-ytdl")]
 mod ytdl;
 
 #[cfg(feature="mockingbird-mp3")]
+pub use mp3::Mp3Error;
+#[cfg(feature="mockingbird-mp3")]
 mod mp3;
+
 
 #[derive(Debug, Error)]
 pub enum SourceErrors {
@@ -23,9 +28,11 @@ pub enum SourceErrors {
     #[error("failed to create temporary directory")]
     MkTmpFailed(#[from] std::io::Error),
 
+    #[cfg(feature="mockingbird-mp3")]
     #[error("mp3 error")]
     Mp3Error(#[from] mp3::Mp3Error),
 
+    #[cfg(feature="mockingbird-deemix")]
     #[error("deemix error")]
     DeemixError(#[from] deemix::DxError)
 }
@@ -47,8 +54,14 @@ impl PlaySource
             PlaySource::FileSystem { errlog, ok_paths } => {
                 let mut restartables = Vec::new();
                 for path in ok_paths {
-                    let restartable = Restartable::ffmpeg(path, true).await.unwrap();
-                    restartables.push(restartable);
+                    match Restartable::ffmpeg(path.clone(), true).await
+                    {
+                        Ok(x) => restartables.push(x.into()),
+                        Err(e) => {
+                            tracing::error!("failed to create restartable for {}: {}", path.display(), e);
+                            tracing::error!("error log: {}", errlog);
+                        }
+                    }
                 }
                 restartables
             }
