@@ -38,6 +38,8 @@
           coggiebot-next = cogpkgs.mkCoggiebot {
             features-list = features ++ (with cogpkgs.features; [
               basic-cmds
+              bookmark
+              list-feature-cmd
               mockingbird
               mockingbird-ytdl
               mockingbird-deemix

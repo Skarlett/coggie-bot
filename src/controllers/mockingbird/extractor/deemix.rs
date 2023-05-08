@@ -71,7 +71,7 @@ pub async fn deemix(
     tracing::info!("deemix stderr: {}", String::from_utf8_lossy(&out.stderr[..]));
     tracing::info!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
     
-    let paths = process_dir(&tmpdir.as_path(), dx.cache.as_ref().unwrap()).await?;
+    let paths = process_dir(&tmpdir.as_path(), &dx.cache.as_ref().unwrap().join("music") ).await?;
     
     // tokio::fs::remove_dir_all(tmpdir).await?;
     return Ok(PlaySource::FileSystem {
@@ -283,7 +283,7 @@ async fn workspace(dx: &DxConfig) -> Result<DxWorkspace, DxError> {
     })
 }
 
-#[tracing::instrument]
+//#[tracing::instrument]
 async fn process_dir(tmpdir: &Path, pbank: &Path) -> Result<Vec<PathBuf>, DxError>
 {
     tracing::info!("Processing deemix output directory: {}", tmpdir.display());
@@ -300,21 +300,23 @@ async fn process_dir(tmpdir: &Path, pbank: &Path) -> Result<Vec<PathBuf>, DxErro
                     entry.file_name().to_str().unwrap()
                 );
 
-                match track_num {
+                let tn = match track_num {
                     Ok(tn) => {
                         if n != tn {
                             tracing::warn!("Track number mismatch: {} != {}", n, tn);
                             n += 1;
-                            return n-1;
+                            n
                         }
-
+                        else { 
+                            tn + n            
+                        }
                     },
                     Err(e) => {
                         tracing::error!("No Track number, assuming: {}", n);
                         n += 1;
-                        return n-1;
+                        n-1
                     }
-                }
+                };
                 
                 data.push((n, entry));
             },
@@ -352,7 +354,6 @@ pub struct DxSpotifyCfg {
 }
 
 impl DxSpotifyCfg {
-
     #[allow(non_snake_case)]
     pub fn new(clientId: String, clientSecret: String) -> Self {
         Self {

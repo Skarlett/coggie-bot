@@ -30,7 +30,7 @@ mod tests {
     #[test]
     fn path_ffmpeg() {
         let paths = var("PATH").unwrap();
-        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() > 1);
+        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() >= 1);
     }
 
     #[cfg(feature="mockingbird-ytdl")]

@@ -25,7 +25,7 @@ reqwest = { version = "0.11", optional = true }
 tempfile = { version = "3", optional = true }
 
 [features]
-default = ["mockingbird-core", "mockingbird-playback", "mockingbird-ytdl", "mockingbird-mp3", "mockingbird-deemix", "mockingbird-spotify"]
+default = ["list-feature-cmd", "mockingbird-core", "mockingbird-playback", "mockingbird-ytdl", "mockingbird-mp3", "mockingbird-deemix", "mockingbird-spotify"]
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []

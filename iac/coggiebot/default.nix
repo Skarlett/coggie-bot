@@ -59,7 +59,12 @@ let
       recursiveMerge (
         (lib.foldl (s: x: s ++ [(genericFeature x)]) []
         [
-          { name = "list-feature-cmd"; }
+          { 
+            name = "list-feature-cmd";
+            pkg-override = (prev: {
+              COGGIEBOT_FEATURES = lib.concatStringsSep "," (map (x: "${x.featureName}=${if x.enabled then "1" else "0"}") prev.passthru.available-features);
+            });  
+          }
           { name = "basic-cmds";
             commands = [
               mkCommand {
@@ -254,14 +259,17 @@ let
 
   all-features-list = lib.mapAttrsToList (_: v: v) features;
 
+  which-features-list' = l:
+    lib.foldl (s: f:
+      s
+      ++ [({enabled = lib.lists.any (x: x == f) l;} // f)])
+      [] all-features-list;
+
   # create a list of all features, add a boolean field (enabled) to signify
   # if coggiebot has that feature enable add a new field named `enabled `and set it to
   # 1 for enabled, and 0 for disabled
   which-features-list = coggiebot:
-    lib.foldl (s: f:
-      s
-      ++ [({enabled = lib.lists.any (x: x == f) coggiebot.passthru.features-list;} // f)])
-      [] all-features-list;
+     which-features-list' coggiebot.passthru.features-list;
 
   coggiebot-default-args = features-list: {
     name = "coggiebot";
@@ -275,6 +283,8 @@ let
     postInstall = "";
     passthru = {
       inherit features-list meta;
+      available-features = which-features-list' features-list;
+      
       hasFeature = feat: builtins.elem feat features-list;
     };
   };

@@ -9,7 +9,7 @@ pub mod mockingbird;
 #[path = "basic.rs"]
 mod basic;
 
-#[cfg(feature = "basic-cmds")]
+#[cfg(feature = "list-feature-cmd")]
 #[path = "features.rs"]
 pub mod features;
 
@@ -39,7 +39,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["mockingbird"] => [mockingbird::MOCKINGBIRD_GROUP],
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
-            ["list-feature-cmds"] => [features::LIST_FEATURE_CMDS_GROUP],
+            ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird-core", "mockingbird-playback"] => [mockingbird::controller::DEEMIX_GROUP]
         }
