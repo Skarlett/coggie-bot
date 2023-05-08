@@ -17,9 +17,9 @@ pub mod features;
 #[path = "prerelease.rs"]
 pub mod prerelease;
 
+use serenity::async_trait;
 use serenity::model::prelude::Message;
 use serenity::{framework::StandardFramework, client::ClientBuilder};
-use serenity::async_trait;
 use serenity::model::{channel::Reaction, gateway::Ready};
 use serenity::prelude::*;
 

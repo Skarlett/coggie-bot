@@ -1,12 +1,21 @@
+use songbird::{
+    EventHandler as VoiceEventHandler,
+    EventContext,
+    TrackEvent,
+    Event as VCEvent,
+    input,
+    tracks::create_player
+};
 use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, Args,
 };
-
+use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
 
-use super::extractor::{play_source, DxConfigKey, DxConfig};
+use super::extractor::{play_source, DxConfigKey, DxConfig, PlaySource};
+use std::path::PathBuf;
 
 #[group]
 #[commands(
@@ -160,6 +169,21 @@ async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+struct HardDelete(Option<PathBuf>);
+
+#[async_trait]
+impl VoiceEventHandler for HardDelete {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
+        if let EventContext::Track(&[(a, track_list)]) = ctx {
+            if let Some(ref path) = self.0 {
+                tracing::info!("Deleting {:?}", path);
+                tokio::fs::remove_file(path).await.unwrap();
+            }
+        }
+        None
+    }
+}
+
 #[command]
 #[aliases("play")]
 #[only_in(guilds)]
@@ -202,9 +226,37 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         let dx_lock = ctx.data.read().await;
         let dxc: &DxConfig = dx_lock.get::<DxConfigKey>().unwrap();
 
-        for track in play_source(&url, dxc).await.unwrap().to_restartable().await {
-            handler.enqueue_source(track.into());
-        };
+        match play_source(&url, dxc).await.unwrap() {
+            PlaySource::Ytdl { uri } => {
+                let input = input::ytdl(&uri).await.unwrap();              
+                handler.enqueue_source(input.into());
+            }
+
+            PlaySource::FileSystem { errlog, ok_paths } => {
+                for fp in ok_paths {
+                    match input::ffmpeg(&fp).await
+                    {
+                        Ok(input) => {
+
+                            let (track, track_handle) = create_player(input);
+                            
+                            #[cfg(feature="mockingbird-hard-cleanfs")]
+                            track_handle.add_event(
+                                VCEvent::Track(TrackEvent::End),
+                                HardDelete(Some(fp))
+                            );
+                            handler.enqueue(track);
+                        },
+                        
+                        Err(e) => {
+                            tokio::fs::remove_file(&fp).await.unwrap();
+                            continue;
+                        }
+                    }
+                }                
+            }
+        } 
+
         check_msg(
             msg.channel_id
                 .say(

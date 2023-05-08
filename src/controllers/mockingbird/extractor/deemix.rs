@@ -364,21 +364,6 @@ fn track_number(name: &str) -> Result<u32, std::num::ParseIntError> {
 }
 
 
-// struct HardDelete(Option<PathBuf>);
-
-// #[async_trait::async_trait]
-// impl VoiceEventHandler for TrackEndNotifier {
-//     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-//         if let EventContext::Track((a, track_list)) = ctx {
-//             if let Some(path) = self.fs {
-//                 tokio::fs::remove_file(path).await.unwrap();
-//             }
-//         }
-//         None
-//     }
-// }
-
-
 #[cfg(test)]
 mod tests {
     use tempfile::tempfile;
