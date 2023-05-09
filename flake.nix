@@ -46,8 +46,11 @@
               mockingbird-mp3
               mockingbird-playback
               mockingbird-spotify
+              mockingbird-hard-cleanfs
             ]);
           };
+
+          migrate = {}; 
 
           config = {
             prefixes = [];

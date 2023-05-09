@@ -179,6 +179,9 @@ let
               };
             }];
           }
+          { name = "mockingbird-hard-cleanfs";
+            dependencies = ["mockingbird-playback"];
+          }
 
           {
             name = "mockingbird-deemix";

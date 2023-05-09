@@ -4,7 +4,7 @@ use songbird::{
     TrackEvent,
     Event as VCEvent,
     input,
-    tracks::create_player
+    tracks::{create_player, TrackHandle}
 };
 use serenity::framework::standard::{
     macros::{command, group},
@@ -16,7 +16,9 @@ use serenity::prelude::*;
 
 use super::extractor::{play_source, DxConfigKey, DxConfig, PlaySource};
 use std::path::PathBuf;
-
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::time::Duration;
+use std::io::SeekFrom as Seek;
 #[group]
 #[commands(
     deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
@@ -170,7 +172,6 @@ async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 struct HardDelete(Option<PathBuf>);
-
 #[async_trait]
 impl VoiceEventHandler for HardDelete {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
@@ -183,6 +184,46 @@ impl VoiceEventHandler for HardDelete {
         None
     }
 }
+
+// struct FadeOver { 
+//     next: TrackHandle,
+//     next_playing: Arc<AtomicUsize>,
+//     songbird: Arc<Mutex<Call>>
+// }
+
+// #[async_trait]
+// impl VoiceEventHandler for FadeOver {
+//     async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
+//         if let EventContext::Track(&[(state, track)]) = ctx {
+//             let first = self.next_playing.fetch_add(1, Ordering::Relaxed); 
+//             if first == 0 {
+//                 let handler = self.songbird.lock().await?;
+//                 let mut handler = self.songbird.get(self.next.guild_id).unwrap().lock().await;
+
+//                 self.next.make_playable();
+//                 self.next.seek_time(Duration::from_secs(0));
+                
+                
+//                 tracing::info!("Playing next track");
+//             }
+
+//             if state.volume < 0.2 {
+//                 tracing::info!("Track volume is low, cancelling");
+//                 track.stop();
+//                 self.songbird.lock().await?;
+//                 handler.play(self.next);
+//                 self.next.set_volume(1.0);
+//                 self.next.seek_time(Duration::from_secs(9));
+//                 return Some(VCEvent::Cancel)
+//             }
+//             else {
+//                 track.set_volume(state.volume - 0.1);
+//                 self.next.set_volume(1.0 - state.volume);
+//             }
+//         }
+//         None
+//     }
+// }
 
 #[command]
 #[aliases("play")]
@@ -237,9 +278,17 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     match input::ffmpeg(&fp).await
                     {
                         Ok(input) => {
-
                             let (track, track_handle) = create_player(input);
                             
+                            // if let Some(x) = handler.queue().current_queue().first() {
+                            //     track_handle.add_event(
+                            //         VCEvent::Periodic(Duration::from_secs(1), Some(track_handle.metadata().duration.unwrap() - Duration::from_secs(5))),
+                            //         FadeOver {
+                            //             next: x.clone(),
+                            //             next_playing: Arc::new(AtomicUsize::new(0)),
+                            //         }
+                            //     );
+                            // }
                             #[cfg(feature="mockingbird-hard-cleanfs")]
                             track_handle.add_event(
                                 VCEvent::Track(TrackEvent::End),

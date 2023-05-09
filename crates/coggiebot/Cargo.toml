@@ -59,6 +59,11 @@ mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir", "dep:tempfile" ]
 # mockingbird compatiable with spotify
 mockingbird-spotify = ["mockingbird-deemix"]
 
+################
+# adds capability to clean up files from the system after
+# they've been streamed to discord
+mockingbird-hard-cleanfs = ["mockingbird-playback"]
+
 ###########
 # find similar music, and play playlists +24/7 loop
 # mockingbird-dj = ["mockingbird"]
