@@ -31,7 +31,7 @@ use serenity::http::Http;
 use serenity::prelude::*;
 use structopt::StructOpt;
 
-pub const LICENSE:  &'static str = include_str!("../../../LICENSE");
+pub const LICENSE:  &'static str = include_str!("../LICENSE");
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 // TODO: FIXME: use env!("ORIGIN_REPOSITORY") instead of hardcoding the repo

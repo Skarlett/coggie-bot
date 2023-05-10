@@ -284,7 +284,7 @@ let
     buildInputs = [];
 
     REV=(self.rev or "canary");
-    src = ../../.;
+    src = ../../crates/coggiebot;
     doCheck = true;
 
     postInstall = "";
