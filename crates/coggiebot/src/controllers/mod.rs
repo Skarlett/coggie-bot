@@ -2,14 +2,14 @@
 #[path = "bookmark.rs"]
 mod bookmark;
 
-#[cfg(feature = "mockingbird")]
+#[cfg(feature = "mockingbird-core")]
 pub mod mockingbird;
 
 #[cfg(feature = "basic-cmds")]
 #[path = "basic.rs"]
 mod basic;
 
-#[cfg(feature = "basic-cmds")]
+#[cfg(feature = "list-feature-cmd")]
 #[path = "features.rs"]
 pub mod features;
 
@@ -17,9 +17,9 @@ pub mod features;
 #[path = "prerelease.rs"]
 pub mod prerelease;
 
+use serenity::async_trait;
 use serenity::model::prelude::Message;
 use serenity::{framework::StandardFramework, client::ClientBuilder};
-use serenity::async_trait;
 use serenity::model::{channel::Reaction, gateway::Ready};
 use serenity::prelude::*;
 
@@ -39,32 +39,28 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["mockingbird"] => [mockingbird::MOCKINGBIRD_GROUP],
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
-            ["list-feature-cmds"] => [features::LIST_FEATURE_CMDS_GROUP],
+            ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
-            ["mockingbird", "demix"] => [mockingbird::DEMIX_GROUP]
+            ["mockingbird-core", "mockingbird-playback"] => [mockingbird::controller::DEEMIX_GROUP]
         }
     );
     cfg
 }
 
 #[allow(unused_mut)]
-pub fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
-    #[cfg(feature = "mockingbird")]
+pub async fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
+    #[cfg(feature = "mockingbird-core")]
     {
         use songbird::SerenityInit;
+        use mockingbird::init as mockingbird_init;
         cfg = cfg.register_songbird();
-
-        #[cfg(feature = "demix")]
-        {
-            use mockingbird::demix::{Demix, ArlToken};
-            cfg = cfg.type_map_insert::<ArlToken>(String::from(arl));
-        }
+        cfg = mockingbird_init(cfg).await;
     }
-
     cfg
 }
 
 pub struct EvHandler;
+
 #[async_trait]
 impl EventHandler for EvHandler {
 
@@ -82,7 +78,7 @@ impl EventHandler for EvHandler {
 
     #[allow(unused_variables)]
     async fn message(&self, ctx: Context, msg: Message) {
-        #[cfg(feature="enable-dj-room")]
+        #[cfg(feature="mockingbird-channel")]
         tokio::spawn(async move {
             const DJ_CHANNEL: u64 = 960044319476179055;
             let bot_id = ctx.cache.current_user_id().0;

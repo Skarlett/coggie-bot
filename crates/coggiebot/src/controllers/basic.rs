@@ -1,6 +1,5 @@
 use crate::{
     get_rev, VERSION, REPO,
-    pkglib::{CoggiebotError}
 };
 
 use serenity::framework::standard::{

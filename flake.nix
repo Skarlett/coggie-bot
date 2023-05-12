@@ -1,5 +1,4 @@
 {
-
   description = "Open source discord utility bot";
   inputs = {
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
@@ -35,6 +34,23 @@
           coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = features;
           };
+
+          coggiebot-next = cogpkgs.mkCoggiebot {
+            features-list = features ++ (with cogpkgs.features; [
+              basic-cmds
+              bookmark
+              list-feature-cmd
+              mockingbird
+              mockingbird-ytdl
+              mockingbird-deemix
+              mockingbird-mp3
+              mockingbird-playback
+              mockingbird-spotify
+              mockingbird-hard-cleanfs
+            ]);
+          };
+
+          migrate = {}; 
 
           config = {
             prefixes = [];
@@ -73,8 +89,9 @@
                 chmod +x $out/bin/$name
               '';
             };
+          non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };
 
-          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
+          vanilla-linux = non-nixos {
             inherit installDir;
             coggiebot = coggiebot-stable;
             repo = {
@@ -82,18 +99,6 @@
               owner = "skarlett";
               branch = "master";
               deploy = "deploy";
-            };
-          };
-
-          deploy-dummy = hash: (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
-            inherit installDir;
-            update-heartbeat = "2sec";
-            coggiebot = (coggiebot-dummy hash);
-            repo = {
-              name = "coggie-bot";
-              owner = "skarlett";
-              branch = "better-ci";
-              deploy = "deploy-workflow-ci-stage-2";
             };
           };
 
@@ -105,21 +110,44 @@
               features-list = with cogpkgs.features;
                 [ mockingbird ];
             };
+
+          cictl = pkgs.callPackage ./sbin/cachectl {
+            inherit installDir non-nixos;
+            caches = [
+              { cachix = true;
+                url = "https://coggiebot.cachix.org";
+                uid = "coggiebot";
+              }
+            ];
+            packages = [{
+              ns = "coggiebot-stable";
+              drv=packages.coggiebot-stable;
+            }];
+          };
         in
           (if (lib.lists.elem cogpkgs.features.pre-release features)
             then { packages.coggiebot-pre-release = coggiebot-pre-release; }
            else {} //
 
         rec {
-          packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
-          packages.deploy-workflow-ci-stage-2 = (deploy-dummy (self.rev or "canary")).deploy;
-          # packages.systemd = vanilla-linux.systemd;
-          # packages.ci-deploy-stage-1 = deploy-workflow-ci.deploy;
-          # packages.ci-deploy-stage-2 = deploy-workflow-ci.update;
+          # packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
+          # packages.deploy-workflow-ci-stage-2 = (deploy-dummy (self.rev or "canary")).deploy;
+          # packages.cictl-cachix-upload = cictl.upload-;
 
+          packages.deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
+            inherit (pkgs.python39.pkgs) buildPythonApplication;
+          };
+
+          packages.cleanup-downloads = pkgs.callPackage ./sbin/cleanup-dl {
+            perlPackages = pkgs.perl534Packages;
+          };
+
+          packages.deploy = vanilla-linux;
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
-          packages.deploy = vanilla-linux.deploy;
+          packages.coggiebot-next = coggiebot-next;
+
+          packages.coggiebot = coggiebot-stable;
         }))) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
@@ -169,29 +197,25 @@
           };
         };
 
-      checks = flake-utils.lib.eachDefaultSystem (system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-          tests = pkgs.callPackage (nixpkgs + "/nixos/lib/testing-python.nix") {};
-        in
-        {
-          vmTest = tests.makeTest {
-            nodes = {
-
-              client = { ... }: {
-                imports = [ ];
-              };
-            };
-
-            testScript =
-              ''
-                start_all()
-                client.wait_for_unit("multi-user.target")
-                assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
-              '';
-            };
-        });
-
-
+      # checks = flake-utils.lib.eachDefaultSystem (system:
+      #   let
+      #     pkgs = import nixpkgs { inherit system; };
+      #     tests = pkgs.callPackage (nixpkgs + "/nixos/lib/testing-python.nix") {};
+      #   in
+      #   {
+      #     vmTest = tests.makeTest {
+      #       nodes = {
+      #         client = { ... }: {
+      #           imports = [ ];
+      #         };
+      #       };
+      #       testScript =
+      #         ''
+      #           start_all()
+      #           client.wait_for_unit("multi-user.target")
+      #           assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
+      #         '';
+      #       };
+      #   });
     };
 }
