@@ -12,3 +12,16 @@ pub fn is_ytdl(uri: &str) -> bool {
 pub async fn ytdl(uri: String) -> Result<Restartable, songbird::input::error::Error> {
     Restartable::ytdl(uri, true).await
 }
+
+#[cfg(tests)]
+mod tests {
+    use std::env::var;
+    use std::path::PathBuf;
+
+    #[test]
+    #[cfg(feature="mockingbird-ytdl")]
+    fn path_ytdl() {
+        let paths = var("PATH").unwrap();
+        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("yt-dlp").exists()).count() == 1);
+    }
+}

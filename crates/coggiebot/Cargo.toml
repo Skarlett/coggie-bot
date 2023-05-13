@@ -32,7 +32,7 @@ bookmark = []
 
 ################
 # mockingbird features
-mockingbird-core = ["dep:songbird"]
+mockingbird-core = ["dep:songbird", "dep:tempfile"]
 
 ################
 # playback commands queue/play/stop/mute/deafen
@@ -49,11 +49,11 @@ mockingbird-ytdl = ["mockingbird-core", "songbird?/yt-dlp"]
 
 ################
 # mockingbird compatiable with raw MP3 http uris
-mockingbird-mp3 = ["mockingbird-core", "dep:reqwest", "dep:tempfile"]
+mockingbird-mp3 = ["mockingbird-core", "dep:reqwest"]
 
 ################
 # mockingbird compatiable with deep-mixer
-mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir", "dep:tempfile" ] 
+mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir", ]
 
 ################
 # mockingbird compatiable with spotify

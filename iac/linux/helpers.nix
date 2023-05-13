@@ -5,7 +5,6 @@
   , hasFeature
   , coggiebotd
   , features
-  , coggiebotd-update-timer
   , auto-update
 }:
 let
@@ -20,13 +19,11 @@ let
       #!/bin/sh
       systemctl ${cmd} ${coggiebotd.name}
       ${
-        lib.optional
-          hasFeature features.auto-update
-          "systemctl ${cmd} ${
+        "systemctl ${cmd} ${
             if usePath then
-              "${coggiebotd-update-timer.outPath}/etc/${coggiebotd-update-timer.name}"
+              "${auto-update.coggiebotd-update-timer.outPath}/etc/${auto-update.coggiebotd-update-timer.name}"
             else
-              coggiebotd-update-timer.name
+              auto-update.coggiebotd-update-timer.name
           }"
       }
       EOF
@@ -37,10 +34,9 @@ let
       pkgs.coreutils
       coggiebotd
     ]
-    ++ lib.optional (hasFeature features.auto-update)
-      (with auto-update; [
+      ++ (with auto-update; [
         coggiebotd-update
-        coggiebotd-update-timer
+        auto-update.coggiebotd-update-timer
       ]);
 
     PATH = lib.makeBinPath nativeBuildInputs;

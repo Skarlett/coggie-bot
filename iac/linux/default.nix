@@ -22,42 +22,48 @@ let
       update-heartbeat;
   };
 
-  systemd = pkgs.callPackage ./systemd.nix (base-imports // { inherit features hasFeature; }) ;
+  systemd = pkgs.callPackage ./systemd.nix (base-imports // {  }) ;
 
   auto-update = pkgs.callPackage ./auto-update
     (base-imports // {
       inherit buildFromSrc;
       inherit (systemd) coggiebotd;
      }
+
     );
 
   helpers = pkgs.callPackage ./helpers.nix {
-    inherit (auto-update) coggiebotd-update-timer updater;
     inherit (systemd) coggiebotd;
     inherit features
-        auto-update
         hasFeature
+        auto-update
     ;
   };
 in
-
   buildEnv {
     name = "coggiebot-deployment";
     paths = [
       coggiebot
       systemd.starter
       systemd.coggiebotd
+      auto-update.updater
+      auto-update.migrate
+      helpers.systemd-restart
+      helpers.systemd-start
+      helpers.systemd-stop
+      helpers.systemd-status
+      helpers.systemd-enable
+      helpers.systemd-disable
     ]
+      # ++(builtins.attrValues auto-update);
 
-    ++ lib.optional
-      (hasFeature features.systemd-helpers)
-      (builtins.attrValues helpers)
+    # ++ lib.optional
+    #   (hasFeature features.systemd-helpers)
 
-    ++ lib.optional
-      (hasFeature features.auto-update)
-      (builtins.attrValues auto-update)
+    # ++ lib.optional
+    #   (hasFeature features.auto-update)
 
-    ++ lib.optional
-      (hasFeature features.systemd-integration-tests)
-      [];
+    # ++ lib.optional
+    #   [];
+      ;
   }

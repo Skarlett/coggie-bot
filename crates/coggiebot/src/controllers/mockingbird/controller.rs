@@ -10,20 +10,28 @@ use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, Args,
 };
+
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
 
-use super::extractor::{play_source, DxConfigKey, DxConfig, PlaySource};
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use std::time::Duration;
 use std::io::SeekFrom as Seek;
+
+use super::extractor::{play_source, PlaySource};
+
+#[cfg(feature="mockingbird-deemix")]
+use super::extractor::{DxConfigKey, DxConfig};
+
+
 #[group]
 #[commands(
     deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
 struct Deemix;
+
 
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
@@ -264,10 +272,17 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let dx_lock = ctx.data.read().await;
-        let dxc: &DxConfig = dx_lock.get::<DxConfigKey>().unwrap();
+        let req = super::extractor::PlayRequest {
+            uri: &url,
+            #[cfg(feature = "mockingbird-deemix")]
+            dx: {
+                let dx_lock = ctx.data.read().await;
+                let dxc: DxConfig = dx_lock.get::<DxConfigKey>().unwrap().clone();
+                dxc
+            }
+        };
 
-        match play_source(&url, dxc).await.unwrap() {
+        match play_source(req).await.unwrap() {
             PlaySource::Ytdl { uri } => {
                 let input = input::ytdl(&uri).await.unwrap();              
                 handler.enqueue_source(input.into());

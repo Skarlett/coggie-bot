@@ -113,6 +113,7 @@
 
           cictl = pkgs.callPackage ./sbin/cachectl {
             inherit installDir non-nixos;
+            flakeUri = "github:skarlett/coggie-bot";
             caches = [
               { cachix = true;
                 url = "https://coggiebot.cachix.org";
@@ -121,7 +122,7 @@
             ];
             packages = [{
               ns = "coggiebot-stable";
-              drv=packages.coggiebot-stable;
+              drv = coggiebot-stable;
             }];
           };
         in
@@ -132,7 +133,7 @@
         rec {
           # packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
           # packages.deploy-workflow-ci-stage-2 = (deploy-dummy (self.rev or "canary")).deploy;
-          # packages.cictl-cachix-upload = cictl.upload-;
+          packages.check-cache = cictl.check;
 
           packages.deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
             inherit (pkgs.python39.pkgs) buildPythonApplication;

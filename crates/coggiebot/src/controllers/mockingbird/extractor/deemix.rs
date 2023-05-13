@@ -376,3 +376,17 @@ mod tests {
         assert!(is_spotify(uri));
     }
 }
+
+
+#[cfg(tests)]
+mod tests {
+    use std::env::var;
+    use std::path::PathBuf;
+
+    #[test]
+    #[cfg(feature="mockingbird-deemix")]
+    fn path_deemix() {
+        let paths = var("PATH").unwrap();
+        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("deemix").exists()).count() == 1);
+    }
+}

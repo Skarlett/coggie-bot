@@ -12,6 +12,7 @@
 //use super::lib::ArlToken;
 //
 use serenity::client::ClientBuilder;
+use std::path::PathBuf;
 
 mod extractor;
 pub mod controller;
@@ -31,19 +32,5 @@ mod tests {
     fn path_ffmpeg() {
         let paths = var("PATH").unwrap();
         assert!(paths.split(':').filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() >= 1);
-    }
-
-    #[cfg(feature="mockingbird-ytdl")]
-    #[test]
-    fn path_ytdl() {
-        let paths = var("PATH").unwrap();
-        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("yt-dlp").exists()).count() == 1);
-    }
-
-    #[cfg(feature="mockingbird-deemix")]
-    #[test]
-    fn path_deemix() {
-        let paths = var("PATH").unwrap();
-        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("deemix").exists()).count() == 1);
     }
 }
