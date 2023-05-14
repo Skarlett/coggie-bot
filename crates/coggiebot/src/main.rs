@@ -1,7 +1,29 @@
 mod controllers;
-mod pkglib;
-mod config;
 use std::env;
+
+//
+// TODO:
+//   arl scraper
+//   add cleanup-dl-perl systemd service to clean up old downloads
+//       - use nix to deploy it along side coggiebot
+//       - add to coggiebot `Wants` systemd service
+//
+//   add dl features
+//
+//
+// Later:
+//   port deemix to rust
+//   streaming pass on deemix
+//   use spotify api to go through a top down priority check list 
+//   for getting retrieving songs
+//
+//
+// feature-list:
+//   use env var at build-time `COGGIE_FEATURES` 
+//   in the format of a comma separated list
+//   with boolean values to indicate enabled/disabled features   
+//   example:
+//       COGGIE_FEATURES="mockingbird-core=1,bookmark=0"
 
 use serenity::framework::standard::StandardFramework;
 use serenity::http::Http;
@@ -43,10 +65,10 @@ struct CLI {
     #[structopt(long = "license")]
     license: bool,
 
-    // #[cfg(feature="list-feature-cmd")]
-    // #[structopt(long = "list-features", alias="features-list")]
-    // /// list all features if enabled
-    // features: bool,
+    #[cfg(feature="list-feature-cmd")]
+    #[structopt(long = "list-features", alias="features-list")]
+    /// list all features if enabled
+    features: bool,
 
     /// Access Token
     #[structopt(long = "token", env = EnvVars::DISCORD_TOKEN)]
@@ -59,8 +81,6 @@ struct CLI {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>
 {
-    let conf = config::Configuration::default();
-
     let cli = CLI::from_args();
     if cli.version {
         println!("{VERSION}");
@@ -72,13 +92,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
         println!("{}", get_rev());
         return Ok(());
     }
+
     #[cfg(feature="list-feature-cmd")]
     if cli.features {
-        println!("{:?}", controllers::features::feature_list());
+        println!("{}", controllers::features::feature_list()
+            .iter()
+            .map(|(f, toggle)| format!("{}: {}", f, toggle))
+            .collect::<Vec<_>>()
+            .join("\n"));
         return Ok(());
     }
 
     println!("{}", LICENSE);
+
+    tracing_subscriber::fmt::init();   
 
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
@@ -99,6 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
         Client::builder(&cli.token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
         .framework(framework)
         .event_handler(controllers::EvHandler))
+        .await
         .await?;
 
     client.start().await?;

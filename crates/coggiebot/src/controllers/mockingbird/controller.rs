@@ -1,102 +1,37 @@
-//! Example demonstrating how to make use of individual track audio events,
-//! and how to use the `TrackQueue` system.
-//!
-//! Requires the "cache", "standard_framework", and "voice" features be enabled in your
-//! Cargo.toml, like so:
-//!
-//! ```toml
-//! [dependencies.serenity]
-//! git = "https://github.com/serenity-rs/serenity.git"
-//! features = ["cache", "framework", "standard_framework", "voice"]
-//! ```
-//use super::lib::ArlToken;
-
-use std::{
-    sync::Arc,
-    time::Duration,
+use songbird::{
+    EventHandler as VoiceEventHandler,
+    EventContext,
+    TrackEvent,
+    Event as VCEvent,
+    input,
+    tracks::{create_player, TrackHandle}
+};
+use serenity::framework::standard::{
+    macros::{command, group},
+    CommandResult, Args,
 };
 
-use serenity::{
-    client::Context,
-    framework::{
-        standard::{
-            macros::{command, group},
-            Args,
-            CommandResult,
-        },
-    },
-    model::{channel::Message, prelude::ChannelId},
-    prelude::Mentionable,
-    Result as SerenityResult,
-};
+use serenity::async_trait;
+use serenity::model::channel::Message;
+use serenity::prelude::*;
 
-use songbird::input::restartable::Restartable;
+use std::path::PathBuf;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::time::Duration;
+use std::io::SeekFrom as Seek;
+
+use super::extractor::{play_source, PlaySource};
+
+#[cfg(feature="mockingbird-deemix")]
+use super::extractor::{DxConfigKey, DxConfig};
+
 
 #[group]
 #[commands(
-    deafen, join, leave, mute, queue, skip, stop, undeafen, unmute
+    deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
-struct MockingBird;
+struct Deemix;
 
-#[cfg(feature="dj-room")]
-pub async fn on_dj_channel(ctx: &Context, msg: &Message) -> CommandResult {
-    let url = match &msg.content
-    {
-        url if url.starts_with("http") => url.to_string(),
-        _ => {
-            check_msg(
-                msg.channel_id
-                    .say(&ctx.http, "Must provide a URL to a video or audio")
-                    .await,
-            );
-
-            return Ok(());
-        },
-    };
-
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
-
-           // Here, we use lazy restartable sources to make sure that we don't pay
-            // for decoding, playback on tracks which aren't actually live yet.
-            let source = match Restartable::ytdl(url, true).await {
-                Ok(source) => source,
-                Err(why) => {
-                    println!("Err starting source: {:?}", why);
-                    check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                    return Ok(());
-                },
-            };
-            handler.enqueue_source(source.into());
-
-        check_msg(
-            msg.channel_id
-                .say(
-                    &ctx.http,
-                    format!("Added song to queue: position {}", handler.queue().len()),
-                )
-                .await,
-        );
-    }
-    else {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, "Not in a voice channel to play in")
-                .await,
-        );
-    }
-
-    Ok(())
-}
 
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
@@ -118,7 +53,6 @@ async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
     };
 
     let mut handler = handler_lock.lock().await;
-
     if handler.is_deaf() {
         check_msg(msg.channel_id.say(&ctx.http, "Already deafened").await);
     } else {
@@ -245,6 +179,60 @@ async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+struct HardDelete(Option<PathBuf>);
+#[async_trait]
+impl VoiceEventHandler for HardDelete {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
+        if let EventContext::Track(&[(a, track_list)]) = ctx {
+            if let Some(ref path) = self.0 {
+                tracing::info!("Deleting {:?}", path);
+                tokio::fs::remove_file(path).await.unwrap();
+            }
+        }
+        None
+    }
+}
+
+// struct FadeOver { 
+//     next: TrackHandle,
+//     next_playing: Arc<AtomicUsize>,
+//     songbird: Arc<Mutex<Call>>
+// }
+
+// #[async_trait]
+// impl VoiceEventHandler for FadeOver {
+//     async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
+//         if let EventContext::Track(&[(state, track)]) = ctx {
+//             let first = self.next_playing.fetch_add(1, Ordering::Relaxed); 
+//             if first == 0 {
+//                 let handler = self.songbird.lock().await?;
+//                 let mut handler = self.songbird.get(self.next.guild_id).unwrap().lock().await;
+
+//                 self.next.make_playable();
+//                 self.next.seek_time(Duration::from_secs(0));
+                
+                
+//                 tracing::info!("Playing next track");
+//             }
+
+//             if state.volume < 0.2 {
+//                 tracing::info!("Track volume is low, cancelling");
+//                 track.stop();
+//                 self.songbird.lock().await?;
+//                 handler.play(self.next);
+//                 self.next.set_volume(1.0);
+//                 self.next.seek_time(Duration::from_secs(9));
+//                 return Some(VCEvent::Cancel)
+//             }
+//             else {
+//                 track.set_volume(state.volume - 0.1);
+//                 self.next.set_volume(1.0 - state.volume);
+//             }
+//         }
+//         None
+//     }
+// }
+
 #[command]
 #[aliases("play")]
 #[only_in(guilds)]
@@ -280,23 +268,58 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
+
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        // Here, we use lazy restartable sources to make sure that we don't pay
-        // for decoding, playback on tracks which aren't actually live yet.
-        let source = match Restartable::ytdl(url, true).await {
-            Ok(source) => source,
-            Err(why) => {
-                println!("Err starting source: {:?}", why);
-
-                check_msg(msg.channel_id.say(&ctx.http, "Error sourcing ffmpeg").await);
-
-                return Ok(());
-            },
+        let req = super::extractor::PlayRequest {
+            uri: &url,
+            #[cfg(feature = "mockingbird-deemix")]
+            dx: {
+                let dx_lock = ctx.data.read().await;
+                let dxc: DxConfig = dx_lock.get::<DxConfigKey>().unwrap().clone();
+                dxc
+            }
         };
 
-        handler.enqueue_source(source.into());
+        match play_source(req).await.unwrap() {
+            PlaySource::Ytdl { uri } => {
+                let input = input::ytdl(&uri).await.unwrap();              
+                handler.enqueue_source(input.into());
+            }
+
+            PlaySource::FileSystem { errlog, ok_paths } => {
+                for fp in ok_paths {
+                    match input::ffmpeg(&fp).await
+                    {
+                        Ok(input) => {
+                            let (track, track_handle) = create_player(input);
+                            
+                            // if let Some(x) = handler.queue().current_queue().first() {
+                            //     track_handle.add_event(
+                            //         VCEvent::Periodic(Duration::from_secs(1), Some(track_handle.metadata().duration.unwrap() - Duration::from_secs(5))),
+                            //         FadeOver {
+                            //             next: x.clone(),
+                            //             next_playing: Arc::new(AtomicUsize::new(0)),
+                            //         }
+                            //     );
+                            // }
+                            #[cfg(feature="mockingbird-hard-cleanfs")]
+                            track_handle.add_event(
+                                VCEvent::Track(TrackEvent::End),
+                                HardDelete(Some(fp))
+                            );
+                            handler.enqueue(track);
+                        },
+                        
+                        Err(e) => {
+                            tokio::fs::remove_file(&fp).await.unwrap();
+                            continue;
+                        }
+                    }
+                }                
+            }
+        } 
 
         check_msg(
             msg.channel_id
@@ -447,20 +470,10 @@ async fn unmute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+use serenity::Result as SerenityResult;
 /// Checks that a message successfully sent; if not, then logs why to stdout.
 fn check_msg(result: SerenityResult<Message>) {
     if let Err(why) = result {
         println!("Error sending message: {:?}", why);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        use std::env::var;
-        use std::path::PathBuf;
-        let paths = var("PATH").unwrap();
-        assert!(paths.split(':').filter(|p| PathBuf::from(p).join("ffmpeg").exists()).count() == 1);
     }
 }

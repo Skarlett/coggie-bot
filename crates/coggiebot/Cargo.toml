@@ -1,0 +1,92 @@
+[package]
+name = "coggiebot"
+version = "1.4.7"
+edition = "2021"
+
+[dependencies]
+serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework", "voice", "cache"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+structopt = { version = "0.3", default-features = false }
+derive_builder = "0.12"
+thiserror = "1.0"
+anyhow = "1.0"
+toml = "0.7"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+songbird = { version = "0.3", optional=true, features = ["builtin-queue"] }
+file-lock = { version = "2.1", optional=true }
+async-walkdir = { version="0.2.0", optional=true }
+reqwest = { version = "0.11", optional = true }
+tempfile = { version = "3", optional = true }
+
+[features]
+default = ["mockingbird-core", "mockingbird-deemix", "mockingbird-spotify"]
+list-feature-cmd = []
+basic-cmds = []
+bookmark = []
+
+################
+# mockingbird features
+mockingbird-core = ["dep:songbird", "dep:tempfile"]
+
+################
+# playback commands queue/play/stop/mute/deafen
+mockingbird-playback = ["mockingbird-core"]
+
+################
+# Setup mocking bird to "own" a channel so users
+# may just paste compatiable links into it
+mockingbird-channel = ["mockingbird-core"]
+
+################
+# mockingbird is compatiable with youtube & soundcloud
+mockingbird-ytdl = ["mockingbird-core", "songbird?/yt-dlp"]
+
+################
+# mockingbird compatiable with raw MP3 http uris
+mockingbird-mp3 = ["mockingbird-core", "dep:reqwest"]
+
+################
+# mockingbird compatiable with deep-mixer
+mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir", ]
+
+################
+# mockingbird compatiable with spotify
+mockingbird-spotify = ["mockingbird-deemix"]
+
+################
+# adds capability to clean up files from the system after
+# they've been streamed to discord
+mockingbird-hard-cleanfs = ["mockingbird-playback"]
+
+###########
+# find similar music, and play playlists +24/7 loop
+# mockingbird-dj = ["mockingbird"]
+
+#########
+# write queue file to filesystem
+# mockingbird-shm = ["mockingbird", "dep:file-lock"]
+
+#########
+# allow downloads
+# add environment variables
+# mockingbird-export = ["mockingbird", "mockingbird-shm"]
+
+
+[package.metadata.nix]
+app = true
+build = true
+library = true
+systems = [
+    "aarch64-linux",
+    "aarch64-darwin",
+    "i686-linux",
+    "x86_64-darwin",
+    "x86_64-linux",
+]
+
