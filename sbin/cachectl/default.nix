@@ -60,7 +60,7 @@ let
 in
 {
   check =
-    let name = "check-cache-2";
+    let name = "check-cache";
     in stdenv.mkDerivation {
       inherit name;
       phases = "buildPhase";
@@ -72,24 +72,20 @@ in
           echo "Checking server caches..."
           exitFlag=0
 
-          CACHES=(${
-            lib.strings.concatStringsSep "\n"
-              (map (c: c.url) caches)
+          CACHES=(${lib.strings.concatStringsSep "\n"
+            (map (c: "\"${c.url}\"") caches)
           })
 
           PACKAGES=(${
             lib.strings.concatStringsSep "\n"
-              (map (p: builtins.substring 11 32 p.drv.outPath) packages)
+              (map (p: "\"${builtins.substring 11 32 p.drv.outPath}\"") packages)
           })
 
           for package in \$PACKAGES; do
             found=0
             for cache in \$CACHES; do
-              response=\$(${pkgs.curl}/bin/curl \
-                  --write-out '%{http_code}\n' -s \
-                  \$cache/\$package.narinfo)
-
-              if [[ 400 >= \$response ]]; then
+              response=\$(${pkgs.curl}/bin/curl --write-out '%{http_code}' -s \$cache/\$package.narinfo)
+              if [[ "\$(echo \$response | head -c 3)" -lt "400" ]]; then
                 found=1
                 echo "Package \$package found in \$cache"
                 break
@@ -97,12 +93,13 @@ in
             done
 
             if [[ \$found == 0 ]]; then
-              echo "Package \$package not found in any cache"
+              echo "Not found: \$package"
               exitFlag=1
             fi
           done
           exit \$exitFlag
           EOF
+          chmod +x $out/bin/$name
       '';
     };
 
@@ -148,4 +145,64 @@ in
         exit \$exitFlag
       '';
     };
+
+
+  ci-test =
+    let name = "ci-test";
+    in stdenv.mkDerivation {
+      inherit name;
+      buildInputs = [ pkgs.curl ];
+      builder = writeShellScriptBin name ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        mkdir -p /var/coggiebot
+
+        nix build ${flakeUri}#dummy-stage-1 -o /var/coggiebot/result
+        /var/coggiebot/result/bin/update
+
+        echo "Checking migration script..."
+        if [[ "\$(git rev-parse HEAD)" == "$(/var/coggiebot/result/bin/coggiebot --built-from -t '\')" ]];
+        then
+          echo "Test passed: rev-check"
+        else
+          echo "Test failed: rev-check"
+          exit 1
+        fi
+
+        echo "Checking rolling back to dummy..."
+        nix build ${flakeUri}#dummy-stage-1 -o /var/coggiebot/result
+
+        echo "Testing systemd migration..."
+
+        /var/coggiebot/result/bin/start
+        systemctl is-active --quiet coggiebotd && echo "Test passed" || (echo "failed to start" && exit 1)
+        start_ts=$(systemctl show coggiebotd.service --property ExecMainExitTimestampMonotonic | cut -f 2 -d '=')
+        for((i=0;i<3;i++)); do
+          echo "trying version check."
+
+          if [[ \$i == 3 ]]; then
+            echo "Test failed: Did not automatically update & migrate"
+            exit 1
+          fi
+
+          if [[ "\$(git rev-parse HEAD)" == "$(/var/coggiebot/result/bin/coggiebot --built-from -t '\')" ]];
+          then
+            echo "coggiebotd-update: Test passed: rev-check"
+            break
+          fi
+          sleep 5
+        done
+
+        now=\$(systemctl show coggiebotd.service --property ExecMainExitTimestampMonotonic | cut -f 2 -d '=')
+
+        if [[ \$start_ts >= \$now  ]]; then
+          echo "coggiebot-update: Test failed: Did not automatically update & migrate"
+          exit 1
+        fi
+
+        systemctl is-active --quiet coggiebotd-update.timer && echo "coggiebotd-update.timer: Test passed" || (echo "coggiebot-update.timer: failed to start" && exit 1)
+     '';
+    };
+
 }
