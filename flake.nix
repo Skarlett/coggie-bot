@@ -25,18 +25,7 @@
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; };
 
-          features = with cogpkgs.features; [
-            basic-cmds
-            bookmark
-            mockingbird
-          ];
-
-          coggiebot-stable = cogpkgs.mkCoggiebot {
-            features-list = features;
-          };
-
-          coggiebot-next = cogpkgs.mkCoggiebot {
-            features-list = features ++ (with cogpkgs.features; [
+          features = (with cogpkgs.features; [
               basic-cmds
               bookmark
               list-feature-cmd
@@ -47,48 +36,12 @@
               mockingbird-playback
               mockingbird-spotify
               mockingbird-hard-cleanfs
-            ]);
+          ]);
+
+          coggiebot-stable = cogpkgs.mkCoggiebot {
+            features-list = features;
           };
 
-          migrate = {}; 
-
-          config = {
-            prefixes = [];
-            bookmark_emoji = "\u{1F516}";
-            dj_room = [ 123456789 ];
-            features = (cogpkgs.which-features coggiebot-stable);
-          };
-
-          coggiebot-dummy = hash: stdenv.mkDerivation {
-              name = "coggiebot";
-              phases = "buildPhase";
-              buildPhase = ''
-                mkdir -p $out/bin/
-                cat > $out/bin/$name <<EOF
-                #!${pkgs.runtimeShell}
-
-                containsElement () {
-                  local e match="\$1"
-                  shift
-                  for e; do
-                    [[ \$e == \$match ]] && echo 0 && return;
-                  done
-                  echo 1 && return;
-                }
-
-                if [[ \$(containsElement "--built-from" "\$@") == 0 ]]; then
-                  echo "${hash}"
-                  exit 0
-                else
-                  ts=\$(date -d "+5 min" +%s)
-                  while [[ \$ts > \$(date +%s) ]]; do
-                    sleep 5
-                  done
-                fi
-                EOF
-                chmod +x $out/bin/$name
-              '';
-            };
           non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };
 
           vanilla-linux = non-nixos {
@@ -101,15 +54,6 @@
               deploy = "deploy";
             };
           };
-
-          # Automatically adds a pre-release if able to
-          # beta-features is hard coded with the purpose of
-          # each branch specifying the exact features its developing
-          coggiebot-pre-release =
-            cogpkgs.mkCoggiebot {
-              features-list = with cogpkgs.features;
-                [ mockingbird ];
-            };
 
           cictl = pkgs.callPackage ./sbin/cachectl {
             inherit installDir non-nixos;
@@ -126,13 +70,7 @@
             }];
           };
         in
-          (if (lib.lists.elem cogpkgs.features.pre-release features)
-            then { packages.coggiebot-pre-release = coggiebot-pre-release; }
-           else {} //
-
         rec {
-          # packages.deploy-workflow-ci = (deploy-dummy "00000000000000000000000000").deploy;
-          # packages.deploy-workflow-ci-stage-2 = (deploy-dummy (self.rev or "canary")).deploy;
           packages.check-cache = cictl.check;
 
           packages.deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
@@ -146,10 +84,9 @@
           packages.deploy = vanilla-linux;
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
-          packages.coggiebot-next = coggiebot-next;
 
           packages.coggiebot = coggiebot-stable;
-        }))) packages;
+        })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
         with lib;
@@ -197,26 +134,5 @@
             };
           };
         };
-
-      # checks = flake-utils.lib.eachDefaultSystem (system:
-      #   let
-      #     pkgs = import nixpkgs { inherit system; };
-      #     tests = pkgs.callPackage (nixpkgs + "/nixos/lib/testing-python.nix") {};
-      #   in
-      #   {
-      #     vmTest = tests.makeTest {
-      #       nodes = {
-      #         client = { ... }: {
-      #           imports = [ ];
-      #         };
-      #       };
-      #       testScript =
-      #         ''
-      #           start_all()
-      #           client.wait_for_unit("multi-user.target")
-      #           assert "Hello Nixers" in client.wait_until_succeeds("curl --fail http://localhost:8080/")
-      #         '';
-      #       };
-      #   });
     };
 }
