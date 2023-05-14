@@ -17,11 +17,19 @@ let
       mkdir -p $out/bin
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
+
       systemctl ${cmd} ${
         if usePath then
           "${coggiebotd.outPath}/etc/${coggiebotd.name}"
         else
           "${coggiebotd.name}"
+      }
+
+      systemctl ${cmd} ${
+        if usePath then
+          "${auto-update.coggiebotd-update.outPath}/etc/${auto-update.coggiebotd-update.name}"
+        else
+          "${auto-update.coggiebotd-update.name}"
       }
 
       ${
