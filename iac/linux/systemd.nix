@@ -23,7 +23,8 @@ rec {
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
       . ${installDir}/.env
-      ${installDir}/result/coggiebot
+      # ${installDir}/result/bin/coggiebot
+      ${coggiebot}/bin/coggiebot
       EOF
       chmod +x $out/bin/${name}
     '';
