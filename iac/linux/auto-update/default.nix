@@ -23,9 +23,15 @@ let
       #!/bin/sh
       PULL="\''${PULL:-${pull}}"
       target="\''${TARGET:-${installDir}/result}";
-      [[ -e \$target/disable ]] && \$target/disable
+      
+      #TODO: make programmic
+      cachix use coggiebot
+      
+      [[ -e \$target/disable ]] && \$target/disable # < 1.4.7
+      [[ -e \$target/bin/systemd-disable ]] && \$target/bin/systemd-disable # >= 1.4.7
       ${pkgs.nix}/bin/nix build --refresh --out-link \$target \$PULL
-      \$target/enable
+      
+      \$target/bin/systemd-enable
       systemctl daemon-reload
       #\$target/start
       systemctl restart ${coggiebotd.name}
