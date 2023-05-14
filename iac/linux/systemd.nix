@@ -23,8 +23,12 @@ rec {
       cat >> $out/bin/$name <<EOF
       #!/bin/sh
       . ${installDir}/.env
-      # ${installDir}/result/bin/coggiebot
-      ${coggiebot}/bin/coggiebot
+      # TODO: investigate why this breaks stuff
+      # probably receiving hash before overrides
+      # are applied
+      ##############
+      # ${coggiebot}/bin/coggiebot
+      ${installDir}/result/bin/coggiebot
       EOF
       chmod +x $out/bin/${name}
     '';
