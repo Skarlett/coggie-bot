@@ -61,7 +61,7 @@ let
       REPO="\''${REPO:-${repo.name}}"
       BRANCH="\''${BRANCH:-${repo.branch}}"
       DEPLOY_PKG="\''${DEPLOY_PKG:-${repo.deploy}}"
-      BUILD_FROM_SRC="\''${BUILD_FROM_SRC:-${if buildFromSrc then "1" else "0"}"
+      BUILD_FROM_SRC="\''${BUILD_FROM_SRC:-${if buildFromSrc then "1" else "0"}}"
       BASEPULL="\''${BASEPULL:-github:\$AUTHOR/\$REPO/\$BRANCH}"
       PULL="\$BASEPULL#\$DEPLOY_PKG"
       URI="\''${URI:-https://github.com/\$AUTHOR/\$REPO.git}"
