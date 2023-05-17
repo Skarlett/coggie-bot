@@ -15,7 +15,6 @@ echo > /var/coggiebot/.env <<EOF
 export DISCORD_TOKEN="..."
 export RUST_LOG="warn,error"
 EOF
-
 ```
 
 ### Manual update
@@ -64,28 +63,28 @@ cargo build --release --features bookmark,basic-cmds
 ```
 
 ##### Dependencies
-rustc 1.66 >=
-OpenSSL
+- rustc 1.66 >=
+- OpenSSL
 
-mockingbird-core: libopus cmake gcc
-mockingbird-ytdl: mockingbird-core, python3.6 >=, yt-dlp/yt-dl
-mockingbird-deemix: mockingbird-core, python3.6 >=, deemix
-environ:
-   `DEEMIX_ARL=char[128]`
-   `DEEMIX_CACHE="/tmp/folder"`
+- mockingbird-core: libopus cmake gcc
+- mockingbird-ytdl: mockingbird-core, python3.6 >=, yt-dlp/yt-dl
+- mockingbird-deemix: mockingbird-core, python3.6 >=, deemix
+- environ:
+  - `DEEMIX_ARL=char[128]`
+  - `DEEMIX_CACHE="/tmp/folder"`
 
-mockingbird-spotify: mockingbird-core, mockingbird-deemix, spotipy
-environ:
-   `SPOTIFY_CLIENT_ID=char[32]`
-   `SPOTIFY_CLIENT_SECRET=char[32]`
+- mockingbird-spotify: mockingbird-core, mockingbird-deemix, spotipy
+- environ:
+  - `SPOTIFY_CLIENT_ID=char[32]`
+  - `SPOTIFY_CLIENT_SECRET=char[32]`
    
 
-list-feature-cmd:
-normally in nix, this variable is auto generated. currently there is no toml parser provided for
-generating this list.
+- list-feature-cmd:
+  normally in nix, this variable is auto generated. currently there is no toml parser provided for
+  generating this list.
 
-environ:
-    `COGGIEBOT_FEATURES='FEATURE_NAME=1,FEATURE_TWO=0'`
+- environ:
+    - `COGGIEBOT_FEATURES='FEATURE_NAME=1,FEATURE_TWO=0'`
 
 example:
 ```
