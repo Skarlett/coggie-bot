@@ -7,10 +7,7 @@
   , recursiveMerge
 }:
 let
-  debug = expr: builtins.trace expr expr;
   meta = pkgs.callPackage ./meta.nix { };
-  # deemix-stream = pkgs.callPackage ../sbin/deemix-stream {};
-
   mkCommand = {
     # list of strings
     aliases ? [],
@@ -26,8 +23,8 @@ let
 
   # these are
   genericFeature = args@{
-    name,
-    fname ? null
+    name
+    , fname ? null
     # override function
     , pkg-override ? (c: c)
     , maintainers ? [meta.maintainers.lunarix]
@@ -35,9 +32,7 @@ let
     , dependencies ? []
     , rustFeature ? true
     , commands ? [] }:
-    {
-
-      ${name} = {
+    { ${name} = {
         inherit dependencies
           pkg-override
           commands
@@ -51,11 +46,6 @@ let
     };
 
   features =
-    let
-      raw-mockingbird = pkgs.callPackage ./mockingbird.nix { inherit genericFeature naerk-lib ; };
-      mockingbird-lib =
-        builtins.removeAttrs raw-mockingbird ["override" "overrideDerivation"];
-    in
       recursiveMerge (
         (lib.foldl (s: x: s ++ [(genericFeature x)]) []
         [
@@ -65,31 +55,9 @@ let
               COGGIEBOT_FEATURES = lib.concatStringsSep "," (map (x: "${x.featureName}=${if x.enabled then "1" else "0"}") prev.passthru.available-features);
             });  
           }
-          { name = "basic-cmds";
-            commands = [
-              mkCommand {
-                aliases = [ "rev" ];
-                doc = "display the current revision";
-                default = "canary build";
-              }];
-          }
-          { name = "pre-release";
-            commands = [
-              mkCommand {
-                aliases = [ "prerelease" ];
-                doc = "Displays this help message";
-                examples = [ "@botname prerelease <github-uri>" ];
-            }];
-          }
-          { name = "bookmark";
-            commands = [(mkCommand {
-              config.emote = "\u{1F516}";
-              doc = "bookmark a message";
-              action = "emote";
-            })];
-          }
-          {
-            name = "prerelease";
+          { name = "basic-cmds"; }
+          { name = "bookmark"; }
+          { name = "prerelease";
             pkg-override = (prev: {
               prev.buildInputs = prev.buildInputs ++ [ pkgs.git ];
             });
@@ -97,167 +65,48 @@ let
           { name = "mockingbird";
             fname = "mockingbird-core";
             pkg-override =
-              (prev:
-                rec {
+              (prev: {
                   buildInputs = with pkgs; prev.buildInputs ++ [
-                    libopus
                     ffmpeg
                   ];
-
                   nativeBuildInputs = with pkgs; prev.nativeBuildInputs ++ [
-                    makeWrapper
                     cmake
                     gnumake
+                    pkgconfig
+                    libopus
                   ];
-
-                  postInstall = prev.postInstall + ''
-                    wrapProgram $out/bin/coggiebot \
-                      --prefix PATH : ${lib.makeBinPath buildInputs}
-                  '';
-                });
-
-            commands = map(x: (mkCommand x))
-              [
-                { aliases = ["queue" "play"];
-                  doc = ''
-                    uses ytdl's backend to stream audio.
-                    https://github.com/ytdl-org/youtube-dl/blob/master/docs/supportedsites.md";
-                    '';
-                  examples = [ "\@botname play <supported-uri>" ];
-                }
-                { aliases = ["skip"];
-                  doc = "skips the current song"; }
-                { aliases = ["pause"];
-                  doc = "pauses the current song"; }
-                { aliases = ["resume"];
-                  doc = "resumes the current song"; }
-                { aliases = ["stop"];
-                  doc = "stops the current song"; }
-                { aliases = ["mute"];
-                  doc = "self mutes the bot (discord vc action)"; }
-                { aliases = ["deafen"];
-                  doc = "self deafens the bot (discord action)"; }
-                { aliases = ["unmute"];
-                  doc = "self unmutes the bot (discord action)"; }
-                { aliases = ["undeafen"];
-                  doc = "self undeafens the bot (discord action)"; }
-                { aliases = ["leave"];
-                  doc = "leaves the voice channel"; }
-                { aliases = ["join"];
-                  doc = "joins the voice channel"; }
-            ];
+              });
           }
-                   
-          # { name = "auto-update";
-          #   rustFeature = false;
-          # }
-          # { name = "systemd-helpers";
-          #   rustFeature = false;
-          # }
-          # { name = "systemd-integration-tests";
-          #   rustFeature = false;
-          # }
-
-          {
-            name = "mockingbird-deemix";
+          { name = "mockingbird-deemix";
             pkg-override = (prev: rec {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
-              postInstall = prev.postInstall + ''
-                  wrapProgram $out/bin/coggiebot \
-                    --prefix PATH : ${lib.makeBinPath buildInputs}
-              '';
             });
-
             dependencies = [ "mockingbird" ];
-            commands = map(x: (mkCommand x))
-            [{
-              aliases = ["overlay:queue"];
-              doc = "modifies the play/queue commands to use deezer's backend to stream audio";
-              examples = [ "@botname <deezer/spotify uri>" ];
-              config = {
-                arl = {
-                  default = "";
-                  type = "string";
-                  description = "deezer arl token";
-                };
-              };
-            }];
           }
           { name = "mockingbird-hard-cleanfs";
             dependencies = ["mockingbird-playback"];
           }
-
-          {
-            name = "mockingbird-deemix";
-            pkg-override = (prev: rec {
+          { name = "mockingbird-deemix";
+            pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
               nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
-              postInstall = prev.postInstall + ''
-                wrapProgram $out/bin/coggiebot \
-                   --prefix PATH : ${lib.makeBinPath buildInputs}
-              '';
             });
-
             dependencies = [ "mockingbird" ];
-            commands = map(x: (mkCommand x))
-            [{
-              aliases = ["overlay:queue"];
-              doc = "modifies the play/queue commands to use deezer's backend to stream audio";
-              examples = [ "@botname <deezer/spotify uri>" ];
-              config = {
-                arl = {
-                  default = "";
-                  type = "string";
-                  description = "deezer arl token";
-                };
-              };
-            }];
           }
-
-          {
-            name = "mockingbird-channel";
+          { name = "mockingbird-channel";
             dependencies = [ "mockingbird" ];
-            commands = map(x: (mkCommand x))
-              [{
-                doc = "setups channels to be uri paste dumps for queueing audio";
-                examples = [ "<supported uri>" ];
-                filters = [ "single-channel-only" ];
-                config = {
-                  channels = {
-                    default = [];
-                    type = lib.types.listOf lib.types.int;
-                    description = "channel id";
-                  };
-                };
-              }];
           }
-
-          {
-            name = "mockingbird-ytdl";
+          { name = "mockingbird-ytdl";
             dependencies = [ "mockingbird" ];
-
-            pkg-override = (prev: rec {
+            pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.yt-dlp ];
-
-              postInstall = prev.postInstall + ''
-                wrapProgram $out/bin/coggiebot \
-                   --prefix PATH : ${lib.makeBinPath buildInputs}
-              '';
-
             });
           }
-          {
-            name = "mockingbird-playback";
-          }
-          {
-
-            name = "mockingbird-spotify";
+          { name = "mockingbird-playback"; }
+          { name = "mockingbird-spotify";
             dependencies = [ "mockingbird-deemix" ];
-
           }
-
-          {
-            name = "mockingbird-mp3";
+          { name = "mockingbird-mp3";
             dependencies= ["mockingbird"];
             pkg-override = (prev: rec {
               nativeBuildInputs =
@@ -295,22 +144,9 @@ let
     passthru = {
       inherit features-list meta;
       available-features = which-features-list' features-list;
-      
       hasFeature = feat: builtins.elem feat features-list;
     };
   };
-
-  # New line separated.
-  # The suffix number describes if the feature name was enabled. (1: enabled, 0: disabled)
-  # The delimiter ':' is used to separate the feature name from the suffix.
-  # build-profile =
-  #   (coggiebot-drv: (pkgs.writeTextDir
-  #     "share/coggiebot-profile.json"
-  #     builtins.toJSON (meta // {
-  #       features = (which-features-list coggiebot-drv);
-  #       buildInputs = map (drv: drv.name || drv.pname) coggiebot-drv.buildInputs;
-  #       nativeBuildInputs = map (drv: drv.name || drv.pname) coggiebot-drv.nativeBuildInputs;
-      # })));
 in
 rec {
   inherit
@@ -319,8 +155,6 @@ rec {
     all-features-list
     genericFeature
     features;
-
-  raw-mockingbird = builtins.removeAttrs (pkgs.callPackage ./mockingbird.nix { inherit genericFeature naerk-lib ; }) ["override" "overrideDerivation"];
 
   dependency-check = coggiebot:
     let
@@ -385,13 +219,12 @@ rec {
         throw ''
           The following features are enabled but have missing dependencies:
           ${
-            lib.concatMapStrings (f: "  ${f.name} missing: ${lib.concatMapStrings (x: "${x.name} , ") (debug f.missing)}\n")
+            lib.concatMapStrings (f: "  ${f.name} missing: ${lib.concatMapStrings (x: "${x.name} , ") (f.missing)}\n")
             enabled-features-with-missing-dependencies
           }
          ''
       else
         coggiebot;
-
 
   # Top level build tool
   ######################
@@ -404,13 +237,28 @@ rec {
   mkCoggiebot = {
     coggiebot ? coggiebot-default-args,
     features-list ? [],
-    options ? {},
   }:
     let
       coggie = coggiebot features-list;
       pkg = # Apply features
-        lib.foldl (c: f: c // (f.pkg-override c))
-          coggie coggie.passthru.features-list;
+        (lib.foldl (c: f: c // (f.pkg-override c))
+          coggie (coggie.passthru.features-list
+          ++ [{
+              dependencies = [];
+              featureName = "";
+              flagName = "";
+
+              rustFeature = false;
+              pkg-override = (prev: {
+                  postInstall = prev.postInstall + ''
+                    wrapProgram $out/bin/${prev.name} \
+                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}
+                  '';
+                  nativeBuildInputs = prev.nativeBuildInputs ++ [ pkgs.makeWrapper ];
+              });
+            }
+          ])
+        );
       in
         (naerk-lib.buildPackage ((dependency-check pkg) // {
           cargoBuildOptions=

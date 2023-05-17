@@ -25,7 +25,7 @@ reqwest = { version = "0.11", optional = true }
 tempfile = { version = "3", optional = true }
 
 [features]
-default = ["mockingbird-core", "mockingbird-deemix", "mockingbird-spotify"]
+default = []
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
@@ -53,7 +53,7 @@ mockingbird-mp3 = ["mockingbird-core", "dep:reqwest"]
 
 ################
 # mockingbird compatiable with deep-mixer
-mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir", ]
+mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir"]
 
 ################
 # mockingbird compatiable with spotify
