@@ -50,7 +50,6 @@ pub mod EnvVars {
 }
 
 #[derive(Debug, StructOpt)]
-
 #[structopt(name = "coggiebot", about = "An example of StructOpt usage.")]
 struct CLI {
     /// Show Package Version
