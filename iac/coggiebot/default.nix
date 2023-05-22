@@ -133,6 +133,8 @@ let
 
   coggiebot-default-args = features-list: {
     name = "coggiebot";
+    pname = "coggiebot";
+    version = "1.4.10";
     nativeBuildInputs = [];
     buildInputs = [];
 

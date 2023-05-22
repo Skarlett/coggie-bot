@@ -56,6 +56,7 @@ pub async fn deemix(
     
     tracing::info!("RUNNING: deemix --portable -p {} {}", &tmpdir.path().display(), uri);
     let child = tokio::process::Command::new("deemix")
+        .env("CURL_CA_BUNDLE", "")
         .current_dir(dx.cache.as_ref().unwrap())
         .arg("--portable")
         .arg("-p").arg(&tmpdir.path())
