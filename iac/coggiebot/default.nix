@@ -8,19 +8,7 @@
 }:
 let
   meta = pkgs.callPackage ./meta.nix { };
-  mkCommand = {
-    # list of strings
-    aliases ? [],
-    # string
-    doc ? "undocumented",
-    # strings
-    examples ? [],
-    action ? "message",
-    reply ? "message",
-    config ? {},
-    filters ? [],
-  }: { inherit action examples doc filters; };
-
+  
   # these are
   genericFeature = args@{
     name
@@ -59,39 +47,31 @@ let
           { name = "bookmark"; }
           { name = "prerelease";
             pkg-override = (prev: {
-              prev.buildInputs = prev.buildInputs ++ [ pkgs.git ];
+              runtimeInputs = prev.runtimeInputs ++ [ pkgs.git ];
             });
           }
           { name = "mockingbird";
             fname = "mockingbird-core";
-            pkg-override =
-              (prev: {
-                  buildInputs = with pkgs; prev.buildInputs ++ [
-                    ffmpeg
-                  ];
-                  nativeBuildInputs = with pkgs; prev.nativeBuildInputs ++ [
-                    cmake
-                    gnumake
-                    pkgconfig
-                    libopus
-                  ];
-              });
-          }
-          { name = "mockingbird-deemix";
-            pkg-override = (prev: rec {
-              buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
+            pkg-override = (prev: {
+              runtimeInputs = prev.runtimeInputs ++ (with pkgs; [
+                ffmpeg
+              ]);
+              buildInputs = with pkgs; prev.buildInputs ++ [
+                cmake
+                gnumake
+                pkgconfig
+                libopus
+              ];
             });
-            dependencies = [ "mockingbird" ];
           }
           { name = "mockingbird-hard-cleanfs";
             dependencies = ["mockingbird-playback"];
           }
           { name = "mockingbird-deemix";
-            pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
-              nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
-            });
             dependencies = [ "mockingbird" ];
+            pkg-override = (prev: {   
+              runtimeInputs = prev.runtimeInputs ++ [ pkgs.python39Packages.deemix ];
+            });
           }
           { name = "mockingbird-channel";
             dependencies = [ "mockingbird" ];
@@ -99,7 +79,7 @@ let
           { name = "mockingbird-ytdl";
             dependencies = [ "mockingbird" ];
             pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ pkgs.yt-dlp ];
+              runtimeInputs = prev.runtimeInputs ++ [ pkgs.yt-dlp ];
             });
           }
           { name = "mockingbird-playback"; }
@@ -108,11 +88,6 @@ let
           }
           { name = "mockingbird-mp3";
             dependencies= ["mockingbird"];
-            pkg-override = (prev: rec {
-              nativeBuildInputs =
-                prev.nativeBuildInputs ++
-                (with pkgs; [ pkgconfig openssl ]);
-            });
           }
         ])
       );
@@ -136,7 +111,8 @@ let
     pname = "coggiebot";
     version = "1.4.10";
     nativeBuildInputs = [];
-    buildInputs = [];
+    buildInputs = with pkgs; [ pkgconfig openssl ];
+    runtimeInputs = [];
 
     REV=(self.rev or "canary");
     src = ../../.;
@@ -245,6 +221,9 @@ rec {
       pkg = # Apply features
         (lib.foldl (c: f: c // (f.pkg-override c))
           coggie (coggie.passthru.features-list
+          
+          # wrap all runtimeInputs into a bash file
+          # which sets up the PATH variable
           ++ [{
               dependencies = [];
               featureName = "";
@@ -252,10 +231,12 @@ rec {
 
               rustFeature = false;
               pkg-override = (prev: {
-                  postInstall = prev.postInstall + ''
+                postInstall = lib.optional (prev.runtimeInputs != []) prev.postInstall + ''
                     wrapProgram $out/bin/${prev.name} \
-                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}
+                        --prefix PATH : ${lib.makeBinPath prev.runtimeInputs}
                   '';
+
+                  buildinputs = prev.buildInputs ++ prev.runtimeInputs;
                   nativeBuildInputs = prev.nativeBuildInputs ++ [ pkgs.makeWrapper ];
               });
             }
