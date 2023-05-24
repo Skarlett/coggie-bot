@@ -85,6 +85,10 @@
           packages.default = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
 
+          packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
+            coggiebot = coggiebot-stable;
+          };
+
           packages.coggiebot = coggiebot-stable;
         })) packages;
 
