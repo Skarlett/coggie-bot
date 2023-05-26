@@ -217,7 +217,7 @@ async fn workspace(dx: &DxConfig, at: &Path) -> Result<(), DxError> {
 
     #[cfg(feature="mockingbird-spotify")]
     if let Some(ref spot_cfg) = dx.spotify {
-        spotify_workspace(spot_cfg, &pconfig).await?;
+        spotify_workspace(spot_cfg, &root.to_path_buf()).await?;
     }
 
     return Ok(())

@@ -8,27 +8,11 @@
 }:
 let
   meta = pkgs.callPackage ./meta.nix { };
-  mkCommand = {
-    # list of strings
-    aliases ? [],
-    # string
-    doc ? "undocumented",
-    # strings
-    examples ? [],
-    action ? "message",
-    reply ? "message",
-    config ? {},
-    filters ? [],
-  }: { inherit action examples doc filters; };
-
-  # these are
   genericFeature = args@{
     name
     , fname ? null
-    # override function
     , pkg-override ? (c: c)
     , maintainers ? [meta.maintainers.lunarix]
-    # list of strings in the features
     , dependencies ? []
     , rustFeature ? true
     , commands ? [] }:
@@ -134,7 +118,7 @@ let
   coggiebot-default-args = features-list: {
     name = "coggiebot";
     pname = "coggiebot";
-    version = "1.4.10";
+    version = "1.4.11";
     nativeBuildInputs = [];
     buildInputs = [];
 
