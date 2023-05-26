@@ -50,7 +50,7 @@ pub struct PlayRequest<'a> {
     pub uri: &'a str,
 
     #[cfg(feature = "mockingbird-deemix")]
-    pub dx: deemix::DxConfig
+    pub dx: &'a deemix::DxConfig
 }
 
 pub async fn play_source<'a>(
@@ -67,7 +67,7 @@ pub async fn play_source<'a>(
 
     let tmpdir = tempfile::tempdir()?;
     let mut src = None;
-    let tmp_path = tmpdir.path().canonicalize().unwrap().to_path_buf();
+    let tmp_path = tmpdir.path().to_path_buf();
     tracing::debug!("mkdir: {}", tmp_path.display());
 
     #[cfg(feature="mockingbird-deemix")]

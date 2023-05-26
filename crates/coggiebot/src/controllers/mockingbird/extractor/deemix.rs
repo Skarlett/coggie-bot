@@ -28,10 +28,10 @@ pub enum DxError {
 
     #[error("environment missing ARL variable")]
     MissingARL,
+}
 
-    #[error("bad cache directory")]
-    BadCacheDir,
-   
+fn track_number(name: &str) -> Result<u32, std::num::ParseIntError> {
+    name.split(" - ").collect::<Vec<&str>>().get(0).unwrap().parse::<u32>()
 }
 
 pub fn is_deemix(uri: &str) -> bool {
@@ -50,18 +50,14 @@ pub fn is_spotify(uri: &str) -> bool {
 pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
     #[allow(unused_mut)]
     let mut dx = DxConfig::new(
-        env::var("DEEMIX_ARL").ok(),
-        match env::var("DEEMIX_CACHE") {
-            Ok(s) => Some(PathBuf::from(s).canonicalize().unwrap()),
-            Err(_) => None,
-        }       
+        env::var("DEEMIX_ARL").ok()      
     );
 
     tracing::debug!("INIT DEEMIX-CONFIG: {:?}", dx);
 
-    if dx.arl.is_none() || dx.cache.is_none() {
+    if dx.arl.is_none() {
         tracing::error!("deemix based services will not be available: ds incomplete:  {:?}", dx);
-        return cfg.type_map_insert::<DxConfigKey>(DxConfig::default())
+        return cfg.type_map_insert::<DxConfigKey>(DxConfig::new(None))
     }
 
     tracing::info!("deemix credentials found, enabling support");
@@ -104,7 +100,7 @@ pub async fn deemix(
     let child = tokio::process::Command::new("deemix")
         .env("REQUESTS_CA_BUNDLE", "")
         .env("CURL_CA_BUNDLE", "")
-        .current_dir(dx.cache.as_ref().unwrap())
+        .current_dir(dx.cache.as_ref())
         .arg("--portable")
         .arg("-p").arg(&dldir)
         .arg(uri)
@@ -120,7 +116,7 @@ pub async fn deemix(
     tracing::warn!("deemix stderr: {}", String::from_utf8_lossy(&out.stderr[..]));
     tracing::debug!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
     
-    let paths = process_dir(&dldir, &dx.cache.as_ref().unwrap().join("music")).await?;
+    let paths = process_dir(&dldir, &dx.cache.as_ref().join("music")).await?;
     // tokio::fs::remove_dir_all(&tmpdir).await?;
     
     return Ok(PlaySource::FileSystem {
@@ -128,44 +124,36 @@ pub async fn deemix(
     });
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DxConfig {
     arl: Option<String>,
-    pub cache: Option<PathBuf>,
+    
+    pub cache: tempfile::TempDir,
 
     #[cfg(feature="mockingbird-spotify")]
     spotify: Option<DxSpotifyCfg>,
 }
 
 impl DxConfig {
-    pub fn new(arl: Option<String>, cache: Option<PathBuf>) -> Self {
+    pub fn new(arl: Option<String>) -> Self {
         Self {
             arl,
-            cache,
+            cache: tempfile::tempdir().unwrap(),
             #[cfg(feature="mockingbird-spotify")]
             spotify: None,
         }
     }
  
     pub async fn init_cache(&self) -> Result<(), DxError> {
-        if self.cache.is_none() {
-            return Err(DxError::BadCacheDir);
-        }
-
-        let cache = self.cache.as_ref()
-            .unwrap()
-            .canonicalize()
-            .unwrap();
-
-        if !cache.exists() {
-            tracing::info!("creating cache directory: {:?}", cache);
-            tokio::fs::create_dir_all(&cache).await?;
+        if !self.cache.path().exists() {
+            tracing::info!("creating cache directory: {:?}", self.cache.path().display());
+            tokio::fs::create_dir_all(&self.cache.path()).await?;
         }
         else {
-            tracing::info!("cache directory exists {:?}", cache);
+            tracing::info!("cache directory exists {:?}", self.cache.path().display());
         }
 
-        let test = cache.join("test.json");
+        let test = self.cache.path().join("test.json");
         let action = tokio::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -186,18 +174,6 @@ impl DxConfig {
 
 }
 
-impl Default for DxConfig {
-    fn default() -> Self {
-        DxConfig {
-            arl: None,
-            cache: None,
-
-            #[cfg(feature="mockingbird-spotify")]
-            spotify: None,
-        }
-    }
-}
-
 async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
     let conf_data = include_str!("deemix.json");
 
@@ -206,7 +182,7 @@ async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
         return Err(DxError::MissingARL)
     }
 
-    let root = dx.cache.as_ref().unwrap();
+    let root = dx.cache.as_ref();
     let pconfig = root.join("config");
     let pbank = root.join("music");
     let fconfig = pconfig.join("config.json");
@@ -350,11 +326,6 @@ pub async fn spotify_workspace(spotify: &DxSpotifyCfg, pconfig: &PathBuf) -> std
     tracing::debug!("wrote config {}", config.display());
     Ok(spotify)
 }
-
-fn track_number(name: &str) -> Result<u32, std::num::ParseIntError> {
-    name.split(" - ").collect::<Vec<&str>>().get(0).unwrap().parse::<u32>()
-}
-
 
 #[cfg(test)]
 mod tests {

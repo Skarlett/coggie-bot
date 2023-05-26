@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use super::extractor::{play_source, PlaySource};
 
 #[cfg(feature="mockingbird-deemix")]
-use super::extractor::{DxConfigKey, DxConfig};
+use super::extractor::{DxConfigKey};
 
 #[group]
 #[commands(
@@ -226,13 +226,15 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
+        
+        #[cfg(feature="mockingbird-deemix")]
+        let dx_lock = ctx.data.read().await;
 
         let req = super::extractor::PlayRequest {
             uri: &url,
             #[cfg(feature = "mockingbird-deemix")]
             dx: {
-                let dx_lock = ctx.data.read().await;
-                let dxc: DxConfig = dx_lock.get::<DxConfigKey>().unwrap().clone();
+                let dxc = dx_lock.get::<DxConfigKey>().unwrap().clone();
                 dxc
             }
         };
