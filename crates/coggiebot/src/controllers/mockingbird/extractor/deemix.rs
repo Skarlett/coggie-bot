@@ -174,7 +174,6 @@ impl DxConfig {
         workspace(&self, &dotconfig).await?;
         Ok(())        
     }
-
 }
 
 async fn workspace(dx: &DxConfig, at: &Path) -> Result<(), DxError> {
@@ -186,10 +185,14 @@ async fn workspace(dx: &DxConfig, at: &Path) -> Result<(), DxError> {
     }
 
     let root = at;
+    let pconfig = root.join("config");
     let pbank = root.join("music");
-    let fconfig = root.join("config.json");
+    let fconfig = pconfig.join("config.json");
 
     tracing::info!("Creating deemix workspace: {}", root.display());
+    if ! pconfig.exists() {
+        tokio::fs::create_dir(&pconfig).await?;
+    }
 
     if ! pbank.exists() {
         tokio::fs::create_dir(&pbank).await?;
@@ -217,7 +220,7 @@ async fn workspace(dx: &DxConfig, at: &Path) -> Result<(), DxError> {
 
     #[cfg(feature="mockingbird-spotify")]
     if let Some(ref spot_cfg) = dx.spotify {
-        spotify_workspace(spot_cfg, &root.to_path_buf()).await?;
+        spotify_workspace(spot_cfg, &pconfig.to_path_buf()).await?;
     }
 
     return Ok(())
