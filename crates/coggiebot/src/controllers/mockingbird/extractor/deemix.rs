@@ -100,7 +100,8 @@ pub async fn deemix(
     let child = tokio::process::Command::new("deemix")
         .env("REQUESTS_CA_BUNDLE", "")
         .env("CURL_CA_BUNDLE", "")
-        .current_dir(dx.cache.as_ref())
+        .env("HOME", dx.cache.as_ref())
+        .current_dir(dx.cache.as_ref().join(".config/deemix"))
         .arg("--portable")
         .arg("-p").arg(&dldir)
         .arg(uri)
@@ -152,6 +153,8 @@ impl DxConfig {
         else {
             tracing::info!("cache directory exists {:?}", self.cache.path().display());
         }
+        let dotconfig = self.cache.path().join(".config/deemix");
+        tokio::fs::create_dir_all(&dotconfig).await?;
 
         let test = self.cache.path().join("test.json");
         let action = tokio::fs::OpenOptions::new()
@@ -168,13 +171,13 @@ impl DxConfig {
             panic!("bad cache directory")
         } 
 
-        workspace(&self).await?;
+        workspace(&self, &dotconfig).await?;
         Ok(())        
     }
 
 }
 
-async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
+async fn workspace(dx: &DxConfig, at: &Path) -> Result<(), DxError> {
     let conf_data = include_str!("deemix.json");
 
     if dx.arl.is_none() {
@@ -182,16 +185,11 @@ async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
         return Err(DxError::MissingARL)
     }
 
-    let root = dx.cache.as_ref();
-    let pconfig = root.join("config");
+    let root = at;
     let pbank = root.join("music");
-    let fconfig = pconfig.join("config.json");
+    let fconfig = root.join("config.json");
 
     tracing::info!("Creating deemix workspace: {}", root.display());
-
-    if ! pconfig.exists() {     
-        tokio::fs::create_dir(&pconfig).await?;
-    }
 
     if ! pbank.exists() {
         tokio::fs::create_dir(&pbank).await?;
@@ -206,7 +204,7 @@ async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
         .write_all(conf_data.as_bytes())
         .await?;
 
-    let farl = pconfig.join(".arl");
+    let farl = root.join(".arl");
 
     tracing::info!("Creating deemix arl: {}", farl.display());
     tokio::fs::OpenOptions::new()
