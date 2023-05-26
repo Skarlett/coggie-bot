@@ -1,21 +1,6 @@
-//! Example demonstrating how to make use of individual track audio events,
-//! and how to use the `TrackQueue` system.
-//!
-//! Requires the "cache", "standard_framework", and "voice" features be enabled in your
-//! Cargo.toml, like so:
-//!
-//! ```toml
-//! [dependencies.serenity]
-//! git = "https://github.com/serenity-rs/serenity.git"
-//! features = ["cache", "framework", "standard_framework", "voice"]
-//! ```
-//use super::lib::ArlToken;
-//
-use serenity::client::ClientBuilder;
-use std::path::PathBuf;
-
-mod extractor;
 pub mod controller;
+mod extractor;
+use serenity::client::ClientBuilder;
 
 pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird initialized");

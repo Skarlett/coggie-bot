@@ -1,15 +1,16 @@
+use std::env;
+use crate::controllers::mockingbird::extractor::PlaySource;
 use std::path::{Path, PathBuf};
 use serenity::prelude::TypeMapKey;
-use tempfile::tempfile;
-use thiserror::Error;
 use async_walkdir::WalkDir;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::log::warn;
+use tokio::io::AsyncWriteExt;
 use std::process::Stdio;
 use serenity::{
     futures::StreamExt,
     client::ClientBuilder
 };
+
+#[cfg(feature="mockingbird-spotify")]
 use serde::Serialize;
 
 pub struct DxConfigKey;
@@ -17,7 +18,7 @@ impl TypeMapKey for DxConfigKey {
     type Value = DxConfig;
 }
 
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum DxError {
     #[error("io error")]
     BadIO(#[from] std::io::Error),
@@ -30,6 +31,7 @@ pub enum DxError {
 
     #[error("bad cache directory")]
     BadCacheDir,
+   
 }
 
 pub fn is_deemix(uri: &str) -> bool {
@@ -38,29 +40,73 @@ pub fn is_deemix(uri: &str) -> bool {
         .any(|x| uri.contains(x))
 }
 
+#[allow(unused)]
 pub fn is_spotify(uri: &str) -> bool {
     ["spotify.com", "open.spotify"]
         .iter()
         .any(|x| uri.contains(x))
 }
 
+pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
+    #[allow(unused_mut)]
+    let mut dx = DxConfig::new(
+        env::var("DEEMIX_ARL").ok(),
+        match env::var("DEEMIX_CACHE") {
+            Ok(s) => Some(PathBuf::from(s).canonicalize().unwrap()),
+            Err(_) => None,
+        }       
+    );
+
+    tracing::debug!("INIT DEEMIX-CONFIG: {:?}", dx);
+
+    if dx.arl.is_none() || dx.cache.is_none() {
+        tracing::error!("deemix based services will not be available: ds incomplete:  {:?}", dx);
+        return cfg.type_map_insert::<DxConfigKey>(DxConfig::default())
+    }
+
+    tracing::info!("deemix credentials found, enabling support");
+
+    #[cfg(feature="mockingbird-spotify")]
+    let dx = {
+        let id = env::var("SPOTIFY_CLIENT_ID");
+        let key = env::var("SPOTIFY_CLIENT_SECRET");
+
+        match (id, key) {
+            (Ok(id), Ok(key)) => {
+                tracing::info!("Spotify credentials found, enabling spotify support {} {}", id, key);
+                dx.spotify = Some(DxSpotifyCfg::new(id, key));
+                dx
+            },
+            _ => {
+                tracing::error!("SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET is not set, spotify based services will not be available");
+                dx
+            }
+        }
+    };
+
+    tracing::info!("Initializing deemix cache");
+    tracing::info!("deemix: {:?}", &dx);
+    dx.init_cache().await.unwrap();
+
+    tracing::info!("mockingbird-deemix Initialized");
+
+    cfg.type_map_insert::<DxConfigKey>(dx)
+}
 
 // #[tracing::instrument]
 pub async fn deemix(
     uri: &str,
-    rootdir: PathBuf,
+    dldir: &PathBuf,
     dx: &DxConfig
 ) -> Result<PlaySource, DxError>
 {
-    let tmpdir = tempfile::tempdir()?; 
-    
-    tracing::info!("RUNNING: deemix --portable -p {} {}", &tmpdir.path().display(), uri);
+    tracing::info!("RUNNING: deemix --portable -p {} {}", dldir.display(), uri);
     let child = tokio::process::Command::new("deemix")
         .env("REQUESTS_CA_BUNDLE", "")
         .env("CURL_CA_BUNDLE", "")
         .current_dir(dx.cache.as_ref().unwrap())
         .arg("--portable")
-        .arg("-p").arg(&tmpdir.path())
+        .arg("-p").arg(&dldir)
         .arg(uri)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -69,25 +115,15 @@ pub async fn deemix(
         .expect("Failed to start child process");
 
     let out = child.wait_with_output().await?;
-    let mut error_buf = String::new();
-   
-    let error_file = tmpdir.path().join("errors.txt");
-    if error_file.exists() {
-        tokio::io::BufReader::new(
-            tokio::fs::File::open(error_file).await?
-        ).read_to_string(&mut error_buf).await?;
-    }
-
+    
     tracing::info!("deemix exit code: {}", out.status);
     tracing::warn!("deemix stderr: {}", String::from_utf8_lossy(&out.stderr[..]));
     tracing::debug!("deemix stdout: {}", String::from_utf8_lossy(&out.stdout[..]));
     
-    let paths = process_dir(&tmpdir.path(), &dx.cache.as_ref().unwrap().join("music") ).await?;
+    let paths = process_dir(&dldir, &dx.cache.as_ref().unwrap().join("music")).await?;
     // tokio::fs::remove_dir_all(&tmpdir).await?;
     
-    
     return Ok(PlaySource::FileSystem {
-        errlog: error_buf, 
         ok_paths: paths,
     });
 }
@@ -116,7 +152,10 @@ impl DxConfig {
             return Err(DxError::BadCacheDir);
         }
 
-        let cache = self.cache.as_ref().unwrap();
+        let cache = self.cache.as_ref()
+            .unwrap()
+            .canonicalize()
+            .unwrap();
 
         if !cache.exists() {
             tracing::info!("creating cache directory: {:?}", cache);
@@ -159,55 +198,6 @@ impl Default for DxConfig {
     }
 }
 
-use std::env;
-use crate::controllers::mockingbird::extractor::PlaySource;
-pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
-    
-    #[allow(unused_mut)]
-    let mut dx = DxConfig::new(
-        env::var("DEEMIX_ARL").ok(),
-        match env::var("DEEMIX_CACHE") {
-                Ok(s) => Some(PathBuf::from(s)),
-                Err(e) => None,
-        }       
-    );
-
-    tracing::debug!("INIT DEEMIX-CONFIG: {:?}", dx);
-
-    if dx.arl.is_none() || dx.cache.is_none() {
-        tracing::error!("deemix based services will not be available: ds incomplete:  {:?}", dx);
-        return cfg.type_map_insert::<DxConfigKey>(DxConfig::default())
-    }
-
-    tracing::info!("deemix credentials found, enabling support");
-
-    #[cfg(feature="mockingbird-spotify")]
-    let dx = {
-        let id = env::var("SPOTIFY_CLIENT_ID");
-        let key = env::var("SPOTIFY_CLIENT_SECRET");
-
-        match (id, key) {
-            (Ok(id), Ok(key)) => {
-                tracing::info!("Spotify credentials found, enabling spotify support {} {}", id, key);
-                dx.spotify = Some(DxSpotifyCfg::new(id, key));
-                dx
-            },
-            _ => {
-                tracing::error!("SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET is not set, spotify based services will not be available");
-                dx
-            }
-        }
-    };
-
-    tracing::info!("Initializing deemix cache");
-    tracing::info!("deemix: {:?}", &dx);
-    dx.init_cache().await.unwrap();
-
-    tracing::info!("mockingbird-deemix Initialized");
-
-    cfg.type_map_insert::<DxConfigKey>(dx)
-}
-
 async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
     let conf_data = include_str!("deemix.json");
 
@@ -219,7 +209,6 @@ async fn workspace(dx: &DxConfig) -> Result<(), DxError> {
     let root = dx.cache.as_ref().unwrap();
     let pconfig = root.join("config");
     let pbank = root.join("music");
-
     let fconfig = pconfig.join("config.json");
 
     tracing::info!("Creating deemix workspace: {}", root.display());
@@ -326,6 +315,7 @@ pub struct DxSpotifyCfg {
     fallbackSearch: bool,
 }
 
+#[cfg(feature="mockingbird-spotify")]
 impl DxSpotifyCfg {
     #[allow(non_snake_case)]
     pub fn new(clientId: String, clientSecret: String) -> Self {
@@ -368,20 +358,7 @@ fn track_number(name: &str) -> Result<u32, std::num::ParseIntError> {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempfile;
-
     use super::*;
-
-    #[test]
-    fn test_deemix() {
-        let uri = "https://open.spotify.com/track/2YpeDb67231RjR0MgVLzsG?si=8e9e9e9e9e9e9e9e";
-        assert!(is_spotify(uri));
-    }
-}
-
-
-#[cfg(tests)]
-mod tests {
     use std::env::var;
     use std::path::PathBuf;
 
@@ -390,5 +367,11 @@ mod tests {
     fn path_deemix() {
         let paths = var("PATH").unwrap();
         assert!(paths.split(':').filter(|p| PathBuf::from(p).join("deemix").exists()).count() == 1);
+    }
+
+    #[test]
+    fn test_deemix() {
+        let uri = "https://open.spotify.com/track/2YpeDb67231RjR0MgVLzsG?si=8e9e9e9e9e9e9e9e";
+        assert!(is_spotify(uri));
     }
 }

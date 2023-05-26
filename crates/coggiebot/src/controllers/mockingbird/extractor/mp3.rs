@@ -63,7 +63,6 @@ pub async fn download(resp: reqwest::Response, tmpdir: &PathBuf) -> Result<PlayS
     tracing::info!("wrote: {} [{}]", fp.display(), human_filesize(fd.metadata().await?.len()));
 
     return Ok(PlaySource::FileSystem { 
-        errlog: String::new(),
         ok_paths: vec![fp],
     });
 }

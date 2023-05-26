@@ -1,11 +1,14 @@
 use songbird::{
     EventHandler as VoiceEventHandler,
     EventContext,
-    TrackEvent,
     Event as VCEvent,
     input,
-    tracks::{create_player, TrackHandle}
+    tracks::create_player
 };
+
+#[cfg(feature="mockingbird-hard-cleanfs")]
+use songbird::TrackEvent;
+
 use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, Args,
@@ -16,22 +19,16 @@ use serenity::model::channel::Message;
 use serenity::prelude::*;
 
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
-use std::time::Duration;
-use std::io::SeekFrom as Seek;
-
 use super::extractor::{play_source, PlaySource};
 
 #[cfg(feature="mockingbird-deemix")]
 use super::extractor::{DxConfigKey, DxConfig};
-
 
 #[group]
 #[commands(
     deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
 struct Deemix;
-
 
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
@@ -179,59 +176,17 @@ async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-struct HardDelete(Option<PathBuf>);
+struct HardDelete(PathBuf);
 #[async_trait]
 impl VoiceEventHandler for HardDelete {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
-        if let EventContext::Track(&[(a, track_list)]) = ctx {
-            if let Some(ref path) = self.0 {
-                tracing::info!("Deleting {:?}", path);
-                tokio::fs::remove_file(path).await.unwrap();
-            }
+        if let EventContext::Track(&[(_track, _track_list)]) = ctx {
+            tracing::info!("Deleting {:?}", &self.0);
+            tokio::fs::remove_file(&self.0).await.unwrap();
         }
         None
     }
 }
-
-// struct FadeOver { 
-//     next: TrackHandle,
-//     next_playing: Arc<AtomicUsize>,
-//     songbird: Arc<Mutex<Call>>
-// }
-
-// #[async_trait]
-// impl VoiceEventHandler for FadeOver {
-//     async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
-//         if let EventContext::Track(&[(state, track)]) = ctx {
-//             let first = self.next_playing.fetch_add(1, Ordering::Relaxed); 
-//             if first == 0 {
-//                 let handler = self.songbird.lock().await?;
-//                 let mut handler = self.songbird.get(self.next.guild_id).unwrap().lock().await;
-
-//                 self.next.make_playable();
-//                 self.next.seek_time(Duration::from_secs(0));
-                
-                
-//                 tracing::info!("Playing next track");
-//             }
-
-//             if state.volume < 0.2 {
-//                 tracing::info!("Track volume is low, cancelling");
-//                 track.stop();
-//                 self.songbird.lock().await?;
-//                 handler.play(self.next);
-//                 self.next.set_volume(1.0);
-//                 self.next.seek_time(Duration::from_secs(9));
-//                 return Some(VCEvent::Cancel)
-//             }
-//             else {
-//                 track.set_volume(state.volume - 0.1);
-//                 self.next.set_volume(1.0 - state.volume);
-//             }
-//         }
-//         None
-//     }
-// }
 
 #[command]
 #[aliases("play")]
@@ -288,32 +243,24 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 handler.enqueue_source(input.into());
             }
 
-            PlaySource::FileSystem { errlog, ok_paths } => {
+            PlaySource::FileSystem { ok_paths } => {
                 for fp in ok_paths {
                     match input::ffmpeg(&fp).await
                     {
                         Ok(input) => {
+                            #[allow(unused_variables)]
                             let (track, track_handle) = create_player(input);
-                            
-                            // if let Some(x) = handler.queue().current_queue().first() {
-                            //     track_handle.add_event(
-                            //         VCEvent::Periodic(Duration::from_secs(1), Some(track_handle.metadata().duration.unwrap() - Duration::from_secs(5))),
-                            //         FadeOver {
-                            //             next: x.clone(),
-                            //             next_playing: Arc::new(AtomicUsize::new(0)),
-                            //         }
-                            //     );
-                            // }
                             #[cfg(feature="mockingbird-hard-cleanfs")]
                             track_handle.add_event(
                                 VCEvent::Track(TrackEvent::End),
-                                HardDelete(Some(fp))
+                                HardDelete(fp)
                             );
                             handler.enqueue(track);
                         },
                         
                         Err(e) => {
                             tokio::fs::remove_file(&fp).await.unwrap();
+                            tracing::error!("Failed to play file: {:?}", e);
                             continue;
                         }
                     }

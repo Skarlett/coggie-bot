@@ -1,30 +1,5 @@
 mod controllers;
 use std::env;
-
-//
-// TODO:
-//   arl scraper
-//   add cleanup-dl-perl systemd service to clean up old downloads
-//       - use nix to deploy it along side coggiebot
-//       - add to coggiebot `Wants` systemd service
-//
-//   add dl features
-//
-//
-// Later:
-//   port deemix to rust
-//   streaming pass on deemix
-//   use spotify api to go through a top down priority check list 
-//   for getting retrieving songs
-//
-//
-// feature-list:
-//   use env var at build-time `COGGIE_FEATURES` 
-//   in the format of a comma separated list
-//   with boolean values to indicate enabled/disabled features   
-//   example:
-//       COGGIE_FEATURES="mockingbird-core=1,bookmark=0"
-
 use serenity::framework::standard::StandardFramework;
 use serenity::http::Http;
 
@@ -72,9 +47,6 @@ struct CLI {
     /// Access Token
     #[structopt(long = "token", env = EnvVars::DISCORD_TOKEN)]
     token: String,
-
-    #[structopt(long = "config", env = EnvVars::CONFIG_FILE)]
-    config: Option<String>,
 }
 
 #[tokio::main]
