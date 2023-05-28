@@ -4,6 +4,7 @@
   , pkgs
   , stdenv
   , naerk-lib
+  , deemix-stream
   , recursiveMerge
 }:
 let
@@ -52,18 +53,17 @@ let
               (prev: {
                   buildInputs = with pkgs; prev.buildInputs ++ [
                     ffmpeg
-                  ];
-                  nativeBuildInputs = with pkgs; prev.nativeBuildInputs ++ [
+	                  libopus
+                    gcc
                     cmake
                     gnumake
-                    pkgconfig
-                    libopus
                   ];
               });
           }
-          { name = "mockingbird-deemix";
-            pkg-override = (prev: rec {
-              buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
+          { name = "mockingbird-deemix-new";
+            pkg-override = (prev: {
+              buildInputs = prev.buildInputs ++ [ deemix-stream ];
+              nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
             });
             dependencies = [ "mockingbird" ];
           }

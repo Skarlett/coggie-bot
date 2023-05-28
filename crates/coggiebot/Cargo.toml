@@ -22,7 +22,7 @@ reqwest = { version = "0.11", optional = true }
 tempfile = { version = "3", optional = true }
 
 [features]
-default = ["mockingbird-core", "mockingbird-playback", "mockingbird-deemix", "mockingbird-ytdl"]
+default = []
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
@@ -61,6 +61,8 @@ mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "d
 # they've been streamed to discord
 mockingbird-hard-cleanfs = ["mockingbird-playback"]
 
+mockingbird-deemix-new = ["dep:serde", "dep:serde_json"]
+
 ###########
 # find similar music, and play playlists +24/7 loop
 # mockingbird-dj = ["mockingbird"]
@@ -74,6 +76,14 @@ mockingbird-hard-cleanfs = ["mockingbird-playback"]
 # add environment variables
 # mockingbird-export = ["mockingbird", "mockingbird-shm"]
 
+
+#########
+# spray rust message
+memes-rust = []
+
+#########
+# enable meme commands
+memes = ["memes-rust"]
 
 [package.metadata.nix]
 app = true

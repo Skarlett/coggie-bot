@@ -23,9 +23,13 @@
           stdenv = pkgs.stdenv;
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
-          cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; };
+          
+          deemix-stream = pkgs.callPackage ./sbin/dx-play {
+            inherit (pkgs.python39Packages) deemix;
+          };
 
-          features = (with cogpkgs.features; [
+          cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
+          stable-features = (with cogpkgs.features; [
               basic-cmds
               bookmark
               list-feature-cmd
@@ -38,8 +42,14 @@
               mockingbird-hard-cleanfs
           ]);
 
+          coggiebot-next = cogpkgs.mkCoggiebot {
+            features-list = stable-features ++ (with cogpkgs.features; [
+              mockingbird-deemix-new
+            ]);
+          };
+
           coggiebot-stable = cogpkgs.mkCoggiebot {
-            features-list = features;
+            features-list = stable-features;
           };
 
           non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };
@@ -72,19 +82,15 @@
         in
         rec {
           packages.check-cache = cictl.check;
-
-          packages.deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
-            inherit (pkgs.python39.pkgs) buildPythonApplication;
-          };
-
+          packages.deemix-stream = deemix-stream; 
           packages.cleanup-downloads = pkgs.callPackage ./sbin/cleanup-dl {
             perlPackages = pkgs.perl534Packages;
           };
 
           packages.deploy = vanilla-linux;
           packages.default = coggiebot-stable;
+          packages.coggiebot-next = coggiebot-next;
           packages.coggiebot-stable = coggiebot-stable;
-
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
             coggiebot = coggiebot-stable;
           };

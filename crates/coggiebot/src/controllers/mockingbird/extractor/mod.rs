@@ -57,8 +57,6 @@ pub async fn play_source<'a>(
    req: PlayRequest<'a>
 ) -> Result<PlaySource, SourceErrors>
 {
-    const PATH_SZ: usize = 64;
-
     #[cfg(feature="mockingbird-ytdl")]
     if ytdl::is_ytdl(req.uri) {
         tracing::info!("streaming with ytdl: {}", req.uri);

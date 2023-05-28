@@ -98,9 +98,6 @@ pub async fn deemix(
 {
     tracing::info!("RUNNING: deemix --portable -p {} {}", dldir.display(), uri);
     let child = tokio::process::Command::new("deemix")
-        .env("REQUESTS_CA_BUNDLE", "")
-        .env("CURL_CA_BUNDLE", "")
-        .env("HOME", dx.cache.as_ref())
         .current_dir(dx.cache.as_ref().join(".config/deemix"))
         .arg("--portable")
         .arg("-p").arg(&dldir)
@@ -127,8 +124,7 @@ pub async fn deemix(
 
 #[derive(Debug)]
 pub struct DxConfig {
-    arl: Option<String>,
-    
+    pub arl: Option<String>,
     pub cache: tempfile::TempDir,
 
     #[cfg(feature="mockingbird-spotify")]
@@ -172,7 +168,7 @@ impl DxConfig {
         } 
 
         workspace(&self, &dotconfig).await?;
-        Ok(())        
+        Ok(())
     }
 }
 
