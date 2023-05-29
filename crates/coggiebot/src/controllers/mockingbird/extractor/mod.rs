@@ -96,7 +96,6 @@ pub async fn play_source<'a>(
     }    
 }
 
-
 pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird extractors initialized");
     #[cfg(feature="mockingbird-deemix")]

@@ -40,13 +40,8 @@
               mockingbird-playback
               mockingbird-spotify
               mockingbird-hard-cleanfs
-          ]);
-
-          coggiebot-next = cogpkgs.mkCoggiebot {
-            features-list = stable-features ++ (with cogpkgs.features; [
               mockingbird-deemix-new
-            ]);
-          };
+          ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = stable-features;
@@ -89,7 +84,7 @@
 
           packages.deploy = vanilla-linux;
           packages.default = coggiebot-stable;
-          packages.coggiebot-next = coggiebot-next;
+          
           packages.coggiebot-stable = coggiebot-stable;
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
             coggiebot = coggiebot-stable;
