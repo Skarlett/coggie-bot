@@ -97,7 +97,6 @@ def wrapped_stream(downloadObject, extraData):
     except DownloadFailed as e:
         pass
 
-    
 
 def stream_stdout(downloadObject, extraData, track=None, bitrate=TrackFormats.MP3_320):
     trackAPI = extraData.get('trackAPI')
@@ -150,7 +149,6 @@ def stream_stdout(downloadObject, extraData, track=None, bitrate=TrackFormats.MP
         streamTrack(stdout, track, downloadObject=downloadObject)
     except requests.exceptions.HTTPError as e:
         raise DownloadFailed('notAvailable', track) from e
-
 
 @click.command()
 @click.option('-a', '--arl', type=str, default=None, help='ARL token to use')

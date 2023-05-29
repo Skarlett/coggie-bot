@@ -141,7 +141,6 @@ pub async fn _deemix(
         .stderr(Stdio::piped())
         .spawn()?;
     
-    tracing::info!("wtf check 1");
     let stderr = deemix.stderr.take();
     let (_returned_stderr, value) = tokio::task::spawn_blocking(move || {
         let mut s = stderr.unwrap();
@@ -186,6 +185,10 @@ pub async fn _deemix(
     let metadata = Some(metadata_from_deemix_output(value?));
 
     tracing::info!("deezer metadata {:?}", metadata);
+
+    // Wait for ffmpeg to read stream
+    tokio::time::sleep(std::time::Duration::from_secs_f64(2.5)).await;
+    
     Ok(Input::new(
         true,
         children_to_reader::<f32>(vec![deemix, ffmpeg]),
