@@ -41,7 +41,8 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
-            ["mockingbird-core", "mockingbird-playback"] => [mockingbird::controller::DEEMIX_GROUP]
+            ["mockingbird-core", "mockingbird-playback"] => [mockingbird::controller::DEEMIX_GROUP],
+            ["mockingbird-deemix-new"] => [mockingbird::BETA_GROUP]
         }
     );
     cfg

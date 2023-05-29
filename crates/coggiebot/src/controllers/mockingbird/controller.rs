@@ -8,7 +8,6 @@ use songbird::{
 
 #[cfg(feature="mockingbird-hard-cleanfs")]
 use songbird::TrackEvent;
-
 use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, Args,
@@ -22,7 +21,7 @@ use std::path::PathBuf;
 use super::extractor::{play_source, PlaySource};
 
 #[cfg(feature="mockingbird-deemix")]
-use super::extractor::{DxConfigKey};
+use super::extractor::DxConfigKey;
 
 #[group]
 #[commands(

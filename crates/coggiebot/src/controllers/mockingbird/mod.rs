@@ -1,5 +1,12 @@
 pub mod controller;
 mod extractor;
+
+#[cfg(feature="mockingbird-deemix-new")]
+mod new_deemix;
+
+#[cfg(feature="mockingbird-deemix-new")]
+pub use new_deemix::BETA_GROUP;
+
 use serenity::client::ClientBuilder;
 
 pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
