@@ -37,23 +37,17 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
-            check_msg(
                 msg.channel_id
                     .say(&ctx.http, "Must provide a URL to a video or audio")
-                    .await,
-            );
-
+                    .await;
             return Ok(());
         },
     };
 
     if !url.starts_with("http") {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, "Must provide a valid URL")
-                .await,
-        );
-
+        msg.channel_id
+            .say(&ctx.http, "Must provide a valid URL")
+            .await;
         return Ok(());
     }
 
@@ -76,21 +70,17 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             Err(e) => { msg.reply(&ctx.http, format!("Error: {}", e)).await.unwrap(); }
         }
 
-        check_msg(
-            msg.channel_id
-                .say(
-                    &ctx.http,
-                    format!("Added song to queue: position {}", handler.queue().len()),
-                )
-                .await,
-        );
+        msg.channel_id
+            .say(
+                &ctx.http,
+                format!("Added song to queue: position {}", handler.queue().len()),
+            )
+            .await;
     }
     else {
-        check_msg(
             msg.channel_id
                 .say(&ctx.http, "Not in a voice channel to play in")
-                .await,
-        );
+                .await;
     }
 
     Ok(())
@@ -232,14 +222,5 @@ fn metadata_from_deemix_output(val: serde_json::Value) -> Metadata
         duration,
         sample_rate: Some(SAMPLE_RATE_RAW as u32),
         ..Default::default()
-    }
-}
-
-
-use serenity::Result as SerenityResult;
-/// Checks that a message successfully sent; if not, then logs why to stdout.
-fn check_msg(result: SerenityResult<Message>) {
-    if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
     }
 }

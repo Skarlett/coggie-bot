@@ -24,7 +24,7 @@
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           
-          deemix-stream = pkgs.callPackage ./sbin/dx-play {
+          deemix-stream = pkgs.callPackage ./sbin/stream-deemix {
             inherit (pkgs.python39Packages) deemix;
           };
 
