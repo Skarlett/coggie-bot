@@ -18,6 +18,9 @@ from deemix.errors import DownloadFailed, MD5NotFound, DownloadCanceled, Preferr
 from deezer.errors import WrongLicense, WrongGeolocation
 from deemix.types.DownloadObjects import Single, Collection
 from deemix.plugins.spotify import Spotify
+import spotipy
+SpotifyClientCredentials = spotipy.oauth2.SpotifyClientCredentials
+CacheFileHandler = spotipy.cache_handler.CacheFileHandler
 
 dz = Deezer()
 settings = DEFAULT_SETTINGS
@@ -29,12 +32,13 @@ class MockCache(dict):
         return {}
 
 class SpotifyStreamer(Spotify):
-    def __init__(self, id, secret, configFolder=None):
-        super().__init__(configFolder)
+    def __init__(self, id, secret, auth_cache):
+        super().__init__(None)
         self.credentials = {
             "clientId": id,
             "clientSecret": secret,
         }
+        self.auth_cache = auth_cache
     
     def setup(self):
         self.checkCredentials()
@@ -45,7 +49,25 @@ class SpotifyStreamer(Spotify):
 
     def saveCache(self, _cache):
         pass
+    
+    def checkCredentials(self):
+        if self.credentials['clientId'] == "" or self.credentials['clientSecret'] == "":
+            self.enabled = False
+            return
 
+        try:
+            cache_handler = CacheFileHandler(self.auth_cache)
+            client_credentials_manager =SpotifyClientCredentials(
+                client_id=self.credentials['clientId'],
+                client_secret=self.credentials['clientSecret'],
+                cache_handler=cache_handler
+            )
+
+            self.sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+            self.sp.user_playlists('spotify')
+            self.enabled = True
+        except Exception:
+            self.enabled = False
 
 def start(downloadObject):
     if isinstance(downloadObject, Single):
@@ -132,16 +154,17 @@ def stream_stdout(downloadObject, extraData, track=None, bitrate=TrackFormats.MP
 
 @click.command()
 @click.option('-a', '--arl', type=str, default=None, help='ARL token to use')
-@click.option('-s', '--sp-id', type=str, help='Path to the config folder')
-@click.option('-ss', '--sp-secret', type=str, help='Path to the config folder')
+@click.option('-s', '--spt-id', type=str, help='Path to the config folder')
+@click.option('-ss', '--spt-secret', type=str, help='Path to the config folder')
+@click.option('-sc', '--spt-cache', type=str, help='Path to the config folder')
 @click.argument('url', nargs=-1, required=True)
-def stream(url, arl, sp_id, sp_secret):
+def stream(url, arl, spt_id, spt_secret, spt_cache):
     assert arl, 'You must provide an ARL token'
     assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
 
     settings = DEFAULT_SETTINGS
     
-    plugins = {"spotify": SpotifyStreamer(sp_id, sp_secret)}
+    plugins = {"spotify": SpotifyStreamer(spt_id, spt_secret, spt_cache)}
     plugins["spotify"].setup()
     
     bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
