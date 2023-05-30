@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+from deemix_stream.__init__ import SpotifyStreamer, fan_dl_object
+
+import click
+import requests
+import sys
+import json
+
+from requests import get
+from deezer import Deezer
+from deezer import TrackFormats
+from deemix.types.Track import Track
+from deemix import generateDownloadObject, parseLink
+from deemix.settings import DEFAULTS as DEFAULT_SETTINGS, load as loadSettings
+from deemix.downloader import getPreferredBitrate, formatsName, streamTrack
+from deemix.errors import DownloadFailed, MD5NotFound, \
+    DownloadCanceled, PreferredBitrateNotFound, \
+    TrackNot360, AlbumDoesntExists,  \
+    DownloadError, DownloadEmpty
+
+from deezer.errors import WrongLicense, WrongGeolocation
+
+from deemix.utils import USER_AGENT_HEADER
+from deemix.utils.crypto import generateBlowfishKey, decryptChunk
+
+
+dz = Deezer()
+settings = DEFAULT_SETTINGS
+plugins = {}
+stdout = open(sys.stdout.fileno(), 'wb')
+
+def streamTrack(outputStream, track, trackAPI=None, start=0, downloadObject=None):
+    if downloadObject and downloadObject.isCanceled: raise DownloadCanceled
+    headers= {'User-Agent': USER_AGENT_HEADER}
+    chunkLength = start
+    isCryptedStream = "/mobile/" in track.downloadURL or "/media/" in track.downloadURL
+
+    with get(track.downloadURL, headers=headers, stream=True, timeout=10) as request:
+        request.raise_for_status()
+        if isCryptedStream:
+            blowfish_key = generateBlowfishKey(str(track.id))
+
+        complete = int(request.headers["Content-Length"])
+        if trackAPI:
+            trackAPI["filesize"] = complete;
+            json.dump(trackAPI, sys.stderr)
+            print("", file=sys.stderr)
+        
+        if complete == 0: raise DownloadEmpty
+        
+        isStart = True
+        for chunk in request.iter_content(2048 * 3):
+            if isCryptedStream:
+                if len(chunk) >= 2048:
+                    chunk = decryptChunk(blowfish_key, chunk[0:2048]) + chunk[2048:]
+
+            if isStart and chunk[0] == 0 and chunk[4:8].decode('utf-8') != "ftyp":
+                for i, byte in enumerate(chunk):
+                    if byte != 0: break
+                chunk = chunk[i:]
+            isStart = False
+
+            outputStream.write(chunk)
+            chunkLength += len(chunk)
+
+def stream_stdout(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
+    trackAPI = extraData.get('trackAPI')
+    albumAPI = extraData.get('albumAPI')
+    playlistAPI = extraData.get('playlistAPI')
+    trackAPI['size'] = downloadObject.size
+
+    if int(trackAPI['id']) == 0: raise DownloadFailed("notOnDeezer")
+    try:
+        track = Track().parseData(
+            dz=dz,
+            track_id=trackAPI['id'],
+            trackAPI=trackAPI,
+            albumAPI=albumAPI,
+            playlistAPI=playlistAPI
+        )
+    except AlbumDoesntExists as e:
+        raise DownloadError('albumDoesntExists') from e
+    except MD5NotFound as e:
+        raise DownloadError('notLoggedIn') from e
+
+    # Check if track not yet encoded
+    if track.MD5 == '': raise DownloadFailed("notEncoded", track)
+    try:
+        selectedFormat = getPreferredBitrate(
+            dz,
+            track,
+            bitrate,
+            DEFAULT_SETTINGS['fallbackBitrate'],
+            DEFAULT_SETTINGS['feelingLucky'],
+        )
+        trackAPI['selectedFormat'] = formatsName[selectedFormat];
+        trackAPI['format-urls'] = track.urls;
+
+    except WrongLicense as e:
+        raise DownloadFailed("wrongLicense") from e
+    except WrongGeolocation as e:
+        raise DownloadFailed("wrongGeolocation", track) from e
+    except PreferredBitrateNotFound as e:
+        raise DownloadFailed("wrongBitrate", track) from e
+    except TrackNot360 as e:
+        raise DownloadFailed("no360RA") from e
+
+    track.bitrate = selectedFormat
+    track.album.bitrate = selectedFormat
+    # Apply settings
+    track.applySettings(DEFAULT_SETTINGS)
+    track.downloadURL = track.urls[formatsName[track.bitrate]]    
+    if not track.downloadURL: raise DownloadFailed('notAvailable', track)
+
+    try:
+        streamTrack(stdout, track, downloadObject=downloadObject, trackAPI=trackAPI)
+    except requests.exceptions.HTTPError as e:
+        raise DownloadFailed('notAvailable', track) from e
+
+@click.command()
+@click.option('-a', '--arl', type=str, default=None, help='ARL token to use')
+@click.option('-s', '--spt-id', type=str, help='Path to the config folder')
+@click.option('-ss', '--spt-secret', type=str, help='Path to the config folder')
+@click.option('-sc', '--spt-cache', type=str, help='Path to the config folder')
+@click.argument('url', nargs=-1, required=True)
+def stream(url, arl, spt_id, spt_secret, spt_cache):
+    assert arl, 'You must provide an ARL token'
+    assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
+
+    settings = DEFAULT_SETTINGS
+    
+    plugins = {"spotify": SpotifyStreamer(spt_id, spt_secret, spt_cache)}
+    plugins["spotify"].setup()
+    
+    bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
+    (link, _link_type, _link_id) = parseLink(url[0])
+
+    downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
+    for (obj, extras) in list(fan_dl_object(downloadObject)):
+        if obj.__type__ == "Convertable":
+            obj = plugins[obj.plugin].convert(dz, obj, settings)
+        stream_stdout(obj, extras)
+
+    stdout.close()
+    
+if __name__ == '__main__':
+    stream(auto_envvar_prefix='DEEMIX')

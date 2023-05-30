@@ -1,33 +1,130 @@
-use songbird::{
-    EventHandler as VoiceEventHandler,
-    EventContext,
-    Event as VCEvent,
-    input,
-    tracks::create_player
-};
-
-#[cfg(feature="mockingbird-hard-cleanfs")]
-use songbird::TrackEvent;
 use serenity::framework::standard::{
     macros::{command, group},
     CommandResult, Args,
 };
 
-use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
-
-use std::path::PathBuf;
-use super::extractor::{play_source, PlaySource};
-
-#[cfg(feature="mockingbird-deemix")]
-use super::extractor::DxConfigKey;
 
 #[group]
 #[commands(
     deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
 struct Deemix;
+
+enum Players {
+    Ytdl,
+    Deemix,
+}
+use songbird::Call;
+use songbird::input::error::Error as SongbirdError;
+use songbird::create_player;
+
+impl Players {
+    fn from_str(data : &str) -> Option<Self>
+    {
+        const DEEMIX: [&'static str; 2] = ["deezer.link", "open.spotify"];
+        const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
+    
+        if DEEMIX.iter().any(|x|data.contains(x)) { return Some(Self::Deemix) }
+        else if YTDL.iter().any(|x|data.contains(x)) {return Some(Self::Ytdl) }
+        else { return None }
+    }
+
+    async fn play(&self, handler: &mut Call,  uri: &str) -> Result<(), SongbirdError>
+    {
+        match self {
+            Self::Deemix => {
+                let (track, _track_handle) = create_player(crate::deemix::deemix(uri).await?);
+                handler.enqueue(track);
+            }
+            Self::Ytdl => {
+                let (track, _track_handle) = create_player(songbird::ytdl(uri).await?);
+                handler.enqueue(track);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[command]
+#[aliases("play")]
+#[only_in(guilds)]
+async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let url = match args.single::<String>() {
+        Ok(url) => url,
+        Err(_) => {
+            check_msg(
+                msg.channel_id
+                    .say(&ctx.http, "Must provide a URL to a video or audio")
+                    .await,
+            );
+
+            return Ok(());
+        },
+    };
+
+    if !url.starts_with("http") {
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Must provide a valid URL")
+                .await,
+        );
+
+        return Ok(());
+    }
+
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+
+        let player = Players::from_str(&url)
+            .ok_or_else(|| String::from("Failed to select extractor for URL"));
+        
+        match player {
+            Ok(player) => player.play(&mut handler, &url).await?,
+            Err(e) => {
+                check_msg(
+                    msg.channel_id
+                        .say(
+                            &ctx.http,
+                            format!("Error: {}", e),
+                        ).await
+                );
+                return Ok(());
+            }
+
+        }
+
+        check_msg(
+            msg.channel_id
+                .say(
+                    &ctx.http,
+                    format!("Added song to queue: position {}", handler.queue().len()),
+                )
+                .await,
+        );
+        Ok(())
+    }
+
+    else {
+        check_msg(
+            msg.channel_id
+                .say(&ctx.http, "Not in a voice channel to play in")
+                .await,
+        );
+        Ok(())
+    }
+}
 
 #[command]
 async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
@@ -95,7 +192,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
 
     let reply = match success {
         Ok(_) => format!("Joined {}", connect_to.mention()),
-        Err(e) =>format!("Failed to join voice channel: {:?}", e),
+        Err(e) => format!("Failed to join voice channel: {:?}", e),
     };
 
     check_msg(
@@ -170,120 +267,6 @@ async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
         }
 
         check_msg(msg.channel_id.say(&ctx.http, "Now muted").await);
-    }
-
-    Ok(())
-}
-
-struct HardDelete(PathBuf);
-#[async_trait]
-impl VoiceEventHandler for HardDelete {
-    async fn act(&self, ctx: &EventContext<'_>) -> Option<VCEvent> {
-        if let EventContext::Track(&[(_track, _track_list)]) = ctx {
-            tracing::info!("Deleting {:?}", &self.0);
-            tokio::fs::remove_file(&self.0).await.unwrap();
-        }
-        None
-    }
-}
-
-#[command]
-#[aliases("play")]
-#[only_in(guilds)]
-async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let url = match args.single::<String>() {
-        Ok(url) => url,
-        Err(_) => {
-            check_msg(
-                msg.channel_id
-                    .say(&ctx.http, "Must provide a URL to a video or audio")
-                    .await,
-            );
-
-            return Ok(());
-        },
-    };
-
-    if !url.starts_with("http") {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, "Must provide a valid URL")
-                .await,
-        );
-
-        return Ok(());
-    }
-
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
-        
-        #[cfg(feature="mockingbird-deemix")]
-        let dx_lock = ctx.data.read().await;
-
-        let req = super::extractor::PlayRequest {
-            uri: &url,
-            #[cfg(feature = "mockingbird-deemix")]
-            dx: {
-                let dxc = dx_lock.get::<DxConfigKey>().unwrap().clone();
-                dxc
-            }
-        };
-
-        match play_source(req).await.unwrap() {
-            PlaySource::Ytdl { uri } => {
-                let input = input::ytdl(&uri).await.unwrap();              
-                handler.enqueue_source(input.into());
-            }
-
-            PlaySource::FileSystem { ok_paths } => {
-                for fp in ok_paths {
-                    match input::ffmpeg(&fp).await
-                    {
-                        Ok(input) => {
-                            #[allow(unused_variables)]
-                            let (track, track_handle) = create_player(input);
-                            #[cfg(feature="mockingbird-hard-cleanfs")]
-                            track_handle.add_event(
-                                VCEvent::Track(TrackEvent::End),
-                                HardDelete(fp)
-                            );
-                            handler.enqueue(track);
-                        },
-                        
-                        Err(e) => {
-                            tokio::fs::remove_file(&fp).await.unwrap();
-                            tracing::error!("Failed to play file: {:?}", e);
-                            continue;
-                        }
-                    }
-                }                
-            }
-        } 
-
-        check_msg(
-            msg.channel_id
-                .say(
-                    &ctx.http,
-                    format!("Added song to queue: position {}", handler.queue().len()),
-                )
-                .await,
-        );
-    }
-    else {
-        check_msg(
-            msg.channel_id
-                .say(&ctx.http, "Not in a voice channel to play in")
-                .await,
-        );
     }
 
     Ok(())
@@ -422,6 +405,6 @@ use serenity::Result as SerenityResult;
 /// Checks that a message successfully sent; if not, then logs why to stdout.
 fn check_msg(result: SerenityResult<Message>) {
     if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
+        tracing::error!("Error sending message: {:?}", why);
     }
 }

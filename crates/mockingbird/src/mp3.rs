@@ -1,6 +1,5 @@
 use tokio::io::{AsyncWriteExt};
 use serenity::futures::StreamExt;
-use thiserror::Error;
 use std::path::PathBuf;
 
 use super::PlaySource;

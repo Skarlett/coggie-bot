@@ -15,6 +15,9 @@ serde = { version = "1", optional=true }
 serde_derive = { version = "1", optional=true }
 serde_json = { version = "1.0", optional=true }
 
+mockingbird = { path = "../mockingbird" }
+
+
 songbird = { version = "0.3", optional=true, features = ["builtin-queue"] }
 file-lock = { version = "2.1", optional=true }
 async-walkdir = { version="0.2.0", optional=true }
@@ -36,11 +39,6 @@ mockingbird-core = ["dep:songbird", "dep:tempfile"]
 mockingbird-playback = ["mockingbird-core"]
 
 ################
-# Setup mocking bird to "own" a channel so users
-# may just paste compatiable links into it
-mockingbird-channel = ["mockingbird-core"]
-
-################
 # mockingbird is compatiable with youtube & soundcloud
 mockingbird-ytdl = ["mockingbird-core", "songbird?/yt-dlp"]
 
@@ -59,9 +57,9 @@ mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "d
 ################
 # adds capability to clean up files from the system after
 # they've been streamed to discord
-mockingbird-hard-cleanfs = ["mockingbird-playback"]
+# mockingbird-hard-cleanfs = ["mockingbird-playback"]
 
-mockingbird-deemix-new = ["dep:serde", "dep:serde_json"]
+# mockingbird-deemix-new = ["dep:serde", "dep:serde_json", "dep:nix"]
 
 ###########
 # find similar music, and play playlists +24/7 loop

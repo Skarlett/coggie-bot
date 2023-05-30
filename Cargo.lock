@@ -253,6 +253,7 @@ version = "1.4.12"
 dependencies = [
  "async-walkdir",
  "file-lock",
+ "mockingbird",
  "reqwest",
  "serde",
  "serde_derive",
@@ -944,6 +945,20 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.45.0",
+]
+
+[[package]]
+name = "mockingbird"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serenity",
+ "songbird",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

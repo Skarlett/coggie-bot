@@ -24,8 +24,8 @@
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           
-          deemix-stream = pkgs.callPackage ./sbin/stream-deemix {
-            inherit (pkgs.python39Packages) deemix;
+          deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
+            inherit (pkgs.python39Packages);
           };
 
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
