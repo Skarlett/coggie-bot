@@ -90,6 +90,11 @@ pub async fn _deemix(
     pre_args: &[&str],
 ) -> SongbirdResult<Input>
 {
+    let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
+        .unwrap_or_else(|_| "0.8".to_string())
+        .parse::<f32>()
+        .unwrap_or(0.8);
+
     let pipesize = max_pipe_size().await.unwrap();
     let ffmpeg_args = [
         "-f",
@@ -112,10 +117,8 @@ pub async fn _deemix(
         .stderr(Stdio::piped())
         .spawn()?;
     
-    unsafe { 
-        let raw_stdout = deemix.stdout.as_ref().unwrap().as_raw_fd();
-        bigpipe(raw_stdout, pipesize);
-    }
+    let raw_stdout = deemix.stdout.as_ref().unwrap().as_raw_fd();
+    unsafe { bigpipe(raw_stdout, pipesize); }
 
     let stderr = deemix.stderr.take();
     let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
@@ -162,18 +165,14 @@ pub async fn _deemix(
     
     let metadata = Some(metadata_from_deemix_output(&metadata_raw));
 
-    let totalbytes = metadata_raw["filesize"].as_i64().unwrap();
-
     tracing::info!("deezer metadata {:?}", metadata);
     let ptr = ffmpeg.stdout.as_ref().unwrap().as_raw_fd();
-    unsafe {
-        bigpipe(ptr, pipesize);
-    }
+    unsafe { bigpipe(ptr, pipesize); }
     let now = std::time::Instant::now();
+    
     loop {
         let avail = unsafe { availbytes(ptr) };            
         let mut percentage = 0.0;
-        // collect atleast 25% of the data before starting
         if 0 > avail {
             break
         }
@@ -182,7 +181,8 @@ pub async fn _deemix(
             percentage = pipesize as f32 / avail as f32;
         }
 
-        if 0.8 > percentage {
+        // fill atleast 80% of the pipe before starting
+        if pipe_threshold > percentage {
             tokio::time::sleep(std::time::Duration::from_micros(200)).await;
             tracing::debug!("availbytes: {}", avail);
             tracing::debug!("pipesize: {}", pipesize);
