@@ -1,4 +1,3 @@
-use super::extractor::{DxConfigKey, DxConfig};
 use songbird::{
     constants::SAMPLE_RATE_RAW,
     input::{
@@ -10,15 +9,6 @@ use songbird::{
         Input,
         restartable::Restart
     },
-    create_player
-};
-use serenity::{
-    model::prelude::*,
-    prelude::*,
-    framework::standard::{
-        macros::{command, group},
-        CommandResult, Args,
-    },
 };
 use std::{
     io::{BufReader, BufRead, Read},
@@ -26,65 +16,31 @@ use std::{
     time::Duration
 };
 use serde_json::Value;
-#[group]
-#[commands(queue)]
-pub struct Beta;
+use std::os::fd::AsRawFd;
+use tokio::io::AsyncReadExt;
 
-#[command("deezer")]
-#[aliases("dx")]
-#[only_in(guilds)]
-async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let url = match args.single::<String>() {
-        Ok(url) => url,
-        Err(_) => {
-                msg.channel_id
-                    .say(&ctx.http, "Must provide a URL to a video or audio")
-                    .await;
-            return Ok(());
-        },
-    };
-
-    if !url.starts_with("http") {
-        msg.channel_id
-            .say(&ctx.http, "Must provide a valid URL")
-            .await;
-        return Ok(());
-    }
-
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;        
-
-        match deemix(&url).await {
-            Ok(input) => {
-                let (track, _track_handle) = create_player(input);
-                handler.enqueue(track);
-            }
-            Err(e) => { msg.reply(&ctx.http, format!("Error: {}", e)).await.unwrap(); }
-        }
-
-        msg.channel_id
-            .say(
-                &ctx.http,
-                format!("Added song to queue: position {}", handler.queue().len()),
-            )
-            .await;
-    }
-    else {
-            msg.channel_id
-                .say(&ctx.http, "Not in a voice channel to play in")
-                .await;
-    }
-
-    Ok(())
+#[tracing::instrument]
+async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .open("/proc/sys/fs/pipe-max-size")
+        .await?;
+    
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).await?; 
+    
+    tracing::info!("max pipe size: {}", buf);
+    let data = buf.trim();
+    Ok(data.parse::<i32>()?)
 }
+
+
+#[link(name = "fion")]
+extern {
+    fn availbytes(fd: std::ffi::c_int) -> std::ffi::c_int;
+    fn bigpipe(fd: std::ffi::c_int, size: std::ffi::c_int) -> std::ffi::c_int;
+}
+
 struct DeemixRestarter<P> {
     uri: P,
 }
@@ -104,9 +60,23 @@ where
     }
 
     async fn lazy_init(&mut self) -> Result<(Option<Metadata>, Codec, Container), SongbirdError> {
-        Ok(( Some(Metadata { duration: Some(std::time::Duration::from_secs(200)), ..Default::default()}), Codec::FloatPcm, Container::Raw))
+        Ok(( Some(deemix_metadata(self.uri.as_ref()).await.unwrap()), Codec::FloatPcm, Container::Raw))
     }
 }
+
+pub async fn deemix_metadata(uri: &str) -> Result<Metadata, Box<dyn std::error::Error>> {
+    let deemix = tokio::process::Command::new("deemix-metadata")
+        .arg(uri.trim())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let output = deemix.wait_with_output().await?;
+    
+    Ok(metadata_from_deemix_output(&serde_json::from_slice(&output.stdout[..])?))
+}
+
 
 pub async fn deemix(
     uri: &str,
@@ -120,6 +90,7 @@ pub async fn _deemix(
     pre_args: &[&str],
 ) -> SongbirdResult<Input>
 {
+    let pipesize = max_pipe_size().await.unwrap();
     let ffmpeg_args = [
         "-f",
         "s16le",
@@ -141,8 +112,13 @@ pub async fn _deemix(
         .stderr(Stdio::piped())
         .spawn()?;
     
+    unsafe { 
+        let raw_stdout = deemix.stdout.as_ref().unwrap().as_raw_fd();
+        bigpipe(raw_stdout, pipesize);
+    }
+
     let stderr = deemix.stderr.take();
-    let (_returned_stderr, value) = tokio::task::spawn_blocking(move || {
+    let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
         let mut s = stderr.unwrap();
         let out: SongbirdResult<Value> = {
             let mut o_vec = vec![];
@@ -167,10 +143,9 @@ pub async fn _deemix(
     .await
     .map_err(|_| SongbirdError::Metadata)?;
 
-    deemix.stderr = Some(_returned_stderr);
+    deemix.stderr = Some(returned_stderr);
     
     let taken_stdout = deemix.stdout.take().ok_or(SongbirdError::Stdout)?;
-
     tracing::info!("running ffmpeg");
     let ffmpeg = std::process::Command::new("ffmpeg")
         .args(pre_args)
@@ -182,13 +157,44 @@ pub async fn _deemix(
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process");
-    let metadata = Some(metadata_from_deemix_output(value?));
+    
+    let metadata_raw = value?;
+    
+    let metadata = Some(metadata_from_deemix_output(&metadata_raw));
+
+    let totalbytes = metadata_raw["filesize"].as_i64().unwrap();
 
     tracing::info!("deezer metadata {:?}", metadata);
+    let ptr = ffmpeg.stdout.as_ref().unwrap().as_raw_fd();
+    unsafe {
+        bigpipe(ptr, pipesize);
+    }
+    let now = std::time::Instant::now();
+    loop {
+        let avail = unsafe { availbytes(ptr) };            
+        let mut percentage = 0.0;
+        // collect atleast 25% of the data before starting
+        if 0 > avail {
+            break
+        }
+        
+        if avail > 0 {
+            percentage = pipesize as f32 / avail as f32;
+        }
 
-    // Wait for ffmpeg to read stream
-    tokio::time::sleep(std::time::Duration::from_secs_f64(2.5)).await;
-    
+        if 0.8 > percentage {
+            tokio::time::sleep(std::time::Duration::from_micros(200)).await;
+            tracing::debug!("availbytes: {}", avail);
+            tracing::debug!("pipesize: {}", pipesize);
+        }
+        else {
+            tracing::info!("load time: {}", now.elapsed().as_secs_f64());
+            tracing::debug!("availbytes: {}", avail);
+            tracing::debug!("pipesize: {}", pipesize);
+            break
+        }
+    }            
+ 
     Ok(Input::new(
         true,
         children_to_reader::<f32>(vec![deemix, ffmpeg]),
@@ -198,7 +204,7 @@ pub async fn _deemix(
     ))
 }
 
-fn metadata_from_deemix_output(val: serde_json::Value) -> Metadata
+fn metadata_from_deemix_output(val: &serde_json::Value) -> Metadata
 {
     let obj = val.as_object();
 

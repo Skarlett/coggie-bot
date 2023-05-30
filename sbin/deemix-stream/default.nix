@@ -1,8 +1,8 @@
-{ deemix, python39Packages }:
+{ python39Packages }:
 with python39Packages;
 buildPythonApplication {
   pname = "deemix-stream";
-  version = "0.0.1";
+  version = "0.0.3";
 
   propagatedBuildInputs = [ deemix ];
   src = ./.;

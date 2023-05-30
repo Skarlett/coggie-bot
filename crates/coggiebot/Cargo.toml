@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.12"
+version = "1.4.13"
 edition = "2021"
 
 [dependencies]
@@ -11,15 +11,7 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
-serde = { version = "1", optional=true } 
-serde_derive = { version = "1", optional=true }
-serde_json = { version = "1.0", optional=true }
-
-songbird = { version = "0.3", optional=true, features = ["builtin-queue"] }
-file-lock = { version = "2.1", optional=true }
-async-walkdir = { version="0.2.0", optional=true }
-reqwest = { version = "0.11", optional = true }
-tempfile = { version = "3", optional = true }
+mockingbird = { path = "../mockingbird", optional=true }
 
 [features]
 default = []
@@ -29,61 +21,27 @@ bookmark = []
 
 ################
 # mockingbird features
-mockingbird-core = ["dep:songbird", "dep:tempfile"]
-
-################
-# playback commands queue/play/stop/mute/deafen
-mockingbird-playback = ["mockingbird-core"]
-
-################
-# Setup mocking bird to "own" a channel so users
-# may just paste compatiable links into it
-mockingbird-channel = ["mockingbird-core"]
+mockingbird-core = ["dep:mockingbird"]
 
 ################
 # mockingbird is compatiable with youtube & soundcloud
-mockingbird-ytdl = ["mockingbird-core", "songbird?/yt-dlp"]
+mockingbird-ytdl = ["mockingbird?/ytdl"]
 
 ################
 # mockingbird compatiable with raw MP3 http uris
-mockingbird-mp3 = ["mockingbird-core", "dep:reqwest"]
+mockingbird-mp3 = ["mockingbird?/wget-mp3"]
 
 ################
 # mockingbird compatiable with deep-mixer
-mockingbird-deemix = ["mockingbird-core", "dep:async-walkdir"]
+mockingbird-deemix = ["mockingbird?/deemix"]
 
 ################
 # mockingbird compatiable with spotify
-mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "dep:serde_json"]
-
-################
-# adds capability to clean up files from the system after
-# they've been streamed to discord
-mockingbird-hard-cleanfs = ["mockingbird-playback"]
-
-mockingbird-deemix-new = ["dep:serde", "dep:serde_json"]
-
-###########
-# find similar music, and play playlists +24/7 loop
-# mockingbird-dj = ["mockingbird"]
-
-#########
-# write queue file to filesystem
-# mockingbird-shm = ["mockingbird", "dep:file-lock"]
-
-#########
-# allow downloads
-# add environment variables
-# mockingbird-export = ["mockingbird", "mockingbird-shm"]
-
-
-#########
-# spray rust message
-memes-rust = []
+# mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "dep:serde_json"]
 
 #########
 # enable meme commands
-memes = ["memes-rust"]
+memes = []
 
 [package.metadata.nix]
 app = true

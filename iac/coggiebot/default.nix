@@ -60,24 +60,11 @@ let
                   ];
               });
           }
-          { name = "mockingbird-deemix-new";
-            pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ deemix-stream ];
-              nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
-            });
-            dependencies = [ "mockingbird" ];
-          }
-          { name = "mockingbird-hard-cleanfs";
-            dependencies = ["mockingbird-playback"];
-          }
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix ];
+              buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];
               nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
             });
-            dependencies = [ "mockingbird" ];
-          }
-          { name = "mockingbird-channel";
             dependencies = [ "mockingbird" ];
           }
           { name = "mockingbird-ytdl";
@@ -86,7 +73,6 @@ let
               buildInputs = prev.buildInputs ++ [ pkgs.yt-dlp ];
             });
           }
-          { name = "mockingbird-playback"; }
           { name = "mockingbird-spotify";
             dependencies = [ "mockingbird-deemix" ];
           }
@@ -118,7 +104,7 @@ let
   coggiebot-default-args = features-list: {
     name = "coggiebot";
     pname = "coggiebot";
-    version = "1.4.12";
+    version = "1.4.13";
     nativeBuildInputs = [];
     buildInputs = [];
 

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+from deemix_stream.__init__ import SpotifyStreamer, fan_dl_object
+
+import click
+import requests
+import sys
+import json
+
+from requests import get
+from deezer import Deezer
+from deezer import TrackFormats
+from deemix.types.Track import Track
+from deemix import generateDownloadObject, parseLink
+from deemix.settings import DEFAULTS as DEFAULT_SETTINGS, load as loadSettings
+from deemix.downloader import getPreferredBitrate, formatsName, streamTrack
+from deemix.errors import DownloadFailed, MD5NotFound, \
+    DownloadCanceled, PreferredBitrateNotFound, \
+    TrackNot360, AlbumDoesntExists,  \
+    DownloadError, DownloadEmpty, \
+    ErrorMessages
+
+from deezer.errors import WrongLicense, WrongGeolocation
+
+from deemix.types.DownloadObjects import Single, Collection
+from deemix.utils import USER_AGENT_HEADER
+from deemix.utils.crypto import _md5, _ecbCrypt, _ecbDecrypt, generateBlowfishKey, decryptChunk
+dz = Deezer()
+settings = DEFAULT_SETTINGS
+plugins = {}
+
+def metadata(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
+    trackAPI = extraData.get('trackAPI')
+    trackAPI['size'] = downloadObject.size
+    json.dump(trackAPI, sys.stdout)
+    print("", file=sys.stdout)
+    sys.stdout.flush()
+
+@click.command()
+@click.option('-a', '--arl', type=str, default=None, help='ARL token to use')
+@click.option('-s', '--spt-id', type=str, help='Path to the config folder')
+@click.option('-ss', '--spt-secret', type=str, help='Path to the config folder')
+@click.option('-sc', '--spt-cache', type=str, help='Path to the config folder')
+@click.argument('url', nargs=-1, required=True)
+def stream(url, arl, spt_id, spt_secret, spt_cache):
+    assert arl, 'You must provide an ARL token'
+    assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
+
+    settings = DEFAULT_SETTINGS
+    
+    plugins = {"spotify": SpotifyStreamer(spt_id, spt_secret, spt_cache)}
+    plugins["spotify"].setup()
+    
+    bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
+    (link, _link_type, _link_id) = parseLink(url[0])
+
+    downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
+    for (obj, extras) in list(fan_dl_object(downloadObject)):
+        if obj.__type__ == "Convertable":
+            obj = plugins[obj.plugin].convert(dz, obj, settings)
+        metadata(obj, extras)
+    
+if __name__ == '__main__':
+    stream(auto_envvar_prefix='DEEMIX')
