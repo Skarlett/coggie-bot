@@ -17,10 +17,28 @@ use std::{
 };
 use serde_json::Value;
 use std::os::fd::AsRawFd;
+use tokio::io::AsyncReadExt;
 
-#[link(name = "availbytes")]
+#[tracing::instrument]
+async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .open("/proc/sys/fs/pipe-max-size")
+        .await?;
+    
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).await?; 
+    
+    tracing::info!("max pipe size: {}", buf);
+    let data = buf.trim();
+    Ok(data.parse::<i32>()?)
+}
+
+
+#[link(name = "fion")]
 extern {
     fn availbytes(fd: std::ffi::c_int) -> std::ffi::c_int;
+    fn bigpipe(fd: std::ffi::c_int, size: std::ffi::c_int) -> std::ffi::c_int;
 }
 
 struct DeemixRestarter<P> {
@@ -72,6 +90,7 @@ pub async fn _deemix(
     pre_args: &[&str],
 ) -> SongbirdResult<Input>
 {
+    let pipesize = max_pipe_size().await.unwrap();
     let ffmpeg_args = [
         "-f",
         "s16le",
@@ -93,8 +112,13 @@ pub async fn _deemix(
         .stderr(Stdio::piped())
         .spawn()?;
     
+    unsafe { 
+        let raw_stdout = deemix.stdout.as_ref().unwrap().as_raw_fd();
+        bigpipe(raw_stdout, pipesize);
+    }
+
     let stderr = deemix.stderr.take();
-    let (_returned_stderr, value) = tokio::task::spawn_blocking(move || {
+    let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
         let mut s = stderr.unwrap();
         let out: SongbirdResult<Value> = {
             let mut o_vec = vec![];
@@ -119,10 +143,9 @@ pub async fn _deemix(
     .await
     .map_err(|_| SongbirdError::Metadata)?;
 
-    deemix.stderr = Some(_returned_stderr);
+    deemix.stderr = Some(returned_stderr);
     
     let taken_stdout = deemix.stdout.take().ok_or(SongbirdError::Stdout)?;
-
     tracing::info!("running ffmpeg");
     let ffmpeg = std::process::Command::new("ffmpeg")
         .args(pre_args)
@@ -142,21 +165,32 @@ pub async fn _deemix(
     let totalbytes = metadata_raw["filesize"].as_i64().unwrap();
 
     tracing::info!("deezer metadata {:?}", metadata);
-    let fd = ffmpeg.stdout.as_ref().unwrap();
-    let ptr = fd.as_raw_fd();
-
+    let ptr = ffmpeg.stdout.as_ref().unwrap().as_raw_fd();
+    unsafe {
+        bigpipe(ptr, pipesize);
+    }
+    let now = std::time::Instant::now();
     loop {
+        let avail = unsafe { availbytes(ptr) };            
+        let mut percentage = 0.0;
         // collect atleast 25% of the data before starting
-        let avail = unsafe { dbg!(availbytes(ptr)) } as i64;            
         if 0 > avail {
             break
         }
-
-        else if avail == 0 || (avail / totalbytes) as f32 <= 0.25 {
-            tokio::time::sleep(std::time::Duration::from_micros(200)).await;
+        
+        if avail > 0 {
+            percentage = pipesize as f32 / avail as f32;
         }
 
+        if 0.8 > percentage {
+            tokio::time::sleep(std::time::Duration::from_micros(200)).await;
+            tracing::debug!("availbytes: {}", avail);
+            tracing::debug!("pipesize: {}", pipesize);
+        }
         else {
+            tracing::info!("load time: {}", now.elapsed().as_secs_f64());
+            tracing::debug!("availbytes: {}", avail);
+            tracing::debug!("pipesize: {}", pipesize);
             break
         }
     }            

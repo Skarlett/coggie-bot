@@ -36,9 +36,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
-
-            ["mockingbird-playback"] => [mockingbird::COMMANDS],
-            ["mockingbird-deemix"] => [mockingbird::BETA_GROUP]
+            ["mockingbird-core"] => [mockingbird::COMMANDS]
         }
     );
     cfg
@@ -48,9 +46,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
 pub async fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
     #[cfg(feature = "mockingbird-core")]
     {
-        use songbird::SerenityInit;
         use mockingbird::init as mockingbird_init;
-        cfg = cfg.register_songbird();
         cfg = mockingbird_init(cfg).await;
     }
     cfg

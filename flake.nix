@@ -36,11 +36,6 @@
               mockingbird
               mockingbird-ytdl
               mockingbird-deemix
-              mockingbird-mp3
-              mockingbird-playback
-              mockingbird-spotify
-              mockingbird-hard-cleanfs
-              mockingbird-deemix-new
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {

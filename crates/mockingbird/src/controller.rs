@@ -10,7 +10,7 @@ use serenity::prelude::*;
 #[commands(
     deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
-struct Deemix;
+struct Commands;
 
 enum Players {
     Ytdl,

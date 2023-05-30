@@ -14,8 +14,15 @@ fn path_deemix() {
 
 #[test]
 #[cfg(feature="deemix")]
-fn path_stream_deemix() {
-    binexists("stream-deemix")
+fn path_deemix_stream() {
+    binexists("deemix-stream")
+}
+
+
+#[test]
+#[cfg(feature="deemix")]
+fn path_deemix_metadata() {
+    binexists("deemix-metadata")
 }
 
 #[test]
