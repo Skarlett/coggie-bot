@@ -11,7 +11,6 @@ use songbird::{
     },
 };
 use std::{
-    io::{BufReader, BufRead, Read},
     process::Stdio,
     time::Duration
 };
@@ -19,7 +18,6 @@ use serde_json::Value;
 use std::os::fd::AsRawFd;
 use tokio::io::AsyncReadExt;
 
-#[tracing::instrument]
 async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
     let mut file = tokio::fs::OpenOptions::new()
         .read(true)
@@ -29,7 +27,6 @@ async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
     let mut buf = String::new();
     file.read_to_string(&mut buf).await?; 
     
-    tracing::info!("max pipe size: {}", buf);
     let data = buf.trim();
     Ok(data.parse::<i32>()?)
 }
@@ -77,7 +74,6 @@ pub async fn deemix_metadata(uri: &str) -> Result<Metadata, Box<dyn std::error::
     Ok(metadata_from_deemix_output(&serde_json::from_slice(&output.stdout[..])?))
 }
 
-
 pub async fn deemix(
     uri: &str,
 ) -> SongbirdResult<Input>{ 
@@ -109,7 +105,6 @@ pub async fn _deemix(
     ];
     
     tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
-
     let mut deemix = std::process::Command::new("deemix-stream")
         .arg(uri.trim())
         .stdin(Stdio::null())
@@ -122,6 +117,7 @@ pub async fn _deemix(
 
     let stderr = deemix.stderr.take();
     let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
+        use std::io::{BufReader, BufRead, Read};
         let mut s = stderr.unwrap();
         let out: SongbirdResult<Value> = {
             let mut o_vec = vec![];
@@ -130,13 +126,17 @@ pub async fn _deemix(
             if let Ok(len) = serde_read.read_until(0xA, &mut o_vec) {
                 serde_json::from_slice(&o_vec[..len]).map_err(|err| SongbirdError::Json {
                     error: { 
-                        tracing::error!("TRIED PARSING \n {}", String::from_utf8_lossy(&o_vec));
+                        tracing::error!("TRIED PARSING: \n {}", String::from_utf8_lossy(&o_vec));
+                        tracing::error!("... [start] flushing buffer to logs...");
+                        o_vec.clear();
+                        serde_read.read_to_end(&mut o_vec).unwrap();
+                        tracing::error!("{}", String::from_utf8_lossy(&o_vec));
+                        tracing::error!("... [ end ] flushed buffer to logs...");
                         err
                     },
                     parsed_text: std::str::from_utf8(&o_vec).unwrap_or_default().to_string(),
                 })
             } else {
-                tracing::error!("TRIED PARSING \n {}", String::from_utf8_lossy(&o_vec));
                 SongbirdResult::Err(SongbirdError::Metadata)
             }
         };
@@ -176,7 +176,6 @@ pub async fn _deemix(
         if 0 > avail {
             break
         }
-        
         if avail > 0 {
             percentage = pipesize as f32 / avail as f32;
         }
@@ -193,7 +192,7 @@ pub async fn _deemix(
             tracing::debug!("pipesize: {}", pipesize);
             break
         }
-    }            
+    }  
  
     Ok(Input::new(
         true,
