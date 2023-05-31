@@ -86,11 +86,6 @@ pub async fn _deemix(
     pre_args: &[&str],
 ) -> SongbirdResult<Input>
 {
-    let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
-        .unwrap_or_else(|_| "0.8".to_string())
-        .parse::<f32>()
-        .unwrap_or(0.8);
-
     let pipesize = max_pipe_size().await.unwrap();
     let ffmpeg_args = [
         "-f",
@@ -112,8 +107,8 @@ pub async fn _deemix(
         .stderr(Stdio::piped())
         .spawn()?;
     
-    let raw_stdout = deemix.stdout.as_ref().unwrap().as_raw_fd();
-    unsafe { bigpipe(raw_stdout, pipesize); }
+    let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
+    unsafe { bigpipe(deemix_out, pipesize); }
 
     let stderr = deemix.stderr.take();
     let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
@@ -148,28 +143,46 @@ pub async fn _deemix(
 
     deemix.stderr = Some(returned_stderr);
     
-    let taken_stdout = deemix.stdout.take().ok_or(SongbirdError::Stdout)?;
+    let metadata_raw = value?;
+    let filesize = metadata_raw["filesize"].as_u64();
+    let metadata = Some(metadata_from_deemix_output(&metadata_raw));
+
+    tracing::info!("running cat");
+
+    // avoid timeouts by caching the output of deemix
+    let cat = std::process::Command::new("cat")
+        .stdin(deemix.stdout.take().ok_or(SongbirdError::Stdout)?)
+        .stderr(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to start child process");
+    
+    let cat_out = cat.stdout.ok_or(SongbirdError::Stdout)?;
+    unsafe { bigpipe(cat_out.as_raw_fd(), pipesize); }
+
     tracing::info!("running ffmpeg");
     let ffmpeg = std::process::Command::new("ffmpeg")
         .args(pre_args)
         .arg("-i")
         .arg("-")
         .args(&ffmpeg_args)
-        .stdin(taken_stdout)
+        .stdin(buffered_out)
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process");
     
-    let metadata_raw = value?;
-    
-    let metadata = Some(metadata_from_deemix_output(&metadata_raw));
-
     tracing::info!("deezer metadata {:?}", metadata);
-    let ptr = ffmpeg.stdout.as_ref().unwrap().as_raw_fd();
+    let ptr = ffmpeg.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
     unsafe { bigpipe(ptr, pipesize); }
-    let now = std::time::Instant::now();
     
+    let now = std::time::Instant::now();
+    let pipesize = max_pipe_size().await.unwrap();
+    let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
+        .unwrap_or_else(|_| "0.8".to_string())
+        .parse::<f32>()
+        .unwrap_or(0.8);
+
     loop {
         let avail = unsafe { availbytes(ptr) };            
         let mut percentage = 0.0;
@@ -180,7 +193,6 @@ pub async fn _deemix(
             percentage = pipesize as f32 / avail as f32;
         }
 
-        // fill atleast 80% of the pipe before starting
         if pipe_threshold > percentage {
             tokio::time::sleep(std::time::Duration::from_micros(200)).await;
             tracing::debug!("availbytes: {}", avail);
@@ -196,7 +208,7 @@ pub async fn _deemix(
  
     Ok(Input::new(
         true,
-        children_to_reader::<f32>(vec![deemix, ffmpeg]),
+        children_to_reader::<f32>(vec![deemix, cat, ffmpeg]),
         Codec::FloatPcm,
         Container::Raw,
         metadata,
