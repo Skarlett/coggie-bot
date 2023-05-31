@@ -150,15 +150,15 @@ pub async fn _deemix(
     tracing::info!("running cat");
 
     // avoid timeouts by caching the output of deemix
-    let cat = std::process::Command::new("cat")
+    let mut cat = std::process::Command::new("cat")
         .stdin(deemix.stdout.take().ok_or(SongbirdError::Stdout)?)
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process");
     
-    let cat_out = cat.stdout.ok_or(SongbirdError::Stdout)?;
-    unsafe { bigpipe(cat_out.as_raw_fd(), pipesize); }
+    let cat_ptr = cat.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
+    unsafe { bigpipe(cat_ptr, pipesize); }
 
     tracing::info!("running ffmpeg");
     let ffmpeg = std::process::Command::new("ffmpeg")
@@ -166,15 +166,15 @@ pub async fn _deemix(
         .arg("-i")
         .arg("-")
         .args(&ffmpeg_args)
-        .stdin(buffered_out)
+        .stdin(cat.stdout.take().ok_or(SongbirdError::Stdout)?)
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process");
     
     tracing::info!("deezer metadata {:?}", metadata);
-    let ptr = ffmpeg.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
-    unsafe { bigpipe(ptr, pipesize); }
+    let ffmpeg_ptr = ffmpeg.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
+    unsafe { bigpipe(ffmpeg_ptr, pipesize); }
     
     let now = std::time::Instant::now();
     let pipesize = max_pipe_size().await.unwrap();
@@ -184,7 +184,7 @@ pub async fn _deemix(
         .unwrap_or(0.8);
 
     loop {
-        let avail = unsafe { availbytes(ptr) };            
+        let avail = unsafe { availbytes(ffmpeg_ptr) };            
         let mut percentage = 0.0;
         if 0 > avail {
             break
