@@ -20,6 +20,13 @@ async fn version(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+#[command]
+async fn reboot(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.channel_id.say(&ctx.http, "will kill all hu-").await?;
+    panic!("reboot request");
+    Ok(())
+}
+
 #[command("rev")]
 async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     match get_rev() {
