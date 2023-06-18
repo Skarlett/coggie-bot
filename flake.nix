@@ -94,9 +94,8 @@
         in {
           options.services.coggiebot = {
             enable = mkEnableOption "coggiebot service";
-            api-key = mkOption {
-              type = types.str;
-              example = "<api key>";
+            environmentFile = mkOption {
+              type = types.path;
             };
           };
 
@@ -105,34 +104,36 @@
               wantedBy = [ "multi-user.target" ];
               after = [ "network.target" ];
               wants = [ "network-online.target" ];
-              environment.DISCORD_TOKEN = "${cfg.api-key}";
+              #environment.DISCORD_TOKEN = "${cfg.api-key}";
+              serviceConfig.EnvironmentFile = cfg.environmentFile;
               serviceConfig.ExecStart = "${pkgs.coggiebot-stable}/bin/coggiebot";
               serviceConfig.Restart = "on-failure";
+
             };
           };
         };
 
-      nixosModules.self-update = {pkgs, lib, config, ...}:
-        with lib;
-        let cfg = config.services.self-update;
-        in {
-          options.services.self-update = {
-            enable = mkEnableOption "self-update service";
-            flake = mkOption {
-              type = types.str;
-              example = "github:skarlett/coggiebot";
-            };
-          };
+      # nixosModules.self-update = {pkgs, lib, config, ...}:
+      #   with lib;
+      #   let cfg = config.services.self-update;
+      #   in {
+      #     options.services.self-update = {
+      #       enable = mkEnableOption "self-update service";
+      #       flake = mkOption {
+      #         type = types.str;
+      #         example = "github:skarlett/coggiebot";
+      #       };
+      #     };
 
-          config = mkIf cfg.enable {
-            systemd.services.self-update = {
-              wantedBy = [ "multi-user.target" ];
-              after = [ "network.target" ];
-              wants = [ "network-online.target" ];
-              serviceConfig.ExecStart = "nixos-rebuild --flake '${cfg.flake}' switch";
-              serviceConfig.Restart = "on-failure";
-            };
-          };
-        };
+      #     config = mkIf cfg.enable {
+      #       systemd.services.self-update = {
+      #         wantedBy = [ "multi-user.target" ];
+      #         after = [ "network.target" ];
+      #         wants = [ "network-online.target" ];
+      #         serviceConfig.ExecStart = "nixos-rebuild --flake '${cfg.flake}' switch";
+      #         serviceConfig.Restart = "on-failure";
+      #       };
+      #     };
+      #   };
     };
 }
