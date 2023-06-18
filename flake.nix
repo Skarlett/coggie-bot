@@ -100,6 +100,11 @@
           };
 
           config = mkIf cfg.enable {
+
+            nix.settings.trusted-public-keys = [
+              "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
+            ];
+
             systemd.services.coggiebot = {
               wantedBy = [ "multi-user.target" ];
               after = [ "network.target" ];
