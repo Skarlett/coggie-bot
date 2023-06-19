@@ -104,13 +104,16 @@
               "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
             ];
 
-            users.users.coggiebot.isSystemUser = true;
+            users.users.coggiebot = {
+              isSystemUser = true;
+              group = "coggiebot";
+            };
+            users.groups.coggiebot = {};
 
             systemd.services.coggiebot = {
               wantedBy = [ "multi-user.target" ];
               after = [ "network.target" ];
               wants = [ "network-online.target" ];
-              #environment.DISCORD_TOKEN = "${cfg.api-key}";
               serviceConfig.EnvironmentFile = cfg.environmentFile;
               serviceConfig.ExecStart = "${self.outputs.packages."${pkgs.system}".coggiebot-stable}/bin/coggiebot";
               serviceConfig.Restart = "on-failure";
