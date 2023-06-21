@@ -73,19 +73,17 @@
         rec {
           packages.check-cache = cictl.check;
           packages.deemix-stream = deemix-stream; 
-          packages.cleanup-downloads = pkgs.callPackage ./sbin/cleanup-dl {
+          packages.coggiebot-softcleanup = pkgs.callPackage ./sbin/cleanup-dl {
             perlPackages = pkgs.perl534Packages;
           };
 
-          packages.deploy = vanilla-linux;
+          packages.coggiebot-deploy = vanilla-linux;
           packages.default = coggiebot-stable;
-          
+          packages.coggiebot = coggiebot-stable;
           packages.coggiebot-stable = coggiebot-stable;
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
             coggiebot = coggiebot-stable;
           };
-
-          packages.coggiebot = coggiebot-stable;
         })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
