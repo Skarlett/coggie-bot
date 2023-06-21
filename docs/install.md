@@ -18,17 +18,17 @@
         modules = [
           # ...
           coggiebot.nixosModules.coggiebot
+          { config, ...}: { 
+            services.coggiebot.enable = true;
+            services.coggiebot.environmentFile = "/etc/coggiebot/env_vars";
+          }
         ];
-        
-        services.coggiebot.enable = true;
-        services.coggiebot.environmentFile = "/etc/coggiebot/env_vars";
       };
   };
 }
 
 echo "DISCORD_TOKEN=..." >> /etc/coggiebot/env_vars
 ```
-
 
 # Standard Linux installation
 ## Install Nix (Multi-user mode)
@@ -116,6 +116,7 @@ runtime environment:
 - mockingbird-deemix: mockingbird-core, python3.6 >=, deemix 3.6.6 >=
   - runtime environ:
     - `DEEMIX_ARL=char[128]`
+    - `PATH=$PROJECT_ROOT/sbin/deemix-stream:$PATH`
 
 - mockingbird-spotify: mockingbird-core, mockingbird-deemix, spotipy
   - runtime environ:
