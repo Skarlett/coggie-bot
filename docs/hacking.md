@@ -3,6 +3,7 @@
 First enter into the development environment.
 
 ```
+git clone https://github.com/skarlett/coggie-bot
 nix develop .#coggiebot-stable 
 ```
 
@@ -76,7 +77,6 @@ export GREETING="hello!"
 cargo build --features example-feature
 ```
 
-
 # Finalizing in Nix
 Ensure the build works, then travel to `iac/coggiebot/default.nix`
 add the following to the `features` list attribute
@@ -92,29 +92,28 @@ add the following to the `features` list attribute
       
       # wrapper which adds runtime dependencies to PATH
       postInstall = prev.postInstall + ''
-          wrapProgram $out/bin/coggiebot \
-            --prefix PATH : ${lib.makeBinPath buildInputs}
+          wrapProgram $out/bin/coggiebot --prefix PATH : ${lib.makeBinPath buildInputs}
         '';
       
       # add environment variables
-      GREETING="g'day mate!"
-    })
+      GREETING="g'day mate!";
+    });
 }
 ```
 
-
-now inside of `flake.nix`, locate the `mkCoggiebot` function and add the feature.
+now inside of `flake.nix`, locate the `mkCoggiebot`, add a new output entry named `coggiebot-experiment` 
+and add the feature to its feature-list.
 ```nix
-{ packages.coggiebot-stable = mkCoggiebot {
+packages.coggiebot-experiment = mkCoggiebot {
     features = with cogpkgs.features;
       [ example-feature ];
-  }
 }
 ```
 
-
-
+## Finally build the project through nix
 ```sh
 git add crates/coggiebot/src/controllers/example.rs
 nix build .#coggiebot-stable
 ```
+
+Congrats, you're now ready to publish changes.
