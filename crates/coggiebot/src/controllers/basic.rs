@@ -11,7 +11,7 @@ use serenity::model::channel::Message;
 use serenity::prelude::*;
 
 #[group]
-#[commands(version, rev_cmd, contribute)]
+#[commands(version, rev_cmd, contribute, reboot)]
 pub struct Commands;
 
 #[command]
