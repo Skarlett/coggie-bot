@@ -84,7 +84,6 @@ add the following to the `features` list attribute
 { 
     name = "example-feature";
     pkgs-override = (prev: {
-      # add build dependencies
       # nativeBuildInputs = prev.nativeBuildInputs ++ [ pkgs.gcc ];
       
       # add runtime dependencies
@@ -94,7 +93,7 @@ add the following to the `features` list attribute
       postInstall = prev.postInstall + ''
           wrapProgram $out/bin/coggiebot --prefix PATH : ${lib.makeBinPath buildInputs}
         '';
-      
+
       # add environment variables
       GREETING="g'day mate!";
     });
@@ -113,7 +112,7 @@ packages.coggiebot-experiment = mkCoggiebot {
 ## Finally build the project through nix
 ```sh
 git add crates/coggiebot/src/controllers/example.rs
-nix build .#coggiebot-stable
+nix build .#coggiebot-experiment
 ```
 
 Congrats, you're now ready to publish changes.
