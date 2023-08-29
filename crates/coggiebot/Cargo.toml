@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.13"
+version = "1.4.14"
 edition = "2021"
 
 [dependencies]
@@ -34,6 +34,9 @@ mockingbird-mp3 = ["mockingbird?/wget-mp3"]
 ################
 # mockingbird compatiable with deep-mixer
 mockingbird-deemix = ["mockingbird?/deemix"]
+
+################
+mockingbird-deemix-check = ["mockingbird?/check"]
 
 ################
 # mockingbird compatiable with spotify

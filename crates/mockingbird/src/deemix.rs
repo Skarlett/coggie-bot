@@ -1,3 +1,6 @@
+use std::io::{BufReader, BufRead, Read};
+use std::process::ChildStderr;
+use serenity::json::JsonError;
 use songbird::{
     constants::SAMPLE_RATE_RAW,
     input::{
@@ -74,6 +77,27 @@ pub async fn deemix_metadata(uri: &str) -> Result<Metadata, Box<dyn std::error::
     Ok(metadata_from_deemix_output(&serde_json::from_slice(&output.stdout[..])?))
 }
 
+#[cfg(feature = "debug")]
+fn handle_deemix_stream_error(writebuf: Vec<u8>, error: JsonError) -> SongbirdError {
+    let fault = String::from_utf8_lossy(&writebuf);
+    tracing::error!("TRIED PARSING: \n {}", fault);
+    tracing::error!("... [start] flushing buffer to logs...");
+    o_vec.clear();
+
+    // Potentially hangs thread if EOF is never encountered
+    serde_read.read_to_end(&mut o_vec).unwrap();
+    tracing::error!("{}", String::from_utf8_lossy(&o_vec));
+    tracing::error!("... [ end ] flushed buffer to logs...");
+    SongbirdError::Json { error, parsed_text: fault }
+}
+
+#[cfg(not(feature = "debug"))]
+fn handle_deemix_stream_error(writebuf: Vec<u8>, error: JsonError) -> SongbirdError {
+    let fault = String::from_utf8_lossy(&writebuf);
+    tracing::error!("TRIED PARSING: \n {}", String::from_utf8_lossy(&writebuf));
+    SongbirdError::Json { error, parsed_text: fault.to_string() }
+}
+
 pub async fn deemix(
     uri: &str,
 ) -> SongbirdResult<Input>{ 
@@ -111,26 +135,15 @@ pub async fn _deemix(
     unsafe { bigpipe(deemix_out, pipesize); }
 
     let stderr = deemix.stderr.take();
+
     let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
-        use std::io::{BufReader, BufRead, Read};
         let mut s = stderr.unwrap();
         let out: SongbirdResult<Value> = {
             let mut o_vec = vec![];
             let mut serde_read = BufReader::new(s.by_ref());
             // Newline...
             if let Ok(len) = serde_read.read_until(0xA, &mut o_vec) {
-                serde_json::from_slice(&o_vec[..len]).map_err(|err| SongbirdError::Json {
-                    error: { 
-                        tracing::error!("TRIED PARSING: \n {}", String::from_utf8_lossy(&o_vec));
-                        tracing::error!("... [start] flushing buffer to logs...");
-                        o_vec.clear();
-                        serde_read.read_to_end(&mut o_vec).unwrap();
-                        tracing::error!("{}", String::from_utf8_lossy(&o_vec));
-                        tracing::error!("... [ end ] flushed buffer to logs...");
-                        err
-                    },
-                    parsed_text: std::str::from_utf8(&o_vec).unwrap_or_default().to_string(),
-                })
+                serde_json::from_slice(&o_vec[..len]).map_err(|e| handle_deemix_stream_error(o_vec, e))
             } else {
                 SongbirdResult::Err(SongbirdError::Metadata)
             }
