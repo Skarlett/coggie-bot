@@ -36,6 +36,7 @@
               mockingbird
               mockingbird-ytdl
               mockingbird-deemix
+              mockingbird-deemix-check
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
@@ -86,8 +87,6 @@
           packages.coggiebot-deploy = vanilla-linux;
           packages.default = coggiebot-stable;
           packages.coggiebot = coggiebot-stable;
-
-          packages.coggiebot-next = coggiebot-next;
 
           packages.coggiebot-stable = coggiebot-stable;
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
