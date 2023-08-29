@@ -69,7 +69,7 @@ let
           }
           { name = "mockingbird-deemix-check";
             pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ pkgs.pkg-config pkgs.openssl ];
+              buildInputs = prev.buildInputs ++ [ pkgs.pkg-config pkgs.openssl pkgs.util-linux ];
             });
             dependencies = [ "mockingbird" ];
           }
