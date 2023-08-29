@@ -42,6 +42,12 @@
             features-list = stable-features;
           };
 
+          coggiebot-next = cogpkgs.mkCoggiebot {
+            features-list = stable-features ++ [
+              cogpkgs.features.mockingbird-deemix-check
+            ];
+          };
+
           non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };
 
           vanilla-linux = non-nixos {
@@ -80,10 +86,15 @@
           packages.coggiebot-deploy = vanilla-linux;
           packages.default = coggiebot-stable;
           packages.coggiebot = coggiebot-stable;
+
+          packages.coggiebot-next = coggiebot-next;
+
           packages.coggiebot-stable = coggiebot-stable;
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
             coggiebot = coggiebot-stable;
           };
+
+          packages.cache-target = coggiebot-stable;
         })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
