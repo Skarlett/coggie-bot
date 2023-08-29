@@ -36,6 +36,9 @@ mockingbird-mp3 = ["mockingbird?/wget-mp3"]
 mockingbird-deemix = ["mockingbird?/deemix"]
 
 ################
+mockingbird-deemix-check = ["mockingbird?/check"]
+
+################
 # mockingbird compatiable with spotify
 # mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "dep:serde_json"]
 

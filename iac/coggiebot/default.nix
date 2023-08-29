@@ -67,6 +67,12 @@ let
             });
             dependencies = [ "mockingbird" ];
           }
+          { name = "mockingbird-deemix-check";
+            pkg-override = (prev: {
+              buildInputs = prev.buildInputs ++ [ pkgs.pkg-config pkgs.openssl ];
+            });
+            dependencies = [ "mockingbird" ];
+          }
           { name = "mockingbird-ytdl";
             dependencies = [ "mockingbird" ];
             pkg-override = (prev: {
