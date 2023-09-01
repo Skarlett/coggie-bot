@@ -56,9 +56,19 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
     (link, _link_type, _link_id) = parseLink(url[0])
 
-    downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
+
+
+    try:
+        downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
+    except Exception as err:
+        json.dump({"error":{"name":err.__class__.__name__,"reason":err.message}}, sys.stderr)
+        exit(1)
+
     for (obj, extras) in list(fan_dl_object(dz, plugins, downloadObject, settings)):
-        metadata(obj, extras)
+        try:
+          metadata(obj, extras)
+        except Exception as err:
+          json.dump({"error":{"name":err.__class__.__name__,"reason":err.message}}, sys.stderr)
 
 if __name__ == '__main__':
     stream(auto_envvar_prefix='DEEMIX')
