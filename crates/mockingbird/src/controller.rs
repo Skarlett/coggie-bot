@@ -79,7 +79,7 @@ impl Players {
         else { return None }
     }
 
-    async fn play(&self, ctx: &Http, msg: &Message, handler: &mut Call,  uri: &str) -> Result<(), SongbirdError>
+    async fn play(&self, http: &Http, msg: &Message, handler: &mut Call,  uri: &str) -> Result<(), SongbirdError>
     {
         let input = match self {
             Self::Deemix => ph_deemix_player(uri).await,
@@ -93,11 +93,20 @@ impl Players {
             }
 
             Err(HandlerError::NotImplemented) => {
-                msg.channel_id.say(&ctx, warn_unimplemented()).await;
+                msg.channel_id.say(http, warn_unimplemented()).await;
                 return Ok(())
             }
 
-            Err(HandlerError::Songbird(err)) => return Err(err),
+            Err(HandlerError::Songbird(SongbirdError::Metadata)) => { 
+                msg.reply(http, "Song doesn't exist").await.unwrap();
+                return Ok(());
+            }
+            
+            Err(HandlerError::Songbird(err)) => {
+                tracing::error!("Songbird error: {}", err);
+                msg.reply(http, "mockingbird error").await;
+                return Err(err);
+            }
         }
 
         Ok(())
