@@ -23,7 +23,6 @@ from deezer.errors import WrongLicense, WrongGeolocation
 from deemix.utils import USER_AGENT_HEADER
 from deemix.utils.crypto import generateBlowfishKey, decryptChunk
 
-
 dz = Deezer()
 settings = DEFAULT_SETTINGS
 plugins = {}
@@ -136,9 +135,7 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     (link, _link_type, _link_id) = parseLink(url[0])
 
     downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
-    for (obj, extras) in list(fan_dl_object(downloadObject)):
-        if obj.__type__ == "Convertable":
-            obj = plugins[obj.plugin].convert(dz, obj, settings)
+    for (obj, extras) in list(fan_dl_object(dz, downloadObject, settings)):
         stream_stdout(obj, extras)
 
     stdout.close()

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import deemix_stream.patchssl
-from deemix.types.DownloadObjects import Single, Collection
+from deemix.types.DownloadObjects import Single, Collection, Convertable
 from deemix.plugins.spotify import Spotify
 import spotipy
+
 SpotifyClientCredentials = spotipy.oauth2.SpotifyClientCredentials
 CacheFileHandler = spotipy.cache_handler.CacheFileHandler
 
@@ -49,8 +50,9 @@ class SpotifyStreamer(Spotify):
             self.enabled = False 
 
 
-def fan_dl_object(downloadObject):
+def fan_dl_object(dz, plugins, downloadObject, settings, listener=None):
     stack = [downloadObject];
+
     while len(stack):
         downloadObject = stack.pop()
 
@@ -60,9 +62,14 @@ def fan_dl_object(downloadObject):
         elif isinstance(downloadObject, Single):
             extraData = {
                 'trackAPI': downloadObject.single.get('trackAPI'),
-                'albumAPI': downloadObject.single.get('albumAPI')
+                'albumAPI': downloadObject.single.get('albumAPI'),
             }
             yield (downloadObject, extraData)
+
+
+        elif isinstance(downloadObject, Convertable):
+            obj = plugins[downloadObject.plugin].convert(dz, downloadObject, settings, listener)
+            stack.append(obj)
 
         elif isinstance(downloadObject, Collection):
             for track in downloadObject.collection['tracks']: 
@@ -72,4 +79,3 @@ def fan_dl_object(downloadObject):
                     'playlistAPI': downloadObject.collection.get('playlistAPI')   
                 }
                 yield (downloadObject, extraData)
-        

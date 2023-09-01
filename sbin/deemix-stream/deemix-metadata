@@ -29,8 +29,11 @@ settings = DEFAULT_SETTINGS
 plugins = {}
 
 def metadata(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
+    albumAPI = extraData.get('albumAPI')
+    playlistAPI = extraData.get('playlistAPI')
     trackAPI = extraData.get('trackAPI')
     trackAPI['size'] = downloadObject.size
+
     json.dump(trackAPI, sys.stdout)
     print("", file=sys.stdout)
     sys.stdout.flush()
@@ -54,10 +57,8 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     (link, _link_type, _link_id) = parseLink(url[0])
 
     downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
-    for (obj, extras) in list(fan_dl_object(downloadObject)):
-        if obj.__type__ == "Convertable":
-            obj = plugins[obj.plugin].convert(dz, obj, settings)
+    for (obj, extras) in list(fan_dl_object(dz, plugins, downloadObject, settings)):
         metadata(obj, extras)
-    
+
 if __name__ == '__main__':
     stream(auto_envvar_prefix='DEEMIX')
