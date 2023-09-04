@@ -8,6 +8,5 @@ setup(
     packages=find_packages(),
     install_requires=["click", "requests", "deemix>=3.6.6"],
     # Executables
-
     scripts=["deemix-stream", "deemix-metadata"],
 )

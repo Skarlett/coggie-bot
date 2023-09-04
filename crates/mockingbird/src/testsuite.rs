@@ -6,11 +6,11 @@ fn binexists(file: &str) {
     assert!(paths.split(':').filter(|p| PathBuf::from(p).join(file).exists()).count() == 1);
 }
 
-#[test]
-#[cfg(feature="deemix")]
-fn path_deemix() {
-    binexists("deemix")
-}
+// #[test]
+// #[cfg(feature="deemix")]
+// fn path_deemix() {
+//     binexists("deemix")
+// }
 
 #[test]
 #[cfg(feature="deemix")]

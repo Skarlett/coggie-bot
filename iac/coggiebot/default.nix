@@ -34,8 +34,7 @@ let
       recursiveMerge (
         (lib.foldl (s: x: s ++ [(genericFeature x)]) []
         [
-          { 
-            name = "list-feature-cmd";
+          { name = "list-feature-cmd";
             pkg-override = (prev: {
               COGGIEBOT_FEATURES = lib.concatStringsSep "," (map (x: "${x.featureName}=${if x.enabled then "1" else "0"}") prev.passthru.available-features);
             });  
@@ -47,48 +46,50 @@ let
               prev.buildInputs = prev.buildInputs ++ [ pkgs.git ];
             });
           }
-          { name = "mockingbird";
-            fname = "mockingbird-core";
+          { name = "mockingbird-core";
+            # fname = "mockingbird-core";
             pkg-override =
               (prev: {
-                  buildInputs = with pkgs; prev.buildInputs ++ [
-                    ffmpeg
-	                  libopus
-                    gcc
-                    cmake
-                    gnumake
-                  ];
+                buildInputs = with pkgs; prev.buildInputs ++ [
+                  ffmpeg
+	                libopus
+                  gcc
+                  cmake
+                  gnumake
+                ];
               });
           }
+
+          { name = "mockingbird-std-ctrl";
+            dependencies = [ "mockingbird-core" ];
+          }
+
+          { name = "mockingbird-beta-ctrl";
+            dependencies = [ "mockingbird-core" ];
+          }
+
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];
               nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
             });
-            dependencies = [ "mockingbird" ];
+            dependencies = [ "mockingbird-core" ];
           }
+
           { name = "mockingbird-deemix-check";
             pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ pkgs.pkg-config pkgs.openssl pkgs.util-linux ];
+              buildInputs = prev.buildInputs ++ [ pkgs.util-linux ];
             });
-            dependencies = [ "mockingbird" ];
+            dependencies = [ "mockingbird-core" ];
           }
           { name = "mockingbird-ytdl";
-            dependencies = [ "mockingbird" ];
+            dependencies = [ "mockingbird-core" ];
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.yt-dlp ];
             });
           }
-          { name = "mockingbird-spotify";
-            dependencies = [ "mockingbird-deemix" ];
-          }
           { name = "mockingbird-mp3";
-            dependencies= ["mockingbird"];
-            pkg-override = (prev: rec {
-              nativeBuildInputs =
-                prev.nativeBuildInputs ++
-                (with pkgs; [ pkgconfig openssl ]);
-            });
+            dependencies= ["mockingbird-core"];
           }
         ])
       );
@@ -110,12 +111,15 @@ let
   coggiebot-default-args = features-list: {
     name = "coggiebot";
     pname = "coggiebot";
-    version = "1.4.13";
+    version = "1.4.15";
     nativeBuildInputs = [];
-    buildInputs = [];
+    buildInputs = [
+      pkgs.pkg-config
+      pkgs.openssl
+    ];
 
     REV=(self.rev or "canary");
-    src = ../../.;
+    src = lib.cleanSource ../../.;
     doCheck = true;
 
     postInstall = "";

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-from deemix_stream.__init__ import SpotifyStreamer, fan_dl_object
+from deemix_stream.__init__ import SpotifyStreamer
 
+import urllib.parse
 import click
 import requests
 import sys
@@ -24,9 +25,40 @@ from deezer.errors import WrongLicense, WrongGeolocation
 from deemix.types.DownloadObjects import Single, Collection
 from deemix.utils import USER_AGENT_HEADER
 from deemix.utils.crypto import _md5, _ecbCrypt, _ecbDecrypt, generateBlowfishKey, decryptChunk
+from deemix.types.DownloadObjects import Single, Collection, Convertable
+
 dz = Deezer()
 settings = DEFAULT_SETTINGS
 plugins = {}
+
+def fan_dl_object(downloadObject, plugs):
+    stack = [downloadObject];
+
+    while len(stack):
+        downloadObject = stack.pop()
+
+        if isinstance(downloadObject, list):
+            stack.extend(downloadObject)
+
+        elif isinstance(downloadObject, Single):
+            extraData = {
+                'trackAPI': downloadObject.single.get('trackAPI'),
+                'albumAPI': downloadObject.single.get('albumAPI'),
+            }
+            yield (downloadObject, extraData)
+
+        elif isinstance(downloadObject, Convertable):
+            obj = plugs[downloadObject.plugin].convert(dz, downloadObject, settings)
+            stack.append(obj)
+
+        elif isinstance(downloadObject, Collection):
+            for track in downloadObject.collection['tracks']:
+                extraData = {
+                    'trackAPI': track,
+                    'albumAPI': downloadObject.collection.get('albumAPI'),
+                    'playlistAPI': downloadObject.collection.get('playlistAPI')
+                }
+                yield (downloadObject, extraData)
 
 def metadata(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
     albumAPI = extraData.get('albumAPI')
@@ -55,20 +87,25 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     
     bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
     (link, _link_type, _link_id) = parseLink(url[0])
-
-
+    
+    jerr = lambda e: json.dump({
+        "error": {
+          "name": e.__class__.__name__,
+          "reason": urllib.parse.quote(e.message)
+        }
+    }, sys.stderr)
 
     try:
         downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
     except Exception as err:
-        json.dump({"error":{"name":err.__class__.__name__,"reason":err.message}}, sys.stderr)
+        jerr(err)
         exit(1)
 
-    for (obj, extras) in list(fan_dl_object(dz, plugins, downloadObject, settings)):
+    for (obj, extras) in list(fan_dl_object(downloadObject, plugins)):
         try:
           metadata(obj, extras)
         except Exception as err:
-          json.dump({"error":{"name":err.__class__.__name__,"reason":err.message}}, sys.stderr)
+          jerr(err)
 
 if __name__ == '__main__':
     stream(auto_envvar_prefix='DEEMIX')

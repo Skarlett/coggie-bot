@@ -4,14 +4,14 @@
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # crane = {
+    #   url = "github:ipetkov/crane";
+    #   inputs.nixpkgs.follows = "nixpkgs";
+    # };
   };
 
   outputs =
-    { self, nixpkgs, flake-utils, naersk, crane }:
+    { self, nixpkgs, flake-utils, naersk}:
 
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
@@ -24,16 +24,14 @@
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           
-          deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
-            inherit (pkgs.python39Packages);
-          };
-
+          deemix-stream = pkgs.python3Packages.callPackage ./sbin/deemix-stream {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
           stable-features = (with cogpkgs.features; [
               basic-cmds
               bookmark
               list-feature-cmd
-              mockingbird
+              mockingbird-core
+              mockingbird-std-ctrl
               mockingbird-ytdl
               mockingbird-deemix
               mockingbird-deemix-check
@@ -44,8 +42,15 @@
           };
 
           coggiebot-next = cogpkgs.mkCoggiebot {
-            features-list = stable-features ++ [
-              cogpkgs.features.mockingbird-deemix-check
+            features-list = with cogpkgs.features; [
+              basic-cmds
+              list-feature-cmd
+              mockingbird-core
+              mockingbird-beta-ctrl
+              mockingbird-ytdl
+              mockingbird-deemix
+              mockingbird-std-ctrl
+              mockingbird-deemix-check
             ];
           };
 
@@ -88,6 +93,7 @@
           packages.default = coggiebot-stable;
           packages.coggiebot = coggiebot-stable;
 
+          packages.coggiebot-next = coggiebot-next;
           packages.coggiebot-stable = coggiebot-stable;
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
             coggiebot = coggiebot-stable;
