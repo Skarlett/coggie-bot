@@ -18,7 +18,7 @@ use songbird::{
     Songbird,
     Call, 
     create_player,
-    input::{Input, error::Error as SongbirdError}, tracks::{Track, TrackHandle}
+    input::{Input, error::Error as SongbirdError}, tracks::TrackHandle
 };
 
 use std::{
@@ -30,21 +30,12 @@ use std::{
 
 use tokio::{
     io::AsyncBufReadExt,
-    process::Command, time::Instant
+    process::Command,
 };
 
 #[group]
 #[commands(njoin, nleave, nqueue, now_playing)]
 struct BetterPlayer;
-
-
-// const MKBIRD_QUEUE_PRELOAD_SECS: &'static str = env!("MKBIRD_QUEUE_PRELOAD_SECS", "20");
-// const MKBIRD_QUEUE_MAX_SONGS: &'static str = env!("MKBIRD_QUEUE_MAX_SONGS", "0");
-// const MKBIRD_QUEUE_MAX_ENQUEUE: &'static str = env!("MKBIRD_QUEUE_MAX_ENQUEUE", "0");
-// const MKBIRD_QUEUE_MAX_DURATION: &'static str = env!("MKBIRD_QUEUE_MAX_DURATION", "0");
-// const MKBIRD_QUEUE_SCHEDULER_MS: &'static str = env!("MKBIRD_QUEUE_MAX_DURATION", "350");
-
-const TS_ZERO: Duration = Duration::from_secs(0);
 
 async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError> {
     let player = Players::from_str(&uri)
@@ -90,9 +81,6 @@ impl std::fmt::Display for HandlerError {
         }
     }
 }
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-
 impl std::error::Error for HandlerError {}
 
 /*
@@ -229,7 +217,7 @@ struct AbandonedChannel(Arc<QueueContext>);
 
 #[async_trait]
 impl VoiceEventHandler for AbandonedChannel {
-    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let members = self.0.voice_chan_id.members(&self.0.cache).await.unwrap();
         if members.iter().filter(|x| !x.user.bot).count() > 0 {
             return None;
@@ -271,12 +259,12 @@ struct TrackEndNotifier(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for TrackEndNotifier {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        tracing::info!("Cold queue: {}", self.0.cold_queue.read().await.len());
+        tracing::trace!("Cold queue: {}", self.0.cold_queue.read().await.len());
         
         if let EventContext::Track(track_list) = ctx {
             let cold_queue_len = self.0.cold_queue.read().await.len();
             let hot_queue_len = track_list.len();
-            tracing::info!("Hot queue: {}", hot_queue_len);
+            tracing::trace!("Hot queue: {}", hot_queue_len);
             self.0
                 .invited_from
                 .say(&self.0.http, &format!("Tracks ended: ({} left).", hot_queue_len-1 + cold_queue_len))
@@ -326,7 +314,6 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         Some(channel) => channel,
         None => {
             msg.reply(&ctx.http, "Not in a voice channel").await.unwrap();
-            //TODO: fix
             return Err(JoinError::NoCall);
         },
     };

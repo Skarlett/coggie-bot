@@ -1,4 +1,4 @@
-use tokio::io::{AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use serenity::futures::StreamExt;
 use std::path::PathBuf;
 

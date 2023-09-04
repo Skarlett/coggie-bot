@@ -1,5 +1,4 @@
 use std::io::{BufReader, BufRead, Read};
-use std::process::ChildStderr;
 use serenity::json::JsonError;
 use songbird::{
     constants::SAMPLE_RATE_RAW,
@@ -19,7 +18,7 @@ use std::{
 };
 use serde_json::Value;
 use std::os::fd::AsRawFd;
-use tokio::io::{AsyncReadExt, AsyncRead};
+use tokio::io::AsyncReadExt;
 
 async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
     let mut file = tokio::fs::OpenOptions::new()
