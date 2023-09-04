@@ -99,9 +99,7 @@ fn handle_bad_json(
 }
 
 #[cfg(not(feature = "debug"))]
-fn handle_bad_json<R>(writebuf: Vec<u8>, error: JsonError, reader: BufReader<R> ) -> SongbirdError 
-where 
-    R: AsyncReadExt + Read + Unpin
+fn handle_bad_json(writebuf: Vec<u8>, error: JsonError, _reader: BufReader<&mut std::process::ChildStderr> ) -> SongbirdError
 {
     let fault = String::from_utf8_lossy(&writebuf);
     tracing::error!("TRIED PARSING: \n {}", String::from_utf8_lossy(&writebuf));
