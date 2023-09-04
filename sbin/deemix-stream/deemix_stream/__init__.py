@@ -48,34 +48,3 @@ class SpotifyStreamer(Spotify):
             self.enabled = True
         except Exception:
             self.enabled = False 
-
-
-def fan_dl_object(dz, plugins, downloadObject, settings, listener=None):
-    stack = [downloadObject];
-
-    while len(stack):
-        downloadObject = stack.pop()
-
-        if isinstance(downloadObject, list):
-            stack.extend(downloadObject)
-        
-        elif isinstance(downloadObject, Single):
-            extraData = {
-                'trackAPI': downloadObject.single.get('trackAPI'),
-                'albumAPI': downloadObject.single.get('albumAPI'),
-            }
-            yield (downloadObject, extraData)
-
-
-        elif isinstance(downloadObject, Convertable):
-            obj = plugins[downloadObject.plugin].convert(dz, downloadObject, settings, listener)
-            stack.append(obj)
-
-        elif isinstance(downloadObject, Collection):
-            for track in downloadObject.collection['tracks']: 
-                extraData = {
-                    'trackAPI': track,
-                    'albumAPI': downloadObject.collection.get('albumAPI'),
-                    'playlistAPI': downloadObject.collection.get('playlistAPI')   
-                }
-                yield (downloadObject, extraData)

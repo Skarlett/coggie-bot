@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from deemix_stream.__init__ import SpotifyStreamer, fan_dl_object
+from deemix_stream.__init__ import SpotifyStreamer
 
 import click
 import requests
@@ -135,8 +135,13 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     (link, _link_type, _link_id) = parseLink(url[0])
 
     downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
-    for (obj, extras) in list(fan_dl_object(dz, downloadObject, settings)):
-        stream_stdout(obj, extras)
+
+    extras = {
+        'trackAPI': downloadObject.single.get('trackAPI'),
+        'albumAPI': downloadObject.single.get('albumAPI'),
+    }
+
+    stream_stdout(downloadObject, extras)
 
     stdout.close()
     

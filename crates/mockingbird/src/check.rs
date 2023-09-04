@@ -178,8 +178,8 @@ pub async fn check_arl(arl: &str) -> Result<ExtractChecks, ARLError> {
         expiration: data["results"]["USER"]["OPTIONS"]["expiration_timestamp"].as_i64().unwrap(),
         inscription: data["results"]["USER"]["INSCRIPTION_DATE"].to_string(),
         lossless: data["results"]["USER"]["OPTIONS"]["mobile_lossless"].as_bool().unwrap(),
-        mobile_sq: dbg!(serde_json::from_value::<SoundQuality>(dbg!(data["results"]["USER"]["OPTIONS"]["mobile_sound_quality"].clone())))?,
+        mobile_sq: serde_json::from_value::<SoundQuality>(data["results"]["USER"]["OPTIONS"]["mobile_sound_quality"].clone())?,
         tablet_sq: serde_json::from_value::<SoundQuality>(data["results"]["USER"]["OPTIONS"]["tablet_sound_quality"].clone())?,
-        web_sq: dbg!(serde_json::from_value::<SoundQuality>(dbg!(data["results"]["USER"]["OPTIONS"]["web_sound_quality"].clone())))?,
+        web_sq: serde_json::from_value::<SoundQuality>(data["results"]["USER"]["OPTIONS"]["web_sound_quality"].clone())?,
       })
 }
