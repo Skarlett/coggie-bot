@@ -167,7 +167,7 @@ pub async fn _deemix(
         return Err(SongbirdError::YouTubeDlProcessing(x.clone()));
     }
 
-    let filesize = metadata_raw["filesize"].as_u64();
+    let _filesize = metadata_raw["filesize"].as_u64();
     let metadata = Some(metadata_from_deemix_output(&metadata_raw));
 
     tracing::info!("running ffmpeg");
