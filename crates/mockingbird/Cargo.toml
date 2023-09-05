@@ -21,7 +21,7 @@ chrono = {version = "^0.4.26", optional = true }
 cc = "1"
 
 [features]
-default = ["ytdl", "debug", "deemix", "check", "beta-controller", "arl-cmd"]
+default = []
 standard-controller = []
 beta-controller = []
 debug = []
