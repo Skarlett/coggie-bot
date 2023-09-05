@@ -4,7 +4,6 @@ mod controller;
 
 #[cfg(feature = "standard-controller")]
 pub use controller::COMMANDS_GROUP as COMMANDS;
-
 #[cfg(feature = "beta-controller")]
 #[path = "player.rs"]
 pub mod player;
@@ -13,7 +12,7 @@ pub mod player;
 mod deemix;
 
 #[cfg(feature = "check")]
-mod check;
+pub mod check;
 
 #[cfg(test)]
 mod testsuite;
@@ -25,6 +24,7 @@ use serenity::client::ClientBuilder;
 pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird initializing...");
     use songbird::SerenityInit;
+
 
     #[cfg(feature = "beta-controller")]
     {

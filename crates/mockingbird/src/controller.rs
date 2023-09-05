@@ -13,7 +13,7 @@ use songbird::create_player;
 
 #[group]
 #[commands(
-    deafen, join, leave, mute, skip, stop, undeafen, unmute, queue, arl_check, arl_raw
+    deafen, join, leave, mute, skip, stop, undeafen, unmute, queue
 )]
 struct Commands;
 
@@ -462,140 +462,6 @@ async fn unmute(ctx: &Context, msg: &Message) -> CommandResult {
                 .say(&ctx.http, "Not in a voice channel to unmute in")
                 .await,
         );
-    }
-
-    Ok(())
-}
-
-fn santitize_arl(arl: &str) -> Result<(), ()>
-{
-    if arl.trim().len() == 192 && arl.chars().all(|c| c.is_ascii_hexdigit())
-    { return Ok(()) }
-    Err(())
-}
-
-#[command("arl-raw")]
-#[cfg(feature = "check")]
-async fn arl_raw(
-    ctx: &Context,
-    msg: &Message,
-    mut args: Args
-) -> CommandResult
-{
-    let mut iargs = args.iter::<String>();
-    while let Some(Ok(arl)) = iargs.next() {
-        if let Err(()) = santitize_arl(&arl) {
-            check_msg(msg.channel_id.say(&ctx.http, "Invalid ARL").await);
-            continue;
-        }
-
-        let check = crate::check::get_arl_data(&arl).await?;
-
-        check_msg(msg.channel_id.send_files(
-            &ctx.http,
-            vec![
-                (serde_json::to_string_pretty(&check)?.as_bytes(), format!("{}.json", arl).as_str())
-            ],
-            |m| m
-        ).await);
-    }
-    Ok(())
-}
-
-#[command("arl")]
-#[cfg(feature = "check")]
-async fn arl_check(
-    ctx: &Context,
-    msg: &Message,
-    mut args: Args
-) -> CommandResult
-{
-    use chrono::prelude::*;
-
-    const BLANKSPACE: &'static str = "\x20"; // 0x20
-    const RED: u32    = 0x00FF0000;
-    const GREEN: u32  = 0x0000FF00;
-    const YELLOW: u32 = 0x00FFFF00;
-
-    let mut iargs = args.iter::<String>();
-
-    while let Some(Ok(arl)) = dbg!(iargs.next())
-    {
-        if let Err(()) = santitize_arl(&arl) {
-            check_msg(msg.channel_id.say(&ctx.http, "Invalid ARL").await);
-            continue;
-        }
-
-        let arl = arl.trim();
-        if dbg!(arl.len()) != 192 {
-            check_msg(
-            msg.channel_id
-                    .say(&ctx.http, "Must provide an ARL")
-                    .await,
-            );
-            continue
-        }
-
-        let check = match crate::check::check_arl(&arl).await {
-            Ok(check) => check,
-            Err(e) => {
-                check_msg(
-                    msg.channel_id
-                        .say(&ctx.http, format!("Error: {}", e))
-                        .await,
-                );
-                continue
-            }
-        };
-
-        let is_usa = check.country.to_ascii_lowercase() == "us";
-
-        let color = if check.dank()
-          { GREEN }
-        else if check.lossless() && check.explicit()
-          { YELLOW }
-        else
-          { RED };
-
-        fn checkmark(check: bool) -> &'static str {
-            if check { ":white_check_mark:" }
-            else { ":x:" }
-        }
-
-        let explicit = checkmark(check.explicit());
-        let lossless = checkmark(check.lossless());
-        let country_checkmark = checkmark(is_usa);
-        let sound_quality_table = check.tabulize().await.expect("Failed to collect column -t");
-
-
-        let naive = NaiveDateTime::from_timestamp_opt(check.expiration, 0).unwrap();
-        let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
-        let expiredate = datetime.format("%Y-%m-%d %H:%M:%S");
-        let expire_checkmark = checkmark(datetime > Utc::now());
-
-        check_msg(msg.channel_id
-           .send_message(&ctx.http, |m|
-                {
-                  let m = 
-                    m.add_embed(|e| 
-                        e.title("ARL Check")
-                            .color(color)
-                            .description(&arl)
-                            .fields(vec![
-                                (format!("Allows Explicit: {explicit}").as_str(), BLANKSPACE, false),
-                                (format!("Allows Lossless: {lossless}").as_str(), BLANKSPACE, false),
-                                (format!("Country: {} {}", check.country, country_checkmark).as_str(), BLANKSPACE, false),
-                                (format!("Inscription date: {}", check.inscription).as_str(), BLANKSPACE, false),
-                                (format!("Expiration: {expiredate} {expire_checkmark}").as_str(), BLANKSPACE, false),
-                                (format!("Email: {}", check.email).as_str(), BLANKSPACE, false),
-                                (format!("Offer {} ({})", check.offer_name, check.offer_id).as_str(), BLANKSPACE, false),
-                                (BLANKSPACE, &format!("```\n{}\n```", sound_quality_table), false),
-                            ])
-                            .footer(|f| f.text(format!("**Deezer uses Mobile API.**")))
-                        );
-                    m
-    }).await);
-            
     }
 
     Ok(())

@@ -23,6 +23,7 @@ bookmark = []
 # mockingbird features
 mockingbird-core = ["dep:mockingbird"]
 
+mockingbird-arl-cmd = ["mockingbird?/arl-cmd"]
 mockingbird-std-ctrl = ["mockingbird?/standard-controller"]
 mockingbird-beta-ctrl = ["mockingbird?/beta-controller"]
 mockingbird-debug = ["mockingbird?/debug"]

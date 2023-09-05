@@ -21,7 +21,7 @@ chrono = {version = "^0.4.26", optional = true }
 cc = "1"
 
 [features]
-default = ["ytdl", "debug", "deemix", "check", "beta-controller"]
+default = ["ytdl", "debug", "deemix", "check", "beta-controller", "arl-cmd"]
 standard-controller = []
 beta-controller = []
 debug = []
@@ -30,3 +30,4 @@ check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]
 ytdl = ["songbird/yt-dlp"]
 deemix = ["dep:serde", "dep:serde_json"]
 wget-mp3 = ["dep:reqwest"]
+arl-cmd = ["check"]
