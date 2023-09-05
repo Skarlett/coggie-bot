@@ -68,6 +68,14 @@ let
             dependencies = [ "mockingbird-core" ];
           }
 
+          { name = "mockingbird-arl-cmd";
+            dependencies = [ "mockingbird-deemix-check" ];
+          }
+
+          { name = "mockingbird-debug";
+            dependencies = [];
+          }
+
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];

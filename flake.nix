@@ -50,7 +50,9 @@
               mockingbird-ytdl
               mockingbird-deemix
               # mockingbird-std-ctrl
+              mockingbird-debug
               mockingbird-deemix-check
+              mockingbird-arl-cmd
             ];
           };
 
