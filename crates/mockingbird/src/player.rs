@@ -7,7 +7,7 @@ use serenity::{
     }, 
     client::Cache,
     prelude::*,
-    model::prelude::*
+    model::prelude::*, http::Http
 };
 
 use songbird::{
@@ -43,7 +43,7 @@ struct BetterPlayer;
 async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError> {
     let player = Players::from_str(&uri)
         .ok_or_else(|| HandlerError::NotImplemented)?;
-        
+    
     player.play(call, &uri).await.map_err(HandlerError::from)
 }
 
@@ -206,9 +206,11 @@ impl TypeMapKey for LazyQueueKey {
 
 pub struct QueueContext {
     guild_id: GuildId,
+    invited_from: ChannelId,
     voice_chan_id: GuildChannel,
     cache: Arc<Cache>,
     data: Arc<RwLock<TypeMap>>,
+    http: Arc<Http>,
     manager: Arc<Songbird>,
     cold_queue: Arc<RwLock<VecDeque<String>>>,
 }
@@ -244,13 +246,21 @@ impl VoiceEventHandler for Preload {
 
         if let Some(call_lock) = self.0.manager.get(self.0.guild_id) {
             let mut call = call_lock.lock().await;
-            let uri = self.0.cold_queue.write().await.pop_front().unwrap();
-            
-            let handler = next_track(&mut call, &uri).await.unwrap();
-            handler.add_event(
-                Event::Delayed(handler.metadata().duration.unwrap() - Duration::from_secs(20)),
-                Preload(self.0.clone())
-            ).unwrap();
+            while let Some(uri) = self.0.cold_queue.write().await.pop_front() {
+                match next_track(&mut call, &uri).await {
+                    Ok(track) => {
+                        track.add_event(
+                            Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
+                            Preload(self.0.clone())
+                        ).unwrap();
+                        break
+                    },
+                    Err(e) => {
+                        self.0.invited_from.say(&self.0.http, format!("Couldn't play track {}", &uri)).await;
+                        tracing::error!("Failed to play next track: {}", e);
+                    }
+                }
+            }
         }
         None
     }
@@ -279,6 +289,11 @@ async fn leave_routine (
         queue.remove(&guild_id);
     }
     Ok(())
+}
+
+async fn play_routine() {
+
+
 }
 
 async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
@@ -319,9 +334,11 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
             QueueContext {
                 guild_id,
                 voice_chan_id,
+                invited_from: msg.channel_id,
                 cache: ctx.cache.clone(),
                 data: ctx.data.clone(),
                 manager: manager.clone(),
+                http: ctx.http.clone(),
                 cold_queue: Arc::new(RwLock::new(VecDeque::new())),
             }
         } else {
@@ -554,6 +571,7 @@ async fn nskip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
            .await?;
         return Ok(())
     }
+
     else if skipn > qctx.cold_queue.read().await.len() as isize + 1 {
         qctx.cold_queue.write().await.clear();
         return Ok(())
@@ -575,9 +593,23 @@ async fn nskip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     };
 
     let mut call = handler_lock.lock().await;
-       
-    if let Some(uri) = qctx.cold_queue.write().await.pop_front() { 
-        next_track(&mut call, &uri).await?;            
+
+    while let Some(uri) = qctx.cold_queue.write().await.pop_front() { 
+        match next_track(&mut call, &uri).await {
+            Ok(handle) => {
+                handle.add_event(
+                    Event::Delayed(handle.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
+                    Preload(qctx.clone())
+                )?;
+                break;
+            },
+            Err(e) => {
+                msg.channel_id
+                   .say(&ctx.http, format!("Couldn't play track {}", &uri))
+                   .await?;
+                tracing::error!("Failed to play next track: {}", e);
+            }
+        }            
     }
     let cold_queue_len = qctx.cold_queue.read().await.len();
 
