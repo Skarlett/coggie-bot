@@ -33,8 +33,12 @@ use tokio::{
     process::Command,
 };
 
+const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
+const TS_PRELOAD_PADDING: Duration = Duration::from_secs(5);
+const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
+
 #[group]
-#[commands(njoin, nleave, nqueue, now_playing)]
+#[commands(njoin, nleave, nqueue, now_playing, nskip)]
 struct BetterPlayer;
 
 async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError> {
@@ -88,7 +92,7 @@ impl std::error::Error for HandlerError {}
  * feature generated code.
 */
 #[cfg(feature="deemix")]
-async fn fan_deezer(uri: &str, buf: &mut Vec<String>) -> Result<(), HandlerError> {
+async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError> {
     let mut json_buf = Vec::new();
     _urls("deemix-metadata", &[uri], &mut json_buf).await?;
     buf.extend(
@@ -99,7 +103,7 @@ async fn fan_deezer(uri: &str, buf: &mut Vec<String>) -> Result<(), HandlerError
 }
 
 #[cfg(feature="ytdl")]
-async fn fan_ytdl(uri: &str, buf: &mut Vec<String>) -> Result<(), HandlerError> {
+async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError> {
     let mut json_buf = Vec::new();
     _urls("yt-dlp", &["--flat-playlist", "-j", uri], &mut json_buf).await?;
     
@@ -185,8 +189,8 @@ impl Players {
         Ok(track_handle)
     }
 
-    async fn fan_collection(&self, uri: &str) -> Result<Vec<String>, HandlerError> {
-        let mut buf = Vec::new();
+    async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
+        let mut buf = VecDeque::new();
         match self {
             Self::Deemix => fan_deezer(uri, &mut buf).await,
             Self::Ytdl => fan_ytdl(uri, &mut buf).await 
@@ -255,26 +259,6 @@ impl VoiceEventHandler for Preload {
         None
     }
 }
-struct TrackEndNotifier(Arc<QueueContext>);
-#[async_trait]
-impl VoiceEventHandler for TrackEndNotifier {
-    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        tracing::trace!("Cold queue: {}", self.0.cold_queue.read().await.len());
-        
-        if let EventContext::Track(track_list) = ctx {
-            let cold_queue_len = self.0.cold_queue.read().await.len();
-            let hot_queue_len = track_list.len();
-            tracing::trace!("Hot queue: {}", hot_queue_len);
-            self.0
-                .invited_from
-                .say(&self.0.http, &format!("Tracks ended: ({} left).", hot_queue_len-1 + cold_queue_len))
-                .await
-                .unwrap();
-            
-        }
-        None
-    }
-}
 
 async fn leave_routine (
     data: Arc<RwLock<TypeMap>>,
@@ -328,8 +312,6 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     if let Err(e) = success {
         return Err(e);
     }
-
-    // cold queue 
     
     let call_lock = manager.get(guild_id).unwrap(); 
     let mut call = call_lock.lock().await;
@@ -353,12 +335,15 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
             return Err(JoinError::NoCall);
         };
 
+    
     let queuectx = Arc::new(queuectx);
-
-    call.add_global_event(
-        Event::Track(TrackEvent::End),
-        TrackEndNotifier(queuectx.clone())
-    );
+    
+    {
+        let mut glob = ctx.data.write().await; 
+        let queue = glob.get_mut::<LazyQueueKey>()
+            .expect("Expected LazyQueueKey in TypeMap");
+        queue.insert(guild_id, queuectx.clone());
+    }
 
     call.add_global_event(
         Event::Periodic(Duration::from_secs(720), None),
@@ -481,7 +466,6 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     let qctx: Arc<QueueContext>;
     let mut play_song_immediate = false;
-    let mut range = 0..;
 
     let call = match manager.get(guild_id) {
         Some(call_lock) => {
@@ -491,7 +475,6 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         None => {
             let tmp = join_routine(ctx, msg).await;            
             play_song_immediate = true;
-            range = 1..;
 
             if let Err(ref e) = tmp {
                 msg.channel_id
@@ -511,25 +494,32 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         }
     };
 
-
     match Players::from_str(&url)
         .ok_or_else(|| String::from("Failed to select extractor for URL"))
     {
         Ok(player) => {
             let mut uris = player.fan_collection(url.as_str()).await?;
             let added = uris.len();
-            qctx.cold_queue.write().await.extend(uris.drain(range));    
-
             let mut call = call.lock().await;
 
-            if play_song_immediate || call.queue().len() == 0 {}
+            let maybe_playing = call.queue().current();
+            if let Some(ref track) = maybe_playing {
+                let metadata = track.metadata();
+                if track.get_info().await?.position > metadata.duration.unwrap() - (TS_PRELOAD_OFFSET + TS_PRELOAD_PADDING) {
+                    play_song_immediate = true;
+                }
+            }
 
-            let handler = player.play(&mut call, &uris[0]).await?;
-            handler.add_event(
-               Event::Delayed(handler.metadata().duration.unwrap() - Duration::from_secs(20)),
-               Preload(qctx.clone())
-            ).unwrap();
-
+            if play_song_immediate || maybe_playing.is_none() {
+                let first = uris.pop_front().unwrap();
+                let track = next_track(&mut call, &first).await?;
+                track.add_event(
+                    Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
+                    Preload(qctx.clone())
+                )?;
+            }
+            
+            qctx.cold_queue.write().await.extend(uris.drain(..));    
             msg.channel_id            
                .say(&ctx.http, format!("Added {} Song(s)", added))
                .await?;            
@@ -545,4 +535,63 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     Ok(())
 }
 
+#[command]
+#[only_in(guilds)]
+async fn nskip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+    
+    let qctx = ctx.data.write().await
+        .get_mut::<LazyQueueKey>().unwrap()
+        .get_mut(&guild_id).unwrap().clone();
+     
+    let skipn = args.remains()
+        .unwrap_or("1")
+        .parse::<isize>()
+        .unwrap_or(1);
 
+    if skipn < 1 {
+        msg.channel_id
+           .say(&ctx.http, "Must skip at least 1 song")
+           .await?;
+        return Ok(())
+    }
+    else if skipn > qctx.cold_queue.read().await.len() as isize + 1 {
+        qctx.cold_queue.write().await.clear();
+        return Ok(())
+    }
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    let handler_lock = match manager.get(guild_id) {
+        Some(x) => x,
+        None => {
+            msg.channel_id
+               .say(&ctx.http, "Not in a voice channel to play in")
+               .await?;
+            return Ok(())
+        }
+    };
+
+    let mut call = handler_lock.lock().await;
+       
+    if let Some(uri) = qctx.cold_queue.write().await.pop_front() { 
+        next_track(&mut call, &uri).await?;            
+    }
+    let cold_queue_len = qctx.cold_queue.read().await.len();
+
+    msg.channel_id
+       .say(
+            &ctx.http,
+            format!("Song skipped [{}]: {} in queue.", skipn, cold_queue_len),
+        )
+        .await?;
+
+    let queue = call.queue();
+    let _ = queue.skip();
+
+    Ok(())
+}

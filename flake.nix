@@ -49,7 +49,7 @@
               mockingbird-beta-ctrl
               mockingbird-ytdl
               mockingbird-deemix
-              mockingbird-std-ctrl
+              # mockingbird-std-ctrl
               mockingbird-deemix-check
             ];
           };
