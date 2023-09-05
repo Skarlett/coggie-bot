@@ -6,14 +6,13 @@ use serenity::{
         CommandResult, Args,
     }, 
     client::Cache,
-    http::Http,
     prelude::*,
     model::prelude::*
 };
 
 use songbird::{
     error::{JoinResult, JoinError},
-    events::{Event, EventContext, TrackEvent},
+    events::{Event, EventContext},
     EventHandler as VoiceEventHandler,
     Songbird,
     Call, 
@@ -205,12 +204,9 @@ impl TypeMapKey for LazyQueueKey {
     type Value = LazyQueue;
 }
 
-
 pub struct QueueContext {
     guild_id: GuildId,
-    invited_from: ChannelId,
     voice_chan_id: GuildChannel,
-    http: Arc<Http>,
     cache: Arc<Cache>,
     data: Arc<RwLock<TypeMap>>,
     manager: Arc<Songbird>,
@@ -270,8 +266,8 @@ async fn leave_routine (
 
     {
         let mut call = handler.lock().await;
-            call.remove_all_global_events();
-            call.stop();
+        call.remove_all_global_events();
+        call.stop();
     }    
     
     manager.remove(guild_id).await?;
@@ -315,7 +311,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     
     let call_lock = manager.get(guild_id).unwrap(); 
     let mut call = call_lock.lock().await;
-    
+
     let chan: Channel  = connect_to.to_channel(&ctx.http).await.unwrap();
     
     let queuectx =
@@ -323,8 +319,6 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
             QueueContext {
                 guild_id,
                 voice_chan_id,
-                invited_from: msg.channel_id,
-                http: ctx.http.clone(),
                 cache: ctx.cache.clone(),
                 data: ctx.data.clone(),
                 manager: manager.clone(),
@@ -345,8 +339,10 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         queue.insert(guild_id, queuectx.clone());
     }
 
+    let _ = call.deafen(true).await;
+
     call.add_global_event(
-        Event::Periodic(Duration::from_secs(720), None),
+        Event::Periodic(TS_ABANDONED_HB, None),
         AbandonedChannel(queuectx.clone())
     );
 
@@ -411,12 +407,14 @@ async fn nleave(ctx: &Context, msg: &Message) -> CommandResult {
     }
     
     let handler = handler.unwrap();
+
     {
         let mut call = handler.lock().await;
-            call.remove_all_global_events();
-            call.stop();
-    }    
-    
+        call.remove_all_global_events();
+        call.stop();
+        let _ = call.deafen(false).await;
+    }
+
     if let Err(e) = manager.remove(guild_id).await {
         msg.channel_id
            .say(&ctx.http, format!("Failed: {:?}", e))
