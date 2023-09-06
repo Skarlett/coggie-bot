@@ -23,6 +23,7 @@ async fn version(ctx: &Context, msg: &Message) -> CommandResult {
 #[command]
 async fn reboot(ctx: &Context, msg: &Message) -> CommandResult {
     msg.channel_id.say(&ctx.http, "will kill all hu-").await?;
+    std::process::exit(3);
     panic!("reboot request");
     Ok(())
 }
