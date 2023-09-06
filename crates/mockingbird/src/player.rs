@@ -89,11 +89,11 @@ impl std::fmt::Display for HandlerError {
 }
 impl std::error::Error for HandlerError {}
 
-fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Value>, err_cnt: &mut usize, key: &str)
-{
+fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Value>, err_cnt: &mut usize, key: &str){
     for x in json_buf {
         if let Some(jmap) = x.as_object() {
             if !jmap.contains_key(key) {
+                tracing::error!("{} not found in json", key);
                 *err_cnt += 1;
                 continue
             }
@@ -101,10 +101,13 @@ fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Valu
             buf.push_back(jmap[key].as_str().unwrap().to_owned());
         }
         else {
+
+            tracing::error!("{} not found in json", key);
             *err_cnt += 1;
             continue
         }
     }
+    tracing::info!("{} tracks found", buf.len());
 }
 /*
  * Some ugly place holders for
@@ -253,10 +256,12 @@ impl VoiceEventHandler for AbandonedChannel {
 
 async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     let mut tries = 4;
-    let handler = qctx.manager.get(qctx.guild_id).ok_or_else(|| HandlerError::NoCall)?;    
+    let handler = qctx.manager.get(qctx.guild_id)
+        .ok_or_else(|| HandlerError::NoCall)?;
+    
     let mut call = handler.lock().await;
 
-    while let Some(uri) = qctx.cold_queue.write().await.pop_front() {
+    while let Some(uri) = dbg!(qctx.cold_queue.write().await.pop_front()) {
         match next_track(&mut call, &uri).await {
             Ok(track) => {
                 track.add_event(
@@ -554,19 +559,28 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .ok_or_else(|| String::from("Failed to select extractor for URL"))
     {
         Ok(player) => {
-            let mut uris = player.fan_collection(url.as_str()).await?;
+            let mut uris = dbg!(player.fan_collection(url.as_str()).await?);
             let added = uris.len();
-            let call = call.lock().await;
-            
-            let maybe_hot = call.queue().len() > 0;            
+            qctx.cold_queue.write().await.extend(uris.drain(..));    
 
+            let maybe_hot = {
+                let call = call.lock().await;
+                call.queue().len() > 0            
+            };
+
+            drop(call); // probably not needed, but just in case
             if !maybe_hot {
                 play_routine(qctx.clone()).await?;
             }
+
+            let content = format!(
+                "Added {} Song(s) [{}] queued",
+                added,
+                qctx.cold_queue.read().await.len()
+            );
             
-            qctx.cold_queue.write().await.extend(uris.drain(..));    
             msg.channel_id            
-               .say(&ctx.http, format!("Added {} Song(s)", added))
+               .say(&ctx.http, &content)
                .await?;            
         },
 
