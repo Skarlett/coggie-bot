@@ -1,9 +1,9 @@
 #[cfg(feature = "standard-controller")]
 mod controller;
 
-
 #[cfg(feature = "standard-controller")]
 pub use controller::COMMANDS_GROUP as COMMANDS;
+
 #[cfg(feature = "beta-controller")]
 #[path = "player.rs"]
 pub mod player;

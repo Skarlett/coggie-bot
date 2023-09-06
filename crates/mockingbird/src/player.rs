@@ -216,7 +216,6 @@ pub struct QueueContext {
 }
 
 struct AbandonedChannel(Arc<QueueContext>);
-
 #[async_trait]
 impl VoiceEventHandler for AbandonedChannel {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
@@ -246,6 +245,8 @@ impl VoiceEventHandler for Preload {
 
         if let Some(call_lock) = self.0.manager.get(self.0.guild_id) {
             let mut call = call_lock.lock().await;
+            let mut tries = 3;
+
             while let Some(uri) = self.0.cold_queue.write().await.pop_front() {
                 match next_track(&mut call, &uri).await {
                     Ok(track) => {
@@ -256,8 +257,13 @@ impl VoiceEventHandler for Preload {
                         break
                     },
                     Err(e) => {
+                        if tries == 0 {
+                            break
+                        }
+
                         self.0.invited_from.say(&self.0.http, format!("Couldn't play track {}", &uri)).await;
                         tracing::error!("Failed to play next track: {}", e);
+                        tries -= 1;
                     }
                 }
             }
@@ -289,11 +295,6 @@ async fn leave_routine (
         queue.remove(&guild_id);
     }
     Ok(())
-}
-
-async fn play_routine() {
-
-
 }
 
 async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
@@ -480,7 +481,6 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .clone();
 
     let qctx: Arc<QueueContext>;
-    let mut play_song_immediate = false;
 
     let call = match manager.get(guild_id) {
         Some(call_lock) => {
@@ -489,7 +489,6 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         },
         None => {
             let tmp = join_routine(ctx, msg).await;            
-            play_song_immediate = true;
 
             if let Err(ref e) = tmp {
                 msg.channel_id
@@ -516,17 +515,12 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             let mut uris = player.fan_collection(url.as_str()).await?;
             let added = uris.len();
             let mut call = call.lock().await;
+            
+            let maybe_hot = call.queue().len() > 0;            
 
-            let maybe_playing = call.queue().current();
-            if let Some(ref track) = maybe_playing {
-                let metadata = track.metadata();
-                if track.get_info().await?.position > metadata.duration.unwrap() - (TS_PRELOAD_OFFSET + TS_PRELOAD_PADDING) {
-                    play_song_immediate = true;
-                }
-            }
-
-            if play_song_immediate || maybe_playing.is_none() {
+            if !maybe_hot {
                 let first = uris.pop_front().unwrap();
+
                 let track = next_track(&mut call, &first).await?;
                 track.add_event(
                     Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
