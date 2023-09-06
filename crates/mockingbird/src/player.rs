@@ -7,7 +7,7 @@ use serenity::{
     }, 
     client::Cache,
     prelude::*,
-    model::prelude::*, http::Http
+    model::prelude::*, http::Http, json
 };
 
 use songbird::{
@@ -89,35 +89,45 @@ impl std::fmt::Display for HandlerError {
 }
 impl std::error::Error for HandlerError {}
 
+fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Value>, err_cnt: &mut usize, key: &str)
+{
+    for x in json_buf {
+        if let Some(jmap) = x.as_object() {
+            if !jmap.contains_key(key) {
+                *err_cnt += 1;
+                continue
+            }
+        
+            buf.push_back(jmap[key].as_str().unwrap().to_owned());
+        }
+        else {
+            *err_cnt += 1;
+            continue
+        }
+    }
+}
 /*
  * Some ugly place holders for
  * feature generated code.
 */
 #[cfg(feature="deemix")]
-async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError> {
+async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
     let mut json_buf = Vec::new();
+    let mut err_cnt = 0;
     _urls("deemix-metadata", &[uri], &mut json_buf).await?;
-    
-    // FIXME: Don't use unwrap, check for key "error"
-    buf.extend(
-        json_buf.iter()
-            .map(|x| 
-                x["link"].as_str().unwrap().to_owned())
-    );
-    Ok(())
+
+    process_fan_output(buf, json_buf, &mut err_cnt, "link");
+    Ok(err_cnt)
 }
 
 #[cfg(feature="ytdl")]
-async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError> {
+async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
     let mut json_buf = Vec::new();
+    let mut err_cnt = 0;
     _urls("yt-dlp", &["--flat-playlist", "-j", uri], &mut json_buf).await?;
     
-    // FIXME: Don't use unwrap, check for key "error"
-    buf.extend(
-        json_buf.iter()
-           .map(|x| x["url"].as_str().unwrap().to_owned())
-    );
-    Ok(())
+    process_fan_output(buf, json_buf, &mut err_cnt, "url");
+    Ok(err_cnt)
 }
 
 #[cfg(not(feature="deemix"))]
