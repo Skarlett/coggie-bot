@@ -180,6 +180,7 @@ async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> st
     Ok(())
 }
 
+#[derive(PartialEq, Eq)]
 enum Players {
     Ytdl,
     Deemix,
@@ -559,8 +560,16 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .ok_or_else(|| String::from("Failed to select extractor for URL"))
     {
         Ok(player) => {
-            let mut uris = dbg!(player.fan_collection(url.as_str()).await?);
+            let mut uris = player.fan_collection(url.as_str()).await?;
             let added = uris.len();
+            
+            // YTDLP singles don't work.
+            // so instead, use the original URI.
+            if uris.len() == 1 && player == Players::Ytdl {
+                uris.clear();
+                uris.push_back(url.clone());
+            }
+            
             qctx.cold_queue.write().await.extend(uris.drain(..));    
 
             let maybe_hot = {
