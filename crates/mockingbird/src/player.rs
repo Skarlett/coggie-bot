@@ -17,7 +17,9 @@ use songbird::{
     Songbird,
     Call, 
     create_player,
-    input::{Input, error::Error as SongbirdError}, tracks::TrackHandle
+    input::{Input, error::Error as SongbirdError},
+    tracks::{TrackHandle, Track},
+    TrackEvent
 };
 
 use std::{
@@ -33,7 +35,6 @@ use tokio::{
 };
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
-const TS_PRELOAD_PADDING: Duration = Duration::from_secs(5);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 
 #[group]
@@ -54,6 +55,7 @@ enum HandlerError {
     IOError(std::io::Error),
     Serenity(serenity::Error),
     NotImplemented,
+    NoCall
 }
 
 impl From<serenity::Error> for HandlerError {
@@ -81,6 +83,7 @@ impl std::fmt::Display for HandlerError {
             Self::NotImplemented => write!(f, "This feature is not implemented."),
             Self::IOError(err) => write!(f, "IO error: (most likely deemix-metadata failed) {}", err),
             Self::Serenity(err) => write!(f, "Serenity error: {}", err),
+            Self::NoCall => write!(f, "Not in a voice channel to play in")
         }
     }
 }
@@ -94,9 +97,12 @@ impl std::error::Error for HandlerError {}
 async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError> {
     let mut json_buf = Vec::new();
     _urls("deemix-metadata", &[uri], &mut json_buf).await?;
+    
+    // FIXME: Don't use unwrap, check for key "error"
     buf.extend(
         json_buf.iter()
-            .map(|x| x["link"].as_str().unwrap().to_owned())
+            .map(|x| 
+                x["link"].as_str().unwrap().to_owned())
     );
     Ok(())
 }
@@ -106,6 +112,7 @@ async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerEr
     let mut json_buf = Vec::new();
     _urls("yt-dlp", &["--flat-playlist", "-j", uri], &mut json_buf).await?;
     
+    // FIXME: Don't use unwrap, check for key "error"
     buf.extend(
         json_buf.iter()
            .map(|x| x["url"].as_str().unwrap().to_owned())
@@ -168,7 +175,7 @@ enum Players {
 impl Players {
     fn from_str(data : &str) -> Option<Self>
     {
-        const DEEMIX: [&'static str; 3] = ["deezer.page.link", "deezer.com", "open.spotify"];
+        const DEEMIX: [&'static str; 4] = ["deezer.page.link", "deezer.com", "open.spotify", "spotify.link"];
         const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
 
         if DEEMIX.iter().any(|x|data.contains(x)) { return Some(Self::Deemix) }
@@ -234,40 +241,60 @@ impl VoiceEventHandler for AbandonedChannel {
     }
 }
 
+async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
+    let mut tries = 4;
+    let handler = qctx.manager.get(qctx.guild_id).ok_or_else(|| HandlerError::NoCall)?;    
+    let mut call = handler.lock().await;
 
-struct Preload(Arc<QueueContext>);
-#[async_trait]
-impl VoiceEventHandler for Preload {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {        
-        if self.0.cold_queue.read().await.is_empty() {
-            return None;
-        }
-
-        if let Some(call_lock) = self.0.manager.get(self.0.guild_id) {
-            let mut call = call_lock.lock().await;
-            let mut tries = 3;
-
-            while let Some(uri) = self.0.cold_queue.write().await.pop_front() {
-                match next_track(&mut call, &uri).await {
-                    Ok(track) => {
-                        track.add_event(
-                            Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                            Preload(self.0.clone())
-                        ).unwrap();
-                        break
-                    },
-                    Err(e) => {
-                        if tries == 0 {
-                            break
-                        }
-
-                        self.0.invited_from.say(&self.0.http, format!("Couldn't play track {}", &uri)).await;
-                        tracing::error!("Failed to play next track: {}", e);
-                        tries -= 1;
-                    }
+    while let Some(uri) = qctx.cold_queue.write().await.pop_front() {
+        match next_track(&mut call, &uri).await {
+            Ok(track) => {
+                track.add_event(
+                    Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
+                    PreemptLoader(qctx.clone())
+                ).unwrap();
+                break
+            },
+            Err(e) => {
+                if tries == 0 {
+                    tracing::error!("Failed to play next track: {}", e);
+                    break
                 }
+
+                let _ = qctx.invited_from
+                    .say(&qctx.http, format!("Couldn't play track {}", &uri))
+                    .await;
+                tracing::error!("Failed to play next track: {}", e);
+                tries -= 1;
             }
         }
+    }
+    Ok(())
+}
+
+struct TrackEndLoader(Arc<QueueContext>);
+#[async_trait]
+impl VoiceEventHandler for TrackEndLoader {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        let mut run = false;
+
+        if let Some(call) = self.0.manager.get(self.0.guild_id) {
+          let call = call.lock().await;
+          run = call.queue().current().is_none();
+        }
+
+        if run {
+            let _ = play_routine(self.0.clone()).await;
+        }
+        None
+    }
+}
+
+struct PreemptLoader(Arc<QueueContext>);
+#[async_trait]
+impl VoiceEventHandler for PreemptLoader {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {        
+        let _ = play_routine(self.0.clone()).await;
         None
     }
 }
@@ -358,6 +385,11 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     }
 
     let _ = call.deafen(true).await;
+    
+    call.add_global_event(
+        Event::Track(TrackEvent::End),
+        TrackEndLoader(queuectx.clone())
+    );
 
     call.add_global_event(
         Event::Periodic(TS_ABANDONED_HB, None),
@@ -514,18 +546,12 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         Ok(player) => {
             let mut uris = player.fan_collection(url.as_str()).await?;
             let added = uris.len();
-            let mut call = call.lock().await;
+            let call = call.lock().await;
             
             let maybe_hot = call.queue().len() > 0;            
 
             if !maybe_hot {
-                let first = uris.pop_front().unwrap();
-
-                let track = next_track(&mut call, &first).await?;
-                track.add_event(
-                    Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                    Preload(qctx.clone())
-                )?;
+                play_routine(qctx.clone()).await?;
             }
             
             qctx.cold_queue.write().await.extend(uris.drain(..));    
@@ -593,7 +619,7 @@ async fn nskip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             Ok(handle) => {
                 handle.add_event(
                     Event::Delayed(handle.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                    Preload(qctx.clone())
+                    PreemptLoader(qctx.clone())
                 )?;
                 break;
             },
