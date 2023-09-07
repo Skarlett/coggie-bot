@@ -36,6 +36,8 @@ use tokio::{
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
+const MAX_TRACK_LENGTH: Duration = Duration::from_secs(360*6); // 30 minutes
+const MAX_ENQUEUED: u16 = 300;
 
 #[group]
 #[commands(njoin, nleave, nqueue, now_playing, nskip)]
@@ -627,7 +629,6 @@ async fn nskip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     else if skipn > qctx.cold_queue.read().await.len() as isize + 1 {
         qctx.cold_queue.write().await.clear();
-        return Ok(())
     }
 
     let manager = songbird::get(ctx)
