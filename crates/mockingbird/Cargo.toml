@@ -1,6 +1,6 @@
 [package]
 name = "mockingbird"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -21,8 +21,12 @@ chrono = {version = "^0.4.26", optional = true }
 cc = "1"
 
 [features]
-default = ["ytdl", "deemix", "check"]
+default = []
+controller = []
+debug = []
+
 check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]
 ytdl = ["songbird/yt-dlp"]
 deemix = ["dep:serde", "dep:serde_json"]
 wget-mp3 = ["dep:reqwest"]
+arl-cmd = ["check"]

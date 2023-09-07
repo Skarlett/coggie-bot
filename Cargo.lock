@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "coggiebot"
-version = "1.4.14"
+version = "1.4.15"
 dependencies = [
  "mockingbird",
  "serenity",
@@ -959,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "mockingbird"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "cc",
  "chrono",

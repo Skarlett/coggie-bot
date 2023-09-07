@@ -36,7 +36,8 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
-            ["mockingbird-core"] => [mockingbird::COMMANDS]
+            ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
+            ["mockingbird-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP]
         }
     );
     cfg
@@ -56,7 +57,6 @@ pub struct EvHandler;
 
 #[async_trait]
 impl EventHandler for EvHandler {
-
     #[allow(unused_variables)]
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
         #[cfg(feature="bookmark")]

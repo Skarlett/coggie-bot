@@ -4,14 +4,10 @@
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs =
-    { self, nixpkgs, flake-utils, naersk, crane }:
+    { self, nixpkgs, flake-utils, naersk}:
 
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
@@ -24,29 +20,22 @@
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
           
-          deemix-stream = pkgs.callPackage ./sbin/deemix-stream {
-            inherit (pkgs.python39Packages);
-          };
-
+          deemix-stream = pkgs.python3Packages.callPackage ./sbin/deemix-stream {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
           stable-features = (with cogpkgs.features; [
               basic-cmds
               bookmark
               list-feature-cmd
-              mockingbird
+              mockingbird-core
+              mockingbird-ctrl
               mockingbird-ytdl
               mockingbird-deemix
               mockingbird-deemix-check
+              mockingbird-arl-cmd
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = stable-features;
-          };
-
-          coggiebot-next = cogpkgs.mkCoggiebot {
-            features-list = stable-features ++ [
-              cogpkgs.features.mockingbird-deemix-check
-            ];
           };
 
           non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };

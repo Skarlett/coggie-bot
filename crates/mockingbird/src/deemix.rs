@@ -1,5 +1,4 @@
 use std::io::{BufReader, BufRead, Read};
-use std::process::ChildStderr;
 use serenity::json::JsonError;
 use songbird::{
     constants::SAMPLE_RATE_RAW,
@@ -64,7 +63,7 @@ where
     }
 }
 
-pub async fn deemix_metadata(uri: &str) -> Result<Metadata, Box<dyn std::error::Error>> {
+pub async fn deemix_metadata(uri: &str) -> std::io::Result<Metadata> {
     let deemix = tokio::process::Command::new("deemix-metadata")
         .arg(uri.trim())
         .stdin(Stdio::null())
@@ -78,21 +77,29 @@ pub async fn deemix_metadata(uri: &str) -> Result<Metadata, Box<dyn std::error::
 }
 
 #[cfg(feature = "debug")]
-fn handle_deemix_stream_error(writebuf: Vec<u8>, error: JsonError) -> SongbirdError {
-    let fault = String::from_utf8_lossy(&writebuf);
+fn handle_bad_json(
+    mut writebuf: Vec<u8>,
+    error: JsonError,
+    mut reader: BufReader<&mut std::process::ChildStderr>
+) -> SongbirdError 
+{
+    let fault_data = writebuf.clone();
+    let fault = String::from_utf8_lossy(fault_data.as_slice());
+
     tracing::error!("TRIED PARSING: \n {}", fault);
     tracing::error!("... [start] flushing buffer to logs...");
-    o_vec.clear();
+    writebuf.clear();
 
     // Potentially hangs thread if EOF is never encountered
-    serde_read.read_to_end(&mut o_vec).unwrap();
-    tracing::error!("{}", String::from_utf8_lossy(&o_vec));
+    reader.read_to_end(&mut writebuf).unwrap();
+    tracing::error!("{}", String::from_utf8_lossy(&writebuf));
     tracing::error!("... [ end ] flushed buffer to logs...");
-    SongbirdError::Json { error, parsed_text: fault }
+    SongbirdError::Json { error, parsed_text: fault.to_string() }
 }
 
 #[cfg(not(feature = "debug"))]
-fn handle_deemix_stream_error(writebuf: Vec<u8>, error: JsonError) -> SongbirdError {
+fn handle_bad_json(writebuf: Vec<u8>, error: JsonError, _reader: BufReader<&mut std::process::ChildStderr> ) -> SongbirdError
+{
     let fault = String::from_utf8_lossy(&writebuf);
     tracing::error!("TRIED PARSING: \n {}", String::from_utf8_lossy(&writebuf));
     SongbirdError::Json { error, parsed_text: fault.to_string() }
@@ -104,7 +111,6 @@ pub async fn deemix(
     _deemix(uri, &[]).await
 }
 
-// #[tracing::instrument]
 pub async fn _deemix(
     uri: &str,
     pre_args: &[&str],
@@ -143,7 +149,7 @@ pub async fn _deemix(
             let mut serde_read = BufReader::new(s.by_ref());
             // Newline...
             if let Ok(len) = serde_read.read_until(0xA, &mut o_vec) {
-                serde_json::from_slice(&o_vec[..len]).map_err(|e| handle_deemix_stream_error(o_vec, e))
+                serde_json::from_slice(&o_vec[..len]).map_err(|e| handle_bad_json(o_vec, e, serde_read))
             } else {
                 SongbirdResult::Err(SongbirdError::Metadata)
             }
@@ -157,21 +163,12 @@ pub async fn _deemix(
     deemix.stderr = Some(returned_stderr);
     
     let metadata_raw = value?;
-    let filesize = metadata_raw["filesize"].as_u64();
+    if let Some(x) = metadata_raw.get("error") {
+        return Err(SongbirdError::YouTubeDlProcessing(x.clone()));
+    }
+
+    let _filesize = metadata_raw["filesize"].as_u64();
     let metadata = Some(metadata_from_deemix_output(&metadata_raw));
-
-    tracing::info!("running cat");
-
-    // avoid timeouts by caching the output of deemix
-    let mut cat = std::process::Command::new("cat")
-        .stdin(deemix.stdout.take().ok_or(SongbirdError::Stdout)?)
-        .stderr(Stdio::null())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to start child process");
-    
-    let cat_ptr = cat.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
-    unsafe { bigpipe(cat_ptr, pipesize); }
 
     tracing::info!("running ffmpeg");
     let ffmpeg = std::process::Command::new("ffmpeg")
@@ -179,7 +176,7 @@ pub async fn _deemix(
         .arg("-i")
         .arg("-")
         .args(&ffmpeg_args)
-        .stdin(cat.stdout.take().ok_or(SongbirdError::Stdout)?)
+        .stdin(deemix.stdout.take().ok_or(SongbirdError::Stdout)?)
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
@@ -221,7 +218,7 @@ pub async fn _deemix(
  
     Ok(Input::new(
         true,
-        children_to_reader::<f32>(vec![deemix, cat, ffmpeg]),
+        children_to_reader::<f32>(vec![deemix, ffmpeg]),
         Codec::FloatPcm,
         Container::Raw,
         metadata,

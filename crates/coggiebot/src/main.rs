@@ -1,9 +1,16 @@
 mod controllers;
 
 use std::env;
-use serenity::framework::standard::StandardFramework;
-use serenity::http::Http;
+use serenity::{
+    http::Http,
+    framework::standard::{
+        StandardFramework,
+        DispatchError,
+        macros::hook
+    }
+};
 
+use serenity::model::channel::Message;
 use serenity::prelude::*;
 use structopt::StructOpt;
 
@@ -50,6 +57,11 @@ struct CLI {
     token: String,
 }
 
+#[hook]
+async fn dispatch_error(_ctx: &Context, _msg: &Message, error: DispatchError, _command_name: &str) {
+    tracing::error!("Error: {:?}]", error);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>
 {
@@ -90,7 +102,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
                 .on_mention(Some(bot_id))
                 .delimiters(vec![", ", ","])
                 .owners(std::collections::HashSet::new())
-        });
+        })
+        .on_dispatch_error(dispatch_error);
 
     let framework = controllers::setup_framework(framework);
 

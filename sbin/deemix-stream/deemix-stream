@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from deemix_stream.__init__ import SpotifyStreamer, fan_dl_object
+from deemix_stream.__init__ import SpotifyStreamer
 
 import click
 import requests
@@ -22,7 +22,6 @@ from deezer.errors import WrongLicense, WrongGeolocation
 
 from deemix.utils import USER_AGENT_HEADER
 from deemix.utils.crypto import generateBlowfishKey, decryptChunk
-
 
 dz = Deezer()
 settings = DEFAULT_SETTINGS
@@ -136,10 +135,13 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     (link, _link_type, _link_id) = parseLink(url[0])
 
     downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
-    for (obj, extras) in list(fan_dl_object(downloadObject)):
-        if obj.__type__ == "Convertable":
-            obj = plugins[obj.plugin].convert(dz, obj, settings)
-        stream_stdout(obj, extras)
+
+    extras = {
+        'trackAPI': downloadObject.single.get('trackAPI'),
+        'albumAPI': downloadObject.single.get('albumAPI'),
+    }
+
+    stream_stdout(downloadObject, extras)
 
     stdout.close()
     

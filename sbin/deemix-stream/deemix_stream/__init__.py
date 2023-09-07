@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import deemix_stream.patchssl
-from deemix.types.DownloadObjects import Single, Collection
+from deemix.types.DownloadObjects import Single, Collection, Convertable
 from deemix.plugins.spotify import Spotify
 import spotipy
+
 SpotifyClientCredentials = spotipy.oauth2.SpotifyClientCredentials
 CacheFileHandler = spotipy.cache_handler.CacheFileHandler
 
@@ -47,29 +48,3 @@ class SpotifyStreamer(Spotify):
             self.enabled = True
         except Exception:
             self.enabled = False 
-
-
-def fan_dl_object(downloadObject):
-    stack = [downloadObject];
-    while len(stack):
-        downloadObject = stack.pop()
-
-        if isinstance(downloadObject, list):
-            stack.extend(downloadObject)
-        
-        elif isinstance(downloadObject, Single):
-            extraData = {
-                'trackAPI': downloadObject.single.get('trackAPI'),
-                'albumAPI': downloadObject.single.get('albumAPI')
-            }
-            yield (downloadObject, extraData)
-
-        elif isinstance(downloadObject, Collection):
-            for track in downloadObject.collection['tracks']: 
-                extraData = {
-                    'trackAPI': track,
-                    'albumAPI': downloadObject.collection.get('albumAPI'),
-                    'playlistAPI': downloadObject.collection.get('playlistAPI')   
-                }
-                yield (downloadObject, extraData)
-        

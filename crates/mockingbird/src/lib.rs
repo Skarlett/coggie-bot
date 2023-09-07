@@ -1,20 +1,28 @@
-mod controller;
+#[cfg(feature = "controller")]
+#[path = "player.rs"]
+pub mod player;
 
 #[cfg(feature = "deemix")]
 mod deemix;
 
 #[cfg(feature = "check")]
-mod check;
+pub mod check;
 
 #[cfg(test)]
 mod testsuite;
 
-pub use controller::COMMANDS_GROUP as COMMANDS;
-
-
 use serenity::client::ClientBuilder;
-pub async fn init(cfg: ClientBuilder) -> ClientBuilder {
+
+pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird initializing...");
     use songbird::SerenityInit;
+
+
+    #[cfg(feature = "beta-controller")]
+    {
+        use std::collections::HashMap;
+        cfg = cfg.type_map_insert::<player::LazyQueueKey>(HashMap::new());
+    }
+
     cfg.register_songbird()
 }
