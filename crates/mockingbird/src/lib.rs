@@ -18,7 +18,7 @@ pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     use songbird::SerenityInit;
 
 
-    #[cfg(feature = "beta-controller")]
+    #[cfg(feature = "controller")]
     {
         use std::collections::HashMap;
         cfg = cfg.type_map_insert::<player::LazyQueueKey>(HashMap::new());
