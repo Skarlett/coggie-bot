@@ -60,14 +60,10 @@ let
               });
           }
 
-          { name = "mockingbird-std-ctrl";
+          { name = "mockingbird-ctrl";
             dependencies = [ "mockingbird-core" ];
           }
-
-          { name = "mockingbird-beta-ctrl";
-            dependencies = [ "mockingbird-core" ];
-          }
-
+ 
           { name = "mockingbird-arl-cmd";
             dependencies = [ "mockingbird-deemix-check" ];
           }

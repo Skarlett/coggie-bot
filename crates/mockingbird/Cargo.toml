@@ -22,8 +22,7 @@ cc = "1"
 
 [features]
 default = []
-standard-controller = []
-beta-controller = []
+controller = []
 debug = []
 
 check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]

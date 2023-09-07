@@ -4,10 +4,6 @@
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
-    # crane = {
-    #   url = "github:ipetkov/crane";
-    #   inputs.nixpkgs.follows = "nixpkgs";
-    # };
   };
 
   outputs =
@@ -31,29 +27,15 @@
               bookmark
               list-feature-cmd
               mockingbird-core
-              mockingbird-std-ctrl
+              mockingbird-ctrl
               mockingbird-ytdl
               mockingbird-deemix
               mockingbird-deemix-check
+              mockingbird-arl-cmd
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
             features-list = stable-features;
-          };
-
-          coggiebot-next = cogpkgs.mkCoggiebot {
-            features-list = with cogpkgs.features; [
-              basic-cmds
-              list-feature-cmd
-              mockingbird-core
-              mockingbird-beta-ctrl
-              mockingbird-ytdl
-              mockingbird-deemix
-              # mockingbird-std-ctrl
-              mockingbird-debug
-              mockingbird-deemix-check
-              mockingbird-arl-cmd
-            ];
           };
 
           non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };
@@ -95,7 +77,6 @@
           packages.default = coggiebot-stable;
           packages.coggiebot = coggiebot-stable;
 
-          packages.coggiebot-next = coggiebot-next;
           packages.coggiebot-stable = coggiebot-stable;
           packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
             coggiebot = coggiebot-stable;

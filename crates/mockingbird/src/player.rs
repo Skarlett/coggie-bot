@@ -36,11 +36,11 @@ use tokio::{
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
-const MAX_TRACK_LENGTH: Duration = Duration::from_secs(360*6); // 30 minutes
-const MAX_ENQUEUED: u16 = 300;
+// const MAX_TRACK_LENGTH: Duration = Duration::from_secs(360*6); // 30 minutes
+// const MAX_ENQUEUED: u16 = 300;
 
 #[group]
-#[commands(njoin, nleave, nqueue, now_playing, nskip)]
+#[commands(join, leave, queue, now_playing, skip)]
 struct BetterPlayer;
 
 async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError> {
@@ -437,10 +437,9 @@ async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-
 #[command]
 #[only_in(guilds)]
-async fn njoin(ctx: &Context, msg: &Message) -> CommandResult {
+async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let connect_to = join_routine(&ctx, msg).await;
     
     if let Err(ref e) = connect_to {
@@ -458,7 +457,7 @@ async fn njoin(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 #[only_in(guilds)]
-async fn nleave(ctx: &Context, msg: &Message) -> CommandResult {
+async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 
@@ -500,9 +499,9 @@ async fn nleave(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
-// #[aliases("play")]
+#[aliases("play")]
 #[only_in(guilds)]
-async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
@@ -607,7 +606,7 @@ async fn nqueue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
 #[command]
 #[only_in(guilds)]
-async fn nskip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
     

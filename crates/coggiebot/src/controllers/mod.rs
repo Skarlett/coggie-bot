@@ -37,8 +37,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
-            ["mockingbird-std-ctrl"] => [mockingbird::COMMANDS],
-            ["mockingbird-beta-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP]
+            ["mockingbird-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP]
         }
     );
     cfg

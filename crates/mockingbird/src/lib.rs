@@ -1,10 +1,4 @@
-#[cfg(feature = "standard-controller")]
-mod controller;
-
-#[cfg(feature = "standard-controller")]
-pub use controller::COMMANDS_GROUP as COMMANDS;
-
-#[cfg(feature = "beta-controller")]
+#[cfg(feature = "controller")]
 #[path = "player.rs"]
 pub mod player;
 
@@ -17,9 +11,7 @@ pub mod check;
 #[cfg(test)]
 mod testsuite;
 
-
 use serenity::client::ClientBuilder;
-
 
 pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird initializing...");
