@@ -548,7 +548,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             };
             qctx = tmp.unwrap();
             msg.channel_id
-                   .say(&ctx.http, format!("Joined voice channel: {:?}", qctx.voice_chan_id.mention()))
+                   .say(&ctx.http, format!("Joined: {}", qctx.voice_chan_id.mention()))
                    .await
                    .unwrap();
 
@@ -619,15 +619,22 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         .parse::<isize>()
         .unwrap_or(1);
 
-    if skipn < 1 {
+    if 1 > skipn  {
         msg.channel_id
            .say(&ctx.http, "Must skip at least 1 song")
            .await?;
         return Ok(())
     }
 
-    else if skipn > qctx.cold_queue.read().await.len() as isize + 1 {
+    else if skipn >= qctx.cold_queue.read().await.len() as isize + 1 {
         qctx.cold_queue.write().await.clear();
+    }
+
+    else {
+        let mut write_lock = qctx.cold_queue.write().await;
+        let bottom = write_lock.split_off(skipn as usize - 1);
+        write_lock.clear();
+        write_lock.extend(bottom);
     }
 
     let manager = songbird::get(ctx)
@@ -645,34 +652,16 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         }
     };
 
-    let mut call = handler_lock.lock().await;
-
-    while let Some(uri) = qctx.cold_queue.write().await.pop_front() { 
-        match next_track(&mut call, &uri).await {
-            Ok(handle) => {
-                handle.add_event(
-                    Event::Delayed(handle.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                    PreemptLoader(qctx.clone())
-                )?;
-                break;
-            },
-            Err(e) => {
-                msg.channel_id
-                   .say(&ctx.http, format!("Couldn't play track {}", &uri))
-                   .await?;
-                tracing::error!("Failed to play next track: {}", e);
-            }
-        }            
-    }
     let cold_queue_len = qctx.cold_queue.read().await.len();
 
     msg.channel_id
        .say(
             &ctx.http,
             format!("Song skipped [{}]: {} in queue.", skipn, cold_queue_len),
-        )
-        .await?;
+       )
+       .await?;
 
+    let mut call = handler_lock.lock().await;
     let queue = call.queue();
     let _ = queue.skip();
 
