@@ -421,18 +421,51 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
 #[aliases("np", "playing", "now-playing", "playing-now", "nowplaying")]
 #[only_in(guilds)]
 async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
-    let connect_to = join_routine(&ctx, msg).await;
-    if let Err(ref e) = connect_to {
-        msg.channel_id
-           .say(&ctx.http, format!("Failed to join voice channel: {:?}", e))
-           .await?;        
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let qctx = {
+        let mut glob = ctx.data.write().await;
+        let queue = glob.get_mut::<LazyQueueKey>()
+            .expect("Expected LazyQueueKey in TypeMap");
+        queue.get(&guild_id).cloned()
+    };
+
+    let qctx = match qctx {
+        Some(qctx) => qctx,
+        None => {
+            msg.channel_id
+               .say(&ctx.http, "Not in a voice channel")
+               .await?;
+            return Ok(());
+        }
+    };
+
+    let call_lock = qctx.manager
+        .get(qctx.guild_id)
+        .unwrap();
+
+    let call = call_lock.lock().await;
+
+    match call.queue().current() {
+        Some(ref x) => {
+            msg.channel_id
+               .say(&ctx.http,
+                    format!(
+                        "{}: {}", qctx.voice_chan_id.mention(),
+                        x.metadata()
+                            .clone()
+                            .source_url
+                            .unwrap_or("Unknown".to_string())
+                    )
+               ).await?;
+        }
+        None => {
+            msg.channel_id
+               .say(&ctx.http, "Nothing is currently playing")
+               .await?;
+        }
     }
-
-    let connect_to = connect_to.unwrap();
-
-    msg.channel_id
-       .say(&ctx.http, format!("{}: <link>", connect_to.voice_chan_id.mention()))
-       .await?;
 
     Ok(())
 }
@@ -468,7 +501,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 
     let handler = manager.get(guild_id);
     
-    if !handler.is_some() {
+    if handler.is_none() {
         msg.reply(ctx, "Not in a voice channel").await?;
         return Ok(())
     }
