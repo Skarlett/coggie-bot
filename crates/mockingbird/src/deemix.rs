@@ -244,12 +244,18 @@ fn metadata_from_deemix_output(val: &serde_json::Value) -> Metadata
         .and_then(|m| m.get("duration"))
         .and_then(Value::as_f64)
         .map(Duration::from_secs_f64);
-    
+
+    let source_url = obj
+        .and_then(|m| m.get("link"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
     Metadata {
         track,
         artist,
         channels: Some(2),
         duration,
+        source_url,
         sample_rate: Some(SAMPLE_RATE_RAW as u32),
         ..Default::default()
     }
