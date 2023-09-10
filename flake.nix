@@ -94,6 +94,7 @@
             environmentFile = mkOption {
               type = types.path;
             };
+
           };
 
           config = mkIf cfg.enable {
@@ -114,6 +115,7 @@
               serviceConfig.EnvironmentFile = cfg.environmentFile;
               serviceConfig.ExecStart = "${self.outputs.packages."${pkgs.system}".coggiebot-stable}/bin/coggiebot";
               serviceConfig.Restart = "on-failure";
+              serviceConfig.User = "coggiebot";
             };
           };
         };
