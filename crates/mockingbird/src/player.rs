@@ -358,7 +358,13 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
             return Err(JoinError::NoCall);
         },
     };
-
+    
+    match connect_to.bitrate() {
+       Some(x) if x > 120_000 => {}
+       None => { msg.reply(&ctx, "**Couldn't detect bitrate.** For the best experience, check that the voice room is using 128kbps.").await; }
+       Some(x) => { msg.reply(&ctx, format!("**Low quality voice room** detected. For the best experience, use 128kbps. [Currently: {}kbps]", (x / 1000)).await; }
+    }
+    
     let manager = songbird::get(ctx)
         .await
         .expect("Songbird Voice client placed in at initialisation.")
