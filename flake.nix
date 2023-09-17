@@ -32,6 +32,7 @@
               mockingbird-deemix
               mockingbird-deemix-check
               mockingbird-arl-cmd
+              mockingbird-debug
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
