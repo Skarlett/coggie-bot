@@ -47,7 +47,7 @@ async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerEr
     let player = Players::from_str(&uri)
         .ok_or_else(|| HandlerError::NotImplemented)?;
     
-    player.play(call, &uri).await.map_err(HandlerError::from)
+    player.play(call, &uri).await
 }
 
 #[allow(unused_variables)]
@@ -56,6 +56,10 @@ enum HandlerError {
     Songbird(SongbirdError),
     IOError(std::io::Error),
     Serenity(serenity::Error),
+    
+    #[cfg(feature = "deemix")]
+    DeemixError(crate::deemix::DeemixError),
+    
     NotImplemented,
     NoCall
 }
@@ -78,14 +82,34 @@ impl From<std::io::Error> for HandlerError {
     }
 }
 
+#[cfg(feature = "deemix")]
+impl From<crate::deemix::DeemixError> for HandlerError {
+    fn from(err: crate::deemix::DeemixError) -> Self {
+        HandlerError::DeemixError(err)
+    }
+}
+
+
 impl std::fmt::Display for HandlerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Songbird(err) => write!(f, "Songbird error: {}", err),
             Self::NotImplemented => write!(f, "This feature is not implemented."),
-            Self::IOError(err) => write!(f, "IO error: (most likely deemix-metadata failed) {}", err),
-            Self::Serenity(err) => write!(f, "Serenity error: {}", err),
-            Self::NoCall => write!(f, "Not in a voice channel to play in")
+            
+            Self::IOError(err)
+                => write!(f, "IO error: (most likely deemix-metadata failed) {}", err),
+            
+            Self::Serenity(err)
+                => write!(f, "Serenity error: {}", err),
+            
+            Self::NoCall
+                => write!(f, "Not in a voice channel to play in"),
+            
+            #[cfg(feature = "deemix")]
+            Self::DeemixError(crate::deemix::DeemixError::BadJson(err))
+                => write!(f, "Deemix error: {}", err),
+
+            _ => write!(f, "Unknown error")
         }
     }
 }
@@ -111,6 +135,7 @@ fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Valu
     }
     tracing::info!("{} tracks found", buf.len());
 }
+
 /*
  * Some ugly place holders for
  * feature generated code.
@@ -136,12 +161,12 @@ async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, Handle
 }
 
 #[cfg(not(feature="deemix"))]
-async fn fan_deezer(uri: &str, buf: &mut Vec<String>) -> Result<(), HandlerError>  {
+async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError>  {
     return Err(HandlerError::NotImplemented)
 }
 
 #[cfg(not(feature="ytdl"))]
-async fn fan_ytdl(uri: &str, buf: &mut Vec<String>) -> Result<(), HandlerError> {
+async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
     return Err(HandlerError::NotImplemented)
 }
 
@@ -208,6 +233,7 @@ impl Players {
 
         let (track, track_handle) = create_player(input);
         handler.enqueue(track);
+
         Ok(track_handle)
     }
 
@@ -264,7 +290,7 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     
     let mut call = handler.lock().await;
 
-    while let Some(uri) = dbg!(qctx.cold_queue.write().await.pop_front()) {
+    while let Some(uri) = qctx.cold_queue.write().await.pop_front() {
         match next_track(&mut call, &uri).await {
             Ok(track) => {
                 track.add_event(
@@ -274,15 +300,45 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
                 break
             },
             Err(e) => {
+                tracing::error!("Failed to play next track: {}", e);
+                
+                let response = match e {
+                    HandlerError::NotImplemented 
+                        => "Not implemented/enabled".to_string(),
+                    
+                    HandlerError::NoCall 
+                        => "No call found".to_string(),
+                    
+                    HandlerError::IOError(e) 
+                        => format!("IO Error: {}", e.kind()),
+                    
+                    #[cfg(feature = "deemix")]
+                    HandlerError::DeemixError(crate::deemix::DeemixError::BadJson(text))
+                        => {
+                            qctx.invited_from.send_files(
+                                &qctx.http,
+                                vec![
+                                    (text.as_bytes(), "error.txt")
+                                ],
+                                |m| m
+                            ).await?;
+                            "Json Error".to_string()
+                        }
+                    
+                    e => format!("Discord error: {}", e)
+                };
+
                 if tries == 0 {
-                    tracing::error!("Failed to play next track: {}", e);
+                    let _ = qctx.invited_from
+                        .say(&qctx.http, format!("Halting. Last try: {}", &uri))
+                        .await;
                     break
                 }
 
                 let _ = qctx.invited_from
-                    .say(&qctx.http, format!("Couldn't play track {}", &uri))
+                    .say(&qctx.http, format!("Couldn't play track {}\n{}", &uri, &response))
                     .await;
-                tracing::error!("Failed to play next track: {}", e);
+
                 tries -= 1;
             }
         }
@@ -358,11 +414,45 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
             return Err(JoinError::NoCall);
         },
     };
-    
-    match connect_to.bitrate() {
-       Some(x) if x > 120_000 => {}
-       None => { msg.reply(&ctx, "**Couldn't detect bitrate.** For the best experience, check that the voice room is using 128kbps.").await; }
-       Some(x) => { msg.reply(&ctx, format!("**Low quality voice room** detected. For the best experience, use 128kbps. [Currently: {}kbps]", (x / 1000)).await; }
+
+    let chan: Channel  = connect_to.to_channel(&ctx.http).await.unwrap();
+
+    let gchan = match chan {
+        Channel::Guild(ref gchan) => gchan,
+        _ => {
+            msg.reply(
+              &ctx.http,
+              "Not supported voice channel"
+            ).await
+             .unwrap();
+
+            return Err(JoinError::NoCall);
+        }
+    };
+
+    match gchan.bitrate {
+       Some(x) if x > 90_000 => {}
+       None => {
+           let _ = msg.reply(
+               &ctx.http,
+               r#"**Couldn't detect bitrate.** For the best experience,
+                  check that the voice room is using 128kbps."#
+           ).await;
+       }
+       Some(x) => {
+
+            #[cfg(feature = "deemix")]
+            let _ = msg.reply(
+                &ctx,
+                format!(
+                    r#"**Low quality voice room** detected.
+
+                    For the best experience, use 128kbps, & spotify links 
+                    [Currently: {}kbps]"#,
+                    (x / 1000)
+                )
+            ).await;
+        }
     }
     
     let manager = songbird::get(ctx)
@@ -379,8 +469,6 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     let call_lock = manager.get(guild_id).unwrap(); 
     let mut call = call_lock.lock().await;
 
-    let chan: Channel  = connect_to.to_channel(&ctx.http).await.unwrap();
-    
     let queuectx =
         if let Channel::Guild(voice_chan_id) = chan {
             QueueContext {
