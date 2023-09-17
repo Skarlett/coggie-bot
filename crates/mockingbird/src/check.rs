@@ -249,15 +249,14 @@ async fn arl_check(
 
     let mut iargs = args.iter::<String>();
 
-    while let Some(Ok(arl)) = dbg!(iargs.next())
-    {
+    while let Some(Ok(arl)) = iargs.next() {
         if let Err(()) = santitize_arl(&arl) {
                 msg.channel_id.say(&ctx.http, "Invalid ARL").await?;
             continue;
         }
 
         let arl = arl.trim();
-        if dbg!(arl.len()) != 192 {
+        if arl.len() != 192 {
             msg.channel_id
                     .say(&ctx.http, "Must provide an ARL")
                     .await?;
