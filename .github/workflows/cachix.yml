@@ -1,7 +1,9 @@
 name: "nix build deployment test"
 on:
+  workflow_run:
+    workflows: ["Automated-Update"]
   push:
-    branches: [ "master", "next" ]
+    branches: [ "master" ]
 jobs:
   cachix:
     runs-on: ubuntu-latest
