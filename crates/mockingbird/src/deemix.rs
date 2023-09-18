@@ -1,10 +1,9 @@
 use std::io::{BufReader, BufRead, Read};
-use serenity::json::JsonError;
 use songbird::{
     constants::SAMPLE_RATE_RAW,
     input::{
         children_to_reader,
-        error::{Error as SongbirdError, Result as SongbirdResult},
+        error::Error as SongbirdError,
         Codec,
         Container,
         Metadata,
@@ -20,7 +19,75 @@ use serde_json::Value;
 use std::os::fd::AsRawFd;
 use tokio::io::AsyncReadExt;
 
-async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
+#[derive(Debug)]
+pub enum DeemixError {
+    BadJson(String),
+    Metadata,
+    IO(std::io::Error),
+    ParseInt(core::num::ParseIntError),
+    Songbird(SongbirdError),
+    Tokio(tokio::task::JoinError),
+}
+
+impl Into<SongbirdError> for DeemixError {
+    fn into(self) -> SongbirdError {
+        match self {
+            DeemixError::BadJson(_) 
+            | DeemixError::ParseInt(_)
+            | DeemixError::Metadata 
+            => SongbirdError::Metadata,
+            
+            DeemixError::IO(e) => SongbirdError::Io(e),
+            DeemixError::Songbird(e) => e,
+            DeemixError::Tokio(e) 
+            => SongbirdError::Io(
+                std::io::Error::new(std::io::ErrorKind::Other, e)
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for DeemixError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            DeemixError::BadJson(s) => write!(f, "Bad JSON: {}", s),
+            DeemixError::Metadata => write!(f, "Metadata error"),
+            DeemixError::IO(e) => write!(f, "Process error: {}", e),
+            DeemixError::ParseInt(e) => write!(f, "Parse int error: {}", e),
+            DeemixError::Songbird(e) => write!(f, "Songbird error: {}", e),
+            DeemixError::Tokio(e) => write!(f, "Tokio error: {}", e),
+        }
+    }
+}
+
+impl From<SongbirdError> for DeemixError {
+    fn from(e: SongbirdError) -> Self {
+        DeemixError::Songbird(e)
+    }
+}
+
+impl From<std::io::Error> for DeemixError {
+    fn from(e: std::io::Error) -> Self {
+        DeemixError::IO(e)
+    }
+}
+
+impl From<tokio::task::JoinError> for DeemixError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        DeemixError::Tokio(e)
+    }
+}
+
+impl From<core::num::ParseIntError> for DeemixError {
+    fn from(e: core::num::ParseIntError) -> Self {
+        DeemixError::ParseInt(e)
+    }
+}
+
+impl std::error::Error for DeemixError {}
+
+
+async fn max_pipe_size() -> Result<i32, DeemixError> {
     let mut file = tokio::fs::OpenOptions::new()
         .read(true)
         .open("/proc/sys/fs/pipe-max-size")
@@ -32,7 +99,6 @@ async fn max_pipe_size() -> Result<i32, Box<dyn std::error::Error>> {
     let data = buf.trim();
     Ok(data.parse::<i32>()?)
 }
-
 
 #[link(name = "fion")]
 extern {
@@ -52,9 +118,13 @@ where
     async fn call_restart(&mut self, time: Option<Duration>) -> Result<Input, SongbirdError> {
         if let Some(time) = time {
             let ts = format!("{:.3}", time.as_secs_f64());
-            _deemix(self.uri.as_ref(), &["-ss", &ts]).await
+            _deemix(self.uri.as_ref(), &["-ss", &ts])
+                .await
+                .map_err(DeemixError::into)
         } else {
-            deemix(self.uri.as_ref()).await
+            deemix(self.uri.as_ref())
+                .await
+                .map_err(DeemixError::into)
         }
     }
 
@@ -76,45 +146,49 @@ pub async fn deemix_metadata(uri: &str) -> std::io::Result<Metadata> {
     Ok(metadata_from_deemix_output(&serde_json::from_slice(&output.stdout[..])?))
 }
 
-#[cfg(feature = "debug")]
-fn handle_bad_json(
-    mut writebuf: Vec<u8>,
-    error: JsonError,
-    mut reader: BufReader<&mut std::process::ChildStderr>
-) -> SongbirdError 
-{
-    let fault_data = writebuf.clone();
-    let fault = String::from_utf8_lossy(fault_data.as_slice());
+fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixError> {
+    let mut o_vec = vec![];
+    let mut reader = BufReader::new(s.by_ref());
 
-    tracing::error!("TRIED PARSING: \n {}", fault);
-    tracing::error!("... [start] flushing buffer to logs...");
-    writebuf.clear();
+    // read until new line
+    reader.read_until(0xA, &mut o_vec)
+        .map_err(|_| DeemixError::Metadata)?;
 
-    // Potentially hangs thread if EOF is never encountered
-    reader.read_to_end(&mut writebuf).unwrap();
-    tracing::error!("{}", String::from_utf8_lossy(&writebuf));
-    tracing::error!("... [ end ] flushed buffer to logs...");
-    SongbirdError::Json { error, parsed_text: fault.to_string() }
+    match serde_json::from_slice::<Value>(&o_vec.as_slice()) {
+        Ok(json) => Ok(json),        
+        Err(_) => {
+            let mut buf: [u8; 2048] = [0; 2048];
+            // If process crashes
+            // BufReader::read_to_end will hang
+            // until EOF is encountered (Never)
+            // reader.read_to_end(&mut o_vec).unwrap();
+            // -- so instead, use fixed size buffer
+            while let Ok(n) = reader.read(&mut buf) {
+                if n > 0 {
+                    o_vec.extend_from_slice(&buf[..n]);
+                    continue;
+                }
+                else { break; }
+            }
+
+            let text = String::from_utf8_lossy(&o_vec);
+            return Err(DeemixError::BadJson(text.to_string()));
+        }
+    }
 }
 
-#[cfg(not(feature = "debug"))]
-fn handle_bad_json(writebuf: Vec<u8>, error: JsonError, _reader: BufReader<&mut std::process::ChildStderr> ) -> SongbirdError
-{
-    let fault = String::from_utf8_lossy(&writebuf);
-    tracing::error!("TRIED PARSING: \n {}", String::from_utf8_lossy(&writebuf));
-    SongbirdError::Json { error, parsed_text: fault.to_string() }
-}
 
 pub async fn deemix(
     uri: &str,
-) -> SongbirdResult<Input>{ 
-    _deemix(uri, &[]).await
+) -> Result<Input, DeemixError> {
+    _deemix(uri, &[])
+        .await
 }
 
 pub async fn _deemix(
     uri: &str,
     pre_args: &[&str],
-) -> SongbirdResult<Input>
+) -> Result<Input, DeemixError>
 {
     let pipesize = max_pipe_size().await.unwrap();
     let ffmpeg_args = [
@@ -141,30 +215,22 @@ pub async fn _deemix(
     unsafe { bigpipe(deemix_out, pipesize); }
 
     let stderr = deemix.stderr.take();
-
-    let (returned_stderr, value) = tokio::task::spawn_blocking(move || {
-        let mut s = stderr.unwrap();
-        let out: SongbirdResult<Value> = {
-            let mut o_vec = vec![];
-            let mut serde_read = BufReader::new(s.by_ref());
-            // Newline...
-            if let Ok(len) = serde_read.read_until(0xA, &mut o_vec) {
-                serde_json::from_slice(&o_vec[..len]).map_err(|e| handle_bad_json(o_vec, e, serde_read))
-            } else {
-                SongbirdResult::Err(SongbirdError::Metadata)
-            }
-        };
-
+    // Read first line of stderr
+    // for metadata, but read entire buffer if error.
+    let threadout = tokio::task::spawn_blocking(move || {
+        let mut s = stderr.unwrap();        
+        let out = process_stderr(&mut s);  
         (s, out)
     })
-    .await
-    .map_err(|_| SongbirdError::Metadata)?;
+    .await?;
+
+    let (returned_stderr, value) = threadout;
 
     deemix.stderr = Some(returned_stderr);
     
     let metadata_raw = value?;
-    if let Some(x) = metadata_raw.get("error") {
-        return Err(SongbirdError::YouTubeDlProcessing(x.clone()));
+    if let Some(_) = metadata_raw.get("error") {
+        return Err(DeemixError::Metadata);
     }
 
     let _filesize = metadata_raw["filesize"].as_u64();
