@@ -7,3 +7,7 @@ edition = "2021"
 
 [dependencies]
 cutils = { path = "../cutils", features = ["stdio"] }
+
+[features]
+default = []
+debug = []
