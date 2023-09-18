@@ -3,7 +3,7 @@ on:
   workflow_run:
     workflows: ["Automated-Update"]
   push:
-    branches: [ "master" ]
+    branches: [ "master", "update_flake_lock_action" ]
 jobs:
   cachix:
     runs-on: ubuntu-latest
