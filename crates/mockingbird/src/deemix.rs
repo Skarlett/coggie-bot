@@ -32,11 +32,17 @@ pub enum DeemixError {
 impl Into<SongbirdError> for DeemixError {
     fn into(self) -> SongbirdError {
         match self {
-            DeemixError::BadJson(s) => SongbirdError::Metadata,
-            DeemixError::ParseInt(_) | DeemixError::Metadata => SongbirdError::Metadata,
+            DeemixError::BadJson(_) 
+            | DeemixError::ParseInt(_)
+            | DeemixError::Metadata 
+            => SongbirdError::Metadata,
+            
             DeemixError::IO(e) => SongbirdError::Io(e),
             DeemixError::Songbird(e) => e,
-            DeemixError::Tokio(e) => SongbirdError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)),
+            DeemixError::Tokio(e) 
+            => SongbirdError::Io(
+                std::io::Error::new(std::io::ErrorKind::Other, e)
+            ),
         }
     }
 }
