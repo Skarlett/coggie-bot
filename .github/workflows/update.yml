@@ -2,7 +2,7 @@ name: Automated-Update
 
 on:
   push:
-    - branches: [ "master" "better-workflow" ]
+    branches: [ "master", "better-workflow" ]
   schedule:
     - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
  
@@ -14,12 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-      uses: DeterminateSystems/nix-installer-action@main
     
     - name: Checkout repository
       uses: actions/checkout@v3
-      run: cargo update --verbose
+ 
+    - run: cargo update --verbose
 
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main

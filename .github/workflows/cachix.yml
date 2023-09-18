@@ -1,6 +1,6 @@
 name: "nix build deployment test"
 on:
-  workflow_dispatch:
+  workflow_run:
     workflows: ["Automated-Update"]
   push:
     branches: [ "master" ]
