@@ -121,19 +121,29 @@ where
             _deemix(self.uri.as_ref(), &["-ss", &ts])
                 .await
                 .map_err(DeemixError::into)
+                .map(|(i, _)| i)
         } else {
             deemix(self.uri.as_ref())
                 .await
                 .map_err(DeemixError::into)
+                .map(|(i, _)| i)
         }
     }
 
     async fn lazy_init(&mut self) -> Result<(Option<Metadata>, Codec, Container), SongbirdError> {
-        Ok(( Some(deemix_metadata(self.uri.as_ref()).await.unwrap()), Codec::FloatPcm, Container::Raw))
+        Ok(
+        (
+            Some(deemix_metadata(self.uri.as_ref())
+                    .await
+                    .map(DeemixMetadata::into)
+                    .unwrap()
+            ),
+            Codec::FloatPcm, Container::Raw)
+        )
     }
 }
 
-pub async fn deemix_metadata(uri: &str) -> std::io::Result<Metadata> {
+pub async fn deemix_metadata(uri: &str) -> std::io::Result<DeemixMetadata> {
     let deemix = tokio::process::Command::new("deemix-metadata")
         .arg(uri.trim())
         .stdin(Stdio::null())
@@ -180,7 +190,7 @@ fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixErro
 
 pub async fn deemix(
     uri: &str,
-) -> Result<Input, DeemixError> {
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError> {
     _deemix(uri, &[])
         .await
 }
@@ -188,7 +198,7 @@ pub async fn deemix(
 pub async fn _deemix(
     uri: &str,
     pre_args: &[&str],
-) -> Result<Input, DeemixError>
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError>
 {
     let pipesize = max_pipe_size().await.unwrap();
     let ffmpeg_args = [
@@ -282,47 +292,73 @@ pub async fn _deemix(
         }
     }  
  
-    Ok(Input::new(
+    Ok((Input::new(
         true,
         children_to_reader::<f32>(vec![deemix, ffmpeg]),
         Codec::FloatPcm,
         Container::Raw,
-        metadata,
-    ))
+        metadata.clone()
+            .map(DeemixMetadata::into),
+    ), metadata))
 }
 
-fn metadata_from_deemix_output(val: &serde_json::Value) -> Metadata
+#[derive(Debug, Clone)]
+pub struct DeemixMetadata {
+    isrc: Option<String>,
+    metadata: Metadata,
+}
+
+impl Into<Metadata> for DeemixMetadata {
+    fn into(self) -> Metadata {
+        self.metadata
+    }
+}
+
+fn metadata_from_deemix_output(val: &serde_json::Value) -> DeemixMetadata
 {
     let obj = val.as_object();
 
     let track = obj
         .and_then(|m| m.get("title"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
 
     let artist = obj
         .and_then(|m| m.get("artist"))
         .and_then(|x| x.get("name"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
  
    let duration = obj
         .and_then(|m| m.get("duration"))
         .and_then(Value::as_f64)
-        .map(Duration::from_secs_f64);
+        .map(Duration::from_secs_f64)
+        .clone();
 
     let source_url = obj
         .and_then(|m| m.get("link"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
 
-    Metadata {
-        track,
-        artist,
-        channels: Some(2),
-        duration,
-        source_url,
-        sample_rate: Some(SAMPLE_RATE_RAW as u32),
-        ..Default::default()
+    let isrc = obj
+        .and_then(|m| m.get("isrc"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .clone();
+
+    DeemixMetadata {
+        isrc,
+        metadata: Metadata {
+            track,
+            artist,
+            channels: Some(2),
+            duration,
+            source_url,
+            sample_rate: Some(SAMPLE_RATE_RAW as u32),
+            ..Default::default()
+        }
     }
 }

@@ -17,14 +17,15 @@ use songbird::{
     Songbird,
     Call, 
     create_player,
-    input::{Input, error::Error as SongbirdError},
+    input::{Input, error::Error as SongbirdError, Metadata},
     tracks::{TrackHandle, Track},
     TrackEvent
 };
 
 use std::{
     process::Stdio,
-    time::Duration, collections::VecDeque,
+    time::{Duration, Instant},
+    collections::VecDeque,
     sync::Arc,
     collections::HashMap,
 };
@@ -34,16 +35,51 @@ use tokio::{
     process::Command,
 };
 
+use crate::deemix::DeemixMetadata;
+
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
+const HASPLAYED_MAX_LEN: usize = 10;
+
 // const MAX_TRACK_LENGTH: Duration = Duration::from_secs(360*6); // 30 minutes
 // const MAX_ENQUEUED: u16 = 300;
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct ISRC(String);
+impl ISRC {
+    fn from_str(data: &str) -> Option<Self> {
+        if data.len() != 12 {
+            return None
+        }
+        Some(Self(data.to_owned()))
+    }
+}
+
+enum MetadataType {
+    #[cfg(feature = "deemix")]
+    Deemix(crate::deemix::DeemixMetadata),
+    
+    Standard(Metadata),
+}
+
+impl From<Metadata> for MetadataType {
+    fn from(meta: Metadata) -> Self {
+        Self::Standard(meta)
+    }
+}
+
+#[cfg(feature = "deemix")]
+impl From<crate::deemix::DeemixMetadata> for MetadataType {
+    fn from(meta: crate::deemix::DeemixMetadata) -> Self {
+        Self::Deemix(meta)
+    }
+}
+
 
 #[group]
 #[commands(join, leave, queue, now_playing, skip)]
 struct BetterPlayer;
 
-async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError> {
+async fn next_track(call: &mut Call, uri: &str) -> Result<(TrackHandle, Option<MetadataType>), HandlerError> {
     let player = Players::from_str(&uri)
         .ok_or_else(|| HandlerError::NotImplemented)?;
     
@@ -88,7 +124,6 @@ impl From<crate::deemix::DeemixError> for HandlerError {
         HandlerError::DeemixError(err)
     }
 }
-
 
 impl std::fmt::Display for HandlerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -171,9 +206,11 @@ async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, Handle
 }
 
 #[cfg(feature = "deemix")]
-async fn ph_deemix_player(uri: &str) -> Result<Input, HandlerError> {
-    crate::deemix::deemix(uri).await.map_err(HandlerError::from)
-}
+async fn ph_deemix_player(uri: &str) -> Result<(Input, Option<MetadataType>), HandlerError> {
+    crate::deemix::deemix(uri).await
+        .map_err(HandlerError::from)
+        .map(|(input, meta)| (input, meta.map(|x| x.into())))   
+    }
 
 #[cfg(feature = "ytdl")]
 async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
@@ -181,12 +218,22 @@ async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
 }
 
 #[cfg(not(feature = "deemix"))]
-async fn ph_deemix_player(uri: &str) -> Result<Input, HandlerError> {
+struct FakeMeta(Metadata);
+
+#[cfg(not(feature = "deemix"))]
+impl Into<Metadata> for FakeMeta {
+    fn into(self) -> Metadata {
+        self.0
+    }
+}
+
+#[cfg(not(feature = "deemix"))]
+async fn ph_deemix_player(uri: &str) -> Result<(Input, Option<FakeMeta>), HandlerError> {
     return Err(HandlerError::NotImplemented)
 }
 
 #[cfg(not(feature = "ytdl"))]
-async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
+async fn ph_ytdl_player(uri: &str) -> Result<(Input, Option<MetadataType>), HandlerError> {
     return Err(HandlerError::NotImplemented)
 }
 
@@ -224,9 +271,9 @@ impl Players {
         else { return None }
     }
 
-    async fn play(&self, handler: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError>
+    async fn play(&self, handler: &mut Call, uri: &str) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
     {
-        let input = match self {
+        let (input, metadata) = match self {
             Self::Deemix => ph_deemix_player(uri).await,
             Self::Ytdl => ph_ytdl_player(uri).await
         }?;
@@ -234,7 +281,7 @@ impl Players {
         let (track, track_handle) = create_player(input);
         handler.enqueue(track);
 
-        Ok(track_handle)
+        Ok((track_handle, metadata))
     }
 
     async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
@@ -253,6 +300,26 @@ impl TypeMapKey for LazyQueueKey {
     type Value = LazyQueue;
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum EventEnd {
+    Skipped,
+    Finished,
+    UnMarked
+}
+
+struct TrackRecord {
+    // keep this for spotify recommendations
+    metadata: MetadataType,
+    stop_event: EventEnd,
+    start: Instant,
+    end: Instant,
+}
+
+struct ColdQueue {
+    pub queue: VecDeque<String>,
+    pub has_played: VecDeque<TrackRecord>,
+}
+
 pub struct QueueContext {
     guild_id: GuildId,
     invited_from: ChannelId,
@@ -261,7 +328,10 @@ pub struct QueueContext {
     data: Arc<RwLock<TypeMap>>,
     http: Arc<Http>,
     manager: Arc<Songbird>,
-    cold_queue: Arc<RwLock<VecDeque<String>>>,
+    cold_queue: Arc<RwLock<ColdQueue>>,
+    
+    // https://api.spotify.com/v1/search?type=track&q=isrc:USYBL2001302
+    // has_played: Arc<RwLock<VecDeque<ISRC>>>,
 }
 
 struct AbandonedChannel(Arc<QueueContext>);
@@ -290,13 +360,38 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     
     let mut call = handler.lock().await;
 
-    while let Some(uri) = qctx.cold_queue.write().await.pop_front() {
+    let mut cold_queue = qctx.cold_queue.write().await;
+
+
+    while let Some(uri) = cold_queue.queue.pop_front() {
         match next_track(&mut call, &uri).await {
-            Ok(track) => {
+            Ok((track, metadata)) => {
+
+                if cold_queue.has_played.len() > HASPLAYED_MAX_LEN {
+                    cold_queue.has_played.pop_back();
+                }
+
+                if let Some(x) = cold_queue.has_played.front_mut() {
+                    if let EventEnd::UnMarked = x.stop_event {
+                        x.stop_event = EventEnd::Finished;
+                        x.end = Instant::now();
+                    }
+                }
+                
+                let data = TrackRecord {
+                    metadata: metadata.unwrap_or(MetadataType::from(track.metadata().clone())),
+                    stop_event: EventEnd::UnMarked,
+                    start: Instant::now(),
+                    end: Instant::now(),
+                };
+
+                cold_queue.has_played.push_front(data);
+            
                 track.add_event(
                     Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
                     PreemptLoader(qctx.clone())
                 ).unwrap();
+
                 break
             },
             Err(e) => {
@@ -350,16 +445,13 @@ struct TrackEndLoader(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for TrackEndLoader {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let mut run = false;
-
         if let Some(call) = self.0.manager.get(self.0.guild_id) {
           let call = call.lock().await;
-          run = call.queue().current().is_none();
+          if call.queue().current().is_none() {
+            let _ = play_routine(self.0.clone()).await;
+          }
         }
 
-        if run {
-            let _ = play_routine(self.0.clone()).await;
-        }
         None
     }
 }
@@ -478,7 +570,11 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
                 data: ctx.data.clone(),
                 manager: manager.clone(),
                 http: ctx.http.clone(),
-                cold_queue: Arc::new(RwLock::new(VecDeque::new())),
+                cold_queue: Arc::new(RwLock::new(ColdQueue {
+                    queue: VecDeque::new(),
+                    has_played: VecDeque::new()
+                })),
+                // has_played: Arc::new(RwLock::new())
             }
         } else {
             tracing::error!("Expected voice channel (GuildChannel), got {:?}", chan);
@@ -697,7 +793,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 uris.push_back(url.clone());
             }
             
-            qctx.cold_queue.write().await.extend(uris.drain(..));    
+            qctx.cold_queue.write().await.queue.extend(uris.drain(..));    
 
             let maybe_hot = {
                 let call = call.lock().await;
@@ -712,7 +808,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             let content = format!(
                 "Added {} Song(s) [{}] queued",
                 added,
-                qctx.cold_queue.read().await.len()
+                qctx.cold_queue.read().await.queue.len()
             );
             
             msg.channel_id            
@@ -752,15 +848,15 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         return Ok(())
     }
 
-    else if skipn >= qctx.cold_queue.read().await.len() as isize + 1 {
-        qctx.cold_queue.write().await.clear();
+    else if skipn >= qctx.cold_queue.read().await.queue.len() as isize + 1 {
+        qctx.cold_queue.write().await.queue.clear();
     }
 
     else {
-        let mut write_lock = qctx.cold_queue.write().await;
-        let bottom = write_lock.split_off(skipn as usize - 1);
-        write_lock.clear();
-        write_lock.extend(bottom);
+        let mut cold_queue = qctx.cold_queue.write().await;
+        let bottom = cold_queue.queue.split_off(skipn as usize - 1);
+        cold_queue.queue.clear();
+        cold_queue.queue.extend(bottom);
     }
 
     let manager = songbird::get(ctx)
@@ -778,7 +874,7 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         }
     };
 
-    let cold_queue_len = qctx.cold_queue.read().await.len();
+    let cold_queue_len = qctx.cold_queue.read().await.queue.len();
 
     msg.channel_id
        .say(
