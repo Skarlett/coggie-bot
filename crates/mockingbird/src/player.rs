@@ -440,7 +440,6 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
            ).await;
        }
        Some(x) => {
-
             #[cfg(feature = "deemix")]
             let _ = msg.reply(
                 &ctx,
