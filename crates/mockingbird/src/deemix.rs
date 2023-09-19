@@ -18,6 +18,7 @@ use std::{
 use serde_json::Value;
 use std::os::fd::AsRawFd;
 use tokio::io::AsyncReadExt;
+use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
 
 #[derive(Debug)]
 pub enum DeemixError {
@@ -85,26 +86,6 @@ impl From<core::num::ParseIntError> for DeemixError {
 }
 
 impl std::error::Error for DeemixError {}
-
-
-async fn max_pipe_size() -> Result<i32, DeemixError> {
-    let mut file = tokio::fs::OpenOptions::new()
-        .read(true)
-        .open("/proc/sys/fs/pipe-max-size")
-        .await?;
-    
-    let mut buf = String::new();
-    file.read_to_string(&mut buf).await?; 
-    
-    let data = buf.trim();
-    Ok(data.parse::<i32>()?)
-}
-
-#[link(name = "fion")]
-extern {
-    fn availbytes(fd: std::ffi::c_int) -> std::ffi::c_int;
-    fn bigpipe(fd: std::ffi::c_int, size: std::ffi::c_int) -> std::ffi::c_int;
-}
 
 struct DeemixRestarter<P> {
     uri: P,
