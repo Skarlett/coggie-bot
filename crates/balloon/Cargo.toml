@@ -8,6 +8,21 @@ edition = "2021"
 [dependencies]
 cutils = { path = "../cutils", features = ["stdio"] }
 
+
+# Example of customizing binaries in Cargo.toml.
+[[bin]]
+name = "balloon"
+path = "src/bin/balloon.rs"
+test = false
+bench = false
+required_features = ["debug"]
+
+[[bin]]
+name = "slowread"
+path = "src/bin/slowread.rs"
+test = false
+bench = false
+
 [features]
-default = []
+default = ["debug"]
 debug = []
