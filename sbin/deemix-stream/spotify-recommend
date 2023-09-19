@@ -5,8 +5,8 @@ import click
 SpotifyClientCredentials = spotipy.oauth2.SpotifyClientCredentials
 CacheFileHandler = spotipy.cache_handler.CacheFileHandler
 
-def checkCredentials(id, secret):
-    cache_handler = CacheFileHandler(".auth-cache")
+def checkCredentials(id, secret, cache):
+    cache_handler = CacheFileHandler(cache / ".auth-cache")
     
     client_credentials_manager = SpotifyClientCredentials(
         client_id=id,
@@ -27,7 +27,7 @@ def checkCredentials(id, secret):
 @click.argument('isrcs', nargs=-1, required=True)
 def main(spt_id, spt_secret, spt_cache, limit, isrcs):
 
-    sp = checkCredentials(spt_id, spt_secret)
+    sp = checkCredentials(spt_id, spt_secret, spt_cache)
     tracks =  [ sp.search("isrc:"+x) for x in isrcs ]; 
     
     rec = sp.recommendations(seed_tracks=[
