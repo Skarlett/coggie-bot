@@ -1,8 +1,5 @@
 import spotipy
-import deemix
 import click
-import json
-from deemix import generateDownloadObject, parseLink
 
 SpotifyClientCredentials = spotipy.oauth2.SpotifyClientCredentials
 CacheFileHandler = spotipy.cache_handler.CacheFileHandler
