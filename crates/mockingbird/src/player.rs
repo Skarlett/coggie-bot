@@ -53,13 +53,14 @@ const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum EventEnd {
     Skipped,
     Finished,
     UnMarked
 }
 
+#[derive(Debug, Clone)]
 struct TrackRecord {
     // keep this for spotify recommendations
     metadata: MetadataType,
@@ -194,7 +195,8 @@ impl VoiceEventHandler for TrackEndLoader {
                     Some(x) => Some(x),
 
                     None => {
-                        let seeds = cold_queue.has_played.iter()
+                        let has_played = &cold_queue.has_played;
+                        let seeds = has_played.iter()
                             .filter(|x| x.stop_event != EventEnd::Skipped)
                             .filter_map(|x| 
                                 match &x.metadata {
@@ -449,7 +451,7 @@ async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> st
 }
 
 async fn recommend(isrcs: &Vec<String>, limit: u8) -> std::io::Result<VecDeque<String>> {
-    let mut buffer = VecDeque::new();
+    let mut buffer = std::collections::HashSet::new();
 
     tracing::info!("running spotify-recommend -l {} {}", limit, isrcs.join(" "));
     let recommend = tokio::process::Command::new("spotify-recommend")
@@ -467,10 +469,14 @@ async fn recommend(isrcs: &Vec<String>, limit: u8) -> std::io::Result<VecDeque<S
     let mut lines = output.stdout.lines();
     
     while let Some(x) = lines.next_line().await? {
-        buffer.push_back(x);
+        buffer.insert(x);
     }
     tracing::info!("spotify-stream finished [{}]", buffer.len());
-    Ok(buffer)
+    let mut ret = VecDeque::new();
+    for x in buffer {
+        ret.push_back(x);   
+    }
+    Ok(ret)
 }
 
 #[derive(PartialEq, Eq)]
@@ -912,6 +918,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             qctx = ctx.data.write().await.get_mut::<LazyQueueKey>().unwrap().get_mut(&guild_id).unwrap().clone();
             call_lock
         },
+        
         None => {
             let tmp = join_routine(ctx, msg).await;            
 
@@ -989,13 +996,14 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let qctx = ctx.data.write().await
         .get_mut::<LazyQueueKey>().unwrap()
         .get_mut(&guild_id).unwrap().clone();
+
+    let cold_queue_len = qctx.cold_queue.read().await.queue.len();
      
     let skipn = args.remains()
         .unwrap_or("1")
         .parse::<isize>()
         .unwrap_or(1);
 
-    let mut cold_queue = qctx.cold_queue.write().await;
     // stop_event: EventEnd::UnMarked,
 
     if 1 > skipn  {
@@ -1005,23 +1013,26 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         return Ok(())
     }
 
-    else if skipn >= cold_queue.queue.len() as isize + 1 {
+    else if skipn >= cold_queue_len as isize + 1 {
         qctx.cold_queue.write().await.queue.clear();
     }
 
     else {
+        let mut cold_queue = qctx.cold_queue.write().await;
         let bottom = cold_queue.queue.split_off(skipn as usize - 1);
         cold_queue.queue.clear();
         cold_queue.queue.extend(bottom);
-        // cold_queue.has_played.clear();
     }
-
-    if let Some(x) = cold_queue.has_played.front_mut()
+    
     {
-        if let EventEnd::UnMarked = x.stop_event 
+        let mut cold_queue = qctx.cold_queue.write().await;
+        if let Some(x) = cold_queue.has_played.front_mut()
         {
-            x.stop_event = EventEnd::Skipped;
-            x.end = Instant::now();
+            if let EventEnd::UnMarked = x.stop_event 
+            {
+                x.stop_event = EventEnd::Skipped;
+                x.end = Instant::now();
+            }
         }
     }
 
@@ -1030,8 +1041,12 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    let handler_lock = match manager.get(guild_id) {
-        Some(x) => x,
+    match manager.get(guild_id) {
+        Some(call) => {
+            let call = call.lock().await;
+            let queue = call.queue();
+            let _ = queue.skip();
+        }
         None => {
             msg.channel_id
                .say(&ctx.http, "Not in a voice channel to play in")
@@ -1040,18 +1055,12 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         }
     };
 
-    let cold_queue_len = cold_queue.queue.len();
-
     msg.channel_id
        .say(
             &ctx.http,
-            format!("Song skipped [{}]: {} in queue.", skipn, cold_queue_len),
+            format!("Song skipped [{}]: {} in queue.", skipn, skipn-cold_queue_len as isize),
        )
        .await?;
-
-    let call = handler_lock.lock().await;
-    let queue = call.queue();
-    let _ = queue.skip();
 
     Ok(())
 }
