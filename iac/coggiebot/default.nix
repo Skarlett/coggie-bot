@@ -235,6 +235,8 @@ rec {
               flagName = "";
 
               rustFeature = false;
+
+              
               pkg-override = (prev: {
                   postInstall = prev.postInstall + ''
                     wrapProgram $out/bin/${prev.name} \

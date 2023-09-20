@@ -235,7 +235,7 @@ fn _balloon_loader(proc: &mut std::process::Child, pipesize: i32) -> Result<std:
 }
 
 fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> { 
-        let ffmpeg_args = [
+    let ffmpeg_args = [
         "-f",
         "s16le",
         "-ac",
@@ -272,8 +272,8 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
 }
 
 pub struct PreloadInput {
-    children: Vec<std::process::Child>,
-    metadata: Option<DeemixMetadata>,
+    pub children: Vec<std::process::Child>,
+    pub metadata: Option<DeemixMetadata>,
     balloon: bool,
 }
 
@@ -371,8 +371,8 @@ pub async fn _deemix(
 
 #[derive(Debug, Clone)]
 pub struct DeemixMetadata {
-    isrc: Option<String>,
-    metadata: Metadata,
+    pub isrc: Option<String>,
+    pub metadata: Metadata,
 }
 
 impl Into<Metadata> for DeemixMetadata {

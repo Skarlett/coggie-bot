@@ -17,8 +17,16 @@ use songbird::{
     Songbird,
     Call, 
     create_player,
-    input::{Input, error::Error as SongbirdError, Metadata},
+    input::{
+        Input,
+        error::Error as SongbirdError,
+        Metadata,
+        Codec,
+        Container,
+        children_to_reader
+    },
     tracks::{TrackHandle, Track},
+
     TrackEvent
 };
 
@@ -38,7 +46,7 @@ use tokio::{
 };
 
 
-use crate::deemix::{DeemixMetadata, PreloadInput};
+use crate::deemix::{DeemixMetadata, PreloadInput, _deemix_preload};
 use cutils::{availbytes, bigpipe, max_pipe_size};
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
@@ -50,9 +58,6 @@ enum EventEnd {
     Skipped,
     Finished,
     UnMarked
-}
-
-struct Radio {
 }
 
 struct TrackRecord {
@@ -67,8 +72,9 @@ struct ColdQueue {
     pub queue: VecDeque<String>,
     pub has_played: VecDeque<TrackRecord>,
 
-    pub radio_queue: Option<PreloadInput>,
-    pub radio_metadata: Option<MetadataType>,
+    // urls
+    pub radio_queue: VecDeque<String>,
+    pub radio_next: Option<PreloadInput>,
 }
 
 type LazyQueue = HashMap<GuildId, Arc<QueueContext>>;
@@ -87,7 +93,7 @@ pub struct QueueContext {
     manager: Arc<Songbird>,
     cold_queue: Arc<RwLock<ColdQueue>>,
 }
-
+#[derive(Debug, Clone)]
 enum MetadataType {
     #[cfg(feature = "deemix")]
     Deemix(crate::deemix::DeemixMetadata),
@@ -98,6 +104,17 @@ enum MetadataType {
 impl From<Metadata> for MetadataType {
     fn from(meta: Metadata) -> Self {
         Self::Standard(meta)
+    }
+}
+
+impl Into<Metadata> for MetadataType {
+    fn into(self) -> Metadata {
+        match self {
+            Self::Standard(meta) => meta,
+ 
+            #[cfg(feature = "deemix")]
+            Self::Deemix(meta) => meta.into()
+        }
     }
 }
 
@@ -124,12 +141,43 @@ struct TrackEndLoader(Arc<QueueContext>);
 impl VoiceEventHandler for TrackEndLoader {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         if let Some(call) = self.0.manager.get(self.0.guild_id) {
-          let call = call.lock().await;
-          if call.queue().current().is_none() {
-            let _ = play_routine(self.0.clone()).await;
-          }
-        }
+            let mut call = call.lock().await;
+            let mut cold_queue = self.0.cold_queue.write().await;
+            if call.queue().current().is_none() {
+                // if user's play list is empty 
+                if cold_queue.queue.is_empty() {
+                
+                // try the preloaded radio track
+                if let Some(ref mut radio_preload) = cold_queue.radio_next {          
+                        let preload_result = Players::play_preload(
+                            &mut call,
+                            &mut radio_preload.children,
+                            radio_preload.metadata.clone()
+                                .map(|x| x.into())
+                        ).await;
+                        
+                        match preload_result {
+                            Err(why) =>{        
+                                tracing::error!("Failed to play radio track: {}", why);
+                                return None
+                            }
+                            Ok(_) => {}
+                        }
 
+                        cold_queue.radio_next = None;
+                    }
+                }
+            }
+            else {
+                cold_queue.radio_queue.clear();
+                cold_queue.radio_next = None;
+
+                drop(cold_queue);
+                drop(call);
+                
+                let _ = play_routine(self.0.clone()).await;                
+            }
+        }
         None
     }
 }
@@ -156,8 +204,78 @@ impl VoiceEventHandler for AbandonedChannel {
 struct PreemptLoader(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for PreemptLoader {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {        
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {      
         let _ = play_routine(self.0.clone()).await;
+        None
+    }
+}
+// Happens on track starting
+struct RadioLoader(Arc<QueueContext>);
+#[async_trait]
+impl VoiceEventHandler for RadioLoader {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {        
+        let mut lock = self.0.cold_queue.write().await;
+        let mut tries = 10;      
+        
+        loop {
+            let uri = match lock.radio_queue.pop_front() {
+                Some(x) => Some(x),
+
+                None => {
+                    let seeds = lock.has_played.iter()
+                        .filter(|x| x.stop_event != EventEnd::Skipped)
+                        .filter_map(|x| 
+                            match &x.metadata {
+                                MetadataType::Deemix(meta) 
+                                    => meta.isrc.clone(),
+                                    _ => None
+                            }
+                        )
+                        .collect::<Vec<_>>();
+                    
+                    if seeds.is_empty() {
+                        return None
+                    }
+                    
+                    let generated = recommend(&seeds, 5).await.unwrap();
+                    if generated.is_empty() { return None }
+
+                    lock.radio_queue = generated;
+                    lock.radio_queue.pop_front()                
+                }
+            };
+
+            let pipesize = max_pipe_size().await;
+            match uri {
+                Some(x) => {
+                    match _deemix_preload(
+                        &x,
+                        &[],
+                        true,
+                        pipesize.unwrap()    
+                    ).await
+                    {
+                        Ok(preload_input) => {
+                            lock.radio_next = Some(preload_input);
+                            break
+                        }
+                        Err(why) =>  {
+                            
+                            tries -= 1;
+                            tracing::error!("Error preloading radio track: {}", why);   
+                            
+                            if 0 >= tries {
+                                break;
+                            }
+                            continue
+                        }
+                    }
+                }
+                None => return None
+            }
+        }
+        
+      
         None
     }
 }
@@ -289,8 +407,9 @@ async fn ph_deemix_player(uri: &str, balloon: bool) -> Result<(Input, Option<Met
     }
 
 #[cfg(feature = "ytdl")]
-async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
+async fn ph_ytdl_player(uri: &str) -> Result<(Input, Option<MetadataType>), HandlerError> {
     return songbird::ytdl(uri).await.map_err(HandlerError::from)
+        .map(|input| (input, None))
 }
 
 #[cfg(not(feature = "deemix"))]
@@ -330,6 +449,31 @@ async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> st
     Ok(())
 }
 
+async fn recommend(isrcs: &Vec<String>, limit: u8) -> std::io::Result<VecDeque<String>> {
+    let mut buffer = VecDeque::new();
+
+    tracing::info!("running spotify-recommend -l {} {}", limit, isrcs.join(" "));
+    let recommend = tokio::process::Command::new("spotify-recommend")
+        .arg("-l")
+        .arg(format!("{}", limit))
+        .args(isrcs.iter())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    
+    let output = recommend.wait_with_output()
+        .await?;
+    
+    let mut lines = output.stdout.lines();
+    
+    while let Some(x) = lines.next_line().await? {
+        buffer.push_back(x);
+    }
+    tracing::info!("spotify-stream finished [{}]", buffer.len());
+    Ok(buffer)
+}
+
 #[derive(PartialEq, Eq)]
 enum Players {
     Ytdl,
@@ -360,6 +504,22 @@ impl Players {
         Ok((track_handle, metadata))
     }
 
+    async fn play_preload(handler: &mut Call, children:&mut Vec<std::process::Child>, metadata: Option<MetadataType>) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    {
+        let input = Input::new(
+            true, 
+            children_to_reader::<f32>(children.drain(..).collect()),
+            Codec::FloatPcm,
+            Container::Raw,
+            metadata.clone().map(|x| x.into())
+        );
+
+        let (track, track_handle) = create_player(input);
+        handler.enqueue(track);
+
+        Ok((track_handle, metadata))
+    }
+
     async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
         let mut buf = VecDeque::new();
         match self {
@@ -381,9 +541,8 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     while let Some(uri) = cold_queue.queue.pop_front() {
         match next_track(&mut call, &uri).await {
             Ok((track, metadata)) => {
-
                 if cold_queue.has_played.len() > HASPLAYED_MAX_LEN {
-                    cold_queue.has_played.pop_back();
+                    let _ = cold_queue.has_played.pop_back();
                 }
 
                 if let Some(x) = cold_queue.has_played.front_mut() {
@@ -476,6 +635,7 @@ async fn leave_routine (
             .expect("Expected LazyQueueKey in TypeMap");
         queue.remove(&guild_id);
     }
+
     Ok(())
 }
 
@@ -496,7 +656,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         },
     };
 
-    let chan: Channel  = connect_to.to_channel(&ctx.http).await.unwrap();
+    let chan: Channel = connect_to.to_channel(&ctx.http).await.unwrap();
 
     let gchan = match chan {
         Channel::Guild(ref gchan) => gchan,
@@ -562,9 +722,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
                 cold_queue: Arc::new(RwLock::new(ColdQueue {
                     queue: VecDeque::new(),
                     has_played: VecDeque::new(),
-                    radio_queue: None,
-                    radio_metadata: None,
-                    // radio_queued: Vec::new(),
+                    radio_next: None,
+                    radio_queue: VecDeque::new(),
                 })),
             }
         } else {
@@ -587,6 +746,11 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     call.add_global_event(
         Event::Track(TrackEvent::End),
         TrackEndLoader(queuectx.clone())
+    );
+
+    call.add_global_event(
+        Event::Track(TrackEvent::Play),
+        RadioLoader(queuectx.clone())
     );
 
     call.add_global_event(
@@ -832,6 +996,9 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         .parse::<isize>()
         .unwrap_or(1);
 
+    let mut cold_queue = qctx.cold_queue.write().await;
+    // stop_event: EventEnd::UnMarked,
+
     if 1 > skipn  {
         msg.channel_id
            .say(&ctx.http, "Must skip at least 1 song")
@@ -839,15 +1006,24 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         return Ok(())
     }
 
-    else if skipn >= qctx.cold_queue.read().await.queue.len() as isize + 1 {
+    else if skipn >= cold_queue.queue.len() as isize + 1 {
         qctx.cold_queue.write().await.queue.clear();
     }
 
     else {
-        let mut cold_queue = qctx.cold_queue.write().await;
         let bottom = cold_queue.queue.split_off(skipn as usize - 1);
         cold_queue.queue.clear();
         cold_queue.queue.extend(bottom);
+        // cold_queue.has_played.clear();
+    }
+
+    if let Some(x) = cold_queue.has_played.front_mut()
+    {
+        if let EventEnd::UnMarked = x.stop_event 
+        {
+            x.stop_event = EventEnd::Skipped;
+            x.end = Instant::now();
+        }
     }
 
     let manager = songbird::get(ctx)
@@ -865,7 +1041,7 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         }
     };
 
-    let cold_queue_len = qctx.cold_queue.read().await.queue.len();
+    let cold_queue_len = cold_queue.queue.len();
 
     msg.channel_id
        .say(
