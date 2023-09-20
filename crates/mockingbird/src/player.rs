@@ -143,6 +143,7 @@ impl VoiceEventHandler for TrackEndLoader {
         if let Some(call) = self.0.manager.get(self.0.guild_id) {
             let mut call = call.lock().await;
             let mut cold_queue = self.0.cold_queue.write().await;
+
             if call.queue().current().is_none() {
                 // if user's play list is empty 
                 if cold_queue.queue.is_empty() {
@@ -161,12 +162,20 @@ impl VoiceEventHandler for TrackEndLoader {
                                 tracing::error!("Failed to play radio track: {}", why);
                                 return None
                             }
-                            Ok(_) => {}
+                            Ok((handle, _)) => {
+                                handle.add_event(
+                                    Event::Delayed(handle.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
+                                    PreemptLoader(self.0.clone())
+                                ).unwrap();
+
+                            }
                         }
 
                         cold_queue.radio_next = None;
                     }
                 }
+                drop(call);
+                drop(cold_queue);
             }
             else {
                 cold_queue.radio_queue.clear();
@@ -176,6 +185,66 @@ impl VoiceEventHandler for TrackEndLoader {
                 drop(call);
                 
                 let _ = play_routine(self.0.clone()).await;                
+            }
+            
+            let mut cold_queue = self.0.cold_queue.write().await;
+            let mut tries = 5;
+            loop {
+                let uri = match cold_queue.radio_queue.pop_front() {
+                    Some(x) => Some(x),
+
+                    None => {
+                        let seeds = cold_queue.has_played.iter()
+                            .filter(|x| x.stop_event != EventEnd::Skipped)
+                            .filter_map(|x| 
+                                match &x.metadata {
+                                    MetadataType::Deemix(meta) 
+                                        => meta.isrc.clone(),
+                                        _ => None
+                                }
+                            )
+                            .collect::<Vec<_>>();
+                        
+                        if seeds.is_empty() {
+                            return None
+                        }
+                        
+                        let generated = recommend(&seeds, 5).await.unwrap();
+                        if generated.is_empty() { return None }
+
+                        cold_queue.radio_queue = generated;
+                        cold_queue.radio_queue.pop_front()                
+                    }
+                };
+
+                match uri {
+                    Some(x) => {
+                        let pipesize = max_pipe_size().await;
+                        match _deemix_preload(
+                            &x,
+                            &[],
+                            true,
+                            pipesize.unwrap()    
+                        ).await
+                        {
+                            Ok(preload_input) => {
+                                cold_queue.radio_next = Some(preload_input);
+                                break
+                            }
+                            Err(why) =>  {
+                                
+                                tries -= 1;
+                                tracing::error!("Error preloading radio track: {}", why);   
+                                
+                                if 0 >= tries {
+                                    break;
+                                }
+                                continue
+                            }
+                        }
+                    }
+                    None => return None
+                }
             }
         }
         None
@@ -206,76 +275,6 @@ struct PreemptLoader(Arc<QueueContext>);
 impl VoiceEventHandler for PreemptLoader {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {      
         let _ = play_routine(self.0.clone()).await;
-        None
-    }
-}
-// Happens on track starting
-struct RadioLoader(Arc<QueueContext>);
-#[async_trait]
-impl VoiceEventHandler for RadioLoader {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {        
-        let mut lock = self.0.cold_queue.write().await;
-        let mut tries = 10;      
-        
-        loop {
-            let uri = match lock.radio_queue.pop_front() {
-                Some(x) => Some(x),
-
-                None => {
-                    let seeds = lock.has_played.iter()
-                        .filter(|x| x.stop_event != EventEnd::Skipped)
-                        .filter_map(|x| 
-                            match &x.metadata {
-                                MetadataType::Deemix(meta) 
-                                    => meta.isrc.clone(),
-                                    _ => None
-                            }
-                        )
-                        .collect::<Vec<_>>();
-                    
-                    if seeds.is_empty() {
-                        return None
-                    }
-                    
-                    let generated = recommend(&seeds, 5).await.unwrap();
-                    if generated.is_empty() { return None }
-
-                    lock.radio_queue = generated;
-                    lock.radio_queue.pop_front()                
-                }
-            };
-
-            let pipesize = max_pipe_size().await;
-            match uri {
-                Some(x) => {
-                    match _deemix_preload(
-                        &x,
-                        &[],
-                        true,
-                        pipesize.unwrap()    
-                    ).await
-                    {
-                        Ok(preload_input) => {
-                            lock.radio_next = Some(preload_input);
-                            break
-                        }
-                        Err(why) =>  {
-                            
-                            tries -= 1;
-                            tracing::error!("Error preloading radio track: {}", why);   
-                            
-                            if 0 >= tries {
-                                break;
-                            }
-                            continue
-                        }
-                    }
-                }
-                None => return None
-            }
-        }
-        
-      
         None
     }
 }
@@ -504,7 +503,12 @@ impl Players {
         Ok((track_handle, metadata))
     }
 
-    async fn play_preload(handler: &mut Call, children:&mut Vec<std::process::Child>, metadata: Option<MetadataType>) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    async fn play_preload(
+        handler: &mut Call,
+        children:&mut Vec<std::process::Child>,
+        metadata: Option<MetadataType>
+    )
+    -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
     {
         let input = Input::new(
             true, 
@@ -747,12 +751,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         Event::Track(TrackEvent::End),
         TrackEndLoader(queuectx.clone())
     );
-
-    call.add_global_event(
-        Event::Track(TrackEvent::Play),
-        RadioLoader(queuectx.clone())
-    );
-
+    
     call.add_global_event(
         Event::Periodic(TS_ABANDONED_HB, None),
         AbandonedChannel(queuectx.clone())
