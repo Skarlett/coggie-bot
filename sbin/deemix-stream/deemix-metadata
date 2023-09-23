@@ -6,6 +6,7 @@ import click
 import requests
 import sys
 import json
+import select
 
 from requests import get
 from deezer import Deezer
@@ -70,13 +71,23 @@ def metadata(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
     print("", file=sys.stdout)
     sys.stdout.flush()
 
+
+def stream_input(urls):
+    for x in urls:
+        yield x
+    
+    if select.select([sys.stdin, ], [], [], 0.0)[0]:
+        for line in sys.stdin:
+            yield line.strip()
+
+
 @click.command()
 @click.option('-a', '--arl', type=str, default=None, help='ARL token to use')
 @click.option('-s', '--spt-id', type=str, help='Path to the config folder')
 @click.option('-ss', '--spt-secret', type=str, help='Path to the config folder')
 @click.option('-sc', '--spt-cache', type=str, help='Path to the config folder')
-@click.argument('url', nargs=-1, required=True)
-def stream(url, arl, spt_id, spt_secret, spt_cache):
+@click.argument('urls', nargs=-1, required=False)
+def stream(urls, arl, spt_id, spt_secret, spt_cache):
     assert arl, 'You must provide an ARL token'
     assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
 
@@ -86,8 +97,7 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
     plugins["spotify"].setup()
     
     bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
-    (link, _link_type, _link_id) = parseLink(url[0])
-    
+
     jerr = lambda e: json.dump({
         "error": {
           "name": e.__class__.__name__,
@@ -95,17 +105,20 @@ def stream(url, arl, spt_id, spt_secret, spt_cache):
         }
     }, sys.stderr)
 
-    try:
-        downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
-    except Exception as err:
-        jerr(err)
-        exit(1)
 
-    for (obj, extras) in list(fan_dl_object(downloadObject, plugins)):
+    for url in stream_input(urls):
+        (link, _link_type, _link_id) = parseLink(url)
         try:
-          metadata(obj, extras)
+            downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
         except Exception as err:
-          jerr(err)
+            jerr(err)
+            exit(1)
+
+        for (obj, extras) in list(fan_dl_object(downloadObject, plugins)):
+            try:
+                metadata(obj, extras)
+            except Exception as err:
+                jerr(err)
 
 if __name__ == '__main__':
     stream(auto_envvar_prefix='DEEMIX')
