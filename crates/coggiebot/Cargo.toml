@@ -18,6 +18,7 @@ default = []
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
+prerelease = []
 
 ################
 # mockingbird features
