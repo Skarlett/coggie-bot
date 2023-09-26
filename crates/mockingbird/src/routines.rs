@@ -41,221 +41,171 @@ use crate::{deemix::{DeemixMetadata, PreloadInput, DeemixError}, player::{TrackR
 use crate::player::{Queue, AudioPlayer, MetadataType, QueueContext, TrackRecord, EventEnd, TrackRequest};
 use crate::ctrlerror::HandlerError;
 
-/// Items moved from cold to warm queue
-trait QueueStrategy {
-    fn next_track(&mut self) -> Option<TrackRequest>;
 
-    fn add_track(&mut self, track: TrackRequest) -> bool;
-}
-
-struct TraditionalQueue {
-    list: VecDeque<TrackRequestFetched>
-}
-
-impl QueueStrategy for TraditionalQueue {
-    fn next_track(&mut self) -> Option<TrackRequestFetched> {
-        self.list.pop_front()
-    }
-} 
-
-struct RoundRobinQueue {
-    map: indexmap::IndexMap<UserId, VecDeque<TrackRequestFetched>>,
-    cyclic: Cycle<UserId>,
-}
-
-// remove all items from cycle
-// maintaing the current order,
-// and append new user to the end
-fn update_cyclic(cyclic: &mut Cycle<UserId>, new_user: UserId ) {
-    let mut items = cyclic.clone().take(cyclic.len()).collect::<Vec<_>>();
-    items.push(new_user);
-
-    *cyclic = items.into_iter().cycle(); 
-}
-
-impl QueueStrategy for RoundRobinQueue {
-    fn next_track(&mut self, ) -> Option<TrackRequestFetched> {
-        loop {
-            if self.map.is_empty() { return None }
-
-            let user = self.cyclic.next();        
-            let track = self.map.get_mut(&user).unwrap().pop_front();   
-            
-            if track.is_none() {
-                self.map.remove(&user);
-                continue
-            }
-            else { return track }
-        }
-        
-    }
-}
-
-
-async fn next_track(queue: &mut VecDeque<TrackRequestPreload<Box<dyn AudioPlayer + Send>>> )
-    -> Option<Box<dyn AudioPlayer + Send>> {
+// async fn next_track(queue: &mut VecDeque<TrackRequestPreload<Box<dyn AudioPlayer + Send>>> )
+//     -> Option<Box<dyn AudioPlayer + Send>> {
     
-    let (mut radio, mut user): (VecDeque<_>, VecDeque<_>) = queue.iter_mut().partition(|x|
-        if let crate::player::TrackAuthor::User(_) = &x.request.author {
-            true
-        } else {
-            false
-        }
-    );
+//     let (mut radio, mut user): (VecDeque<_>, VecDeque<_>) = queue.iter_mut().partition(|x|
+//         if let crate::player::TrackAuthor::User(_) = &x.request.author {
+//             true
+//         } else {
+//             false
+//         }
+//     );
     
-    let x = user.pop_front();
+//     let x = user.pop_front();
     
 
-    if x.is_some() {
-        return x;
-    }
+//     if x.is_some() {
+//         return x;
+//     }
 
-    let x = radio.pop_front();
-    if x.is_some() {
-        return x;
-    }
+//     let x = radio.pop_front();
+//     if x.is_some() {
+//         return x;
+//     }
  
-    None
-}
+//     None
+// }
 
-pub async fn play_once_routine(
-    req: TrackRequest,
-    has_played: &mut VecDeque<TrackRecord>
-){
-    has_played.push_front(
-        TrackRecord {
-            start: Instant::now(),
-            end: Instant::now(),
-            stop_event: EventEnd::UnMarked,
-            req
-        }
-    );
-}
+// pub async fn play_once_routine(
+//     req: TrackRequest,
+//     has_played: &mut VecDeque<TrackRecord>
+// ){
+//     has_played.push_front(
+//         TrackRecord {
+//             start: Instant::now(),
+//             end: Instant::now(),
+//             stop_event: EventEnd::UnMarked,
+//             req
+//         }
+//     );
+// }
 
 
-pub async fn play_queue_routine(qctx: Arc<QueueContext>) -> Result<bool, HandlerError> {
-    let mut tries = 4;
+// pub async fn play_queue_routine(qctx: Arc<QueueContext>) -> Result<bool, HandlerError> {
+//     let mut tries = 4;
     
-    let handler = qctx.manager.get(qctx.guild_id)
-        .ok_or_else(|| HandlerError::NoCall)?;
+//     let handler = qctx.manager.get(qctx.guild_id)
+//         .ok_or_else(|| HandlerError::NoCall)?;
     
-    let mut call = handler.lock().await;
+//     let mut call = handler.lock().await;
 
-    while let Some((loader, requester)) = next_track(&mut qctx.handle ).await {
-        match loader.load().await {
-            Ok((input, metadata)) => {
+//     while let Some((loader, requester)) = next_track(&mut qctx.handle ).await {
+//         match loader.load().await {
+//             Ok((input, metadata)) => {
 
-                // before_play();
+//                 // before_play();
 
-                let (track, trackhandle) = create_player(input);
-                call.enqueue(track);
-                return Ok(true);
-            },
-            Err(why) => {
-                tries -= 1;
-                qctx.invited_from.send_message(&qctx.http, |m| {
-                    m.content(format!("Error loading track: {}", why))
-                }).await?;
+//                 let (track, trackhandle) = create_player(input);
+//                 call.enqueue(track);
+//                 return Ok(true);
+//             },
+//             Err(why) => {
+//                 tries -= 1;
+//                 qctx.invited_from.send_message(&qctx.http, |m| {
+//                     m.content(format!("Error loading track: {}", why))
+//                 }).await?;
 
-                if 0 >= tries {
-                    return Err(why);
-                }
-            }
-        }
+//                 if 0 >= tries {
+//                     return Err(why);
+//                 }
+//             }
+//         }
 
-        let (track, trackhandle) = create_player(input);
+//         let (track, trackhandle) = create_player(input);
         
-        call.enqueue(track);
-    };
+//         call.enqueue(track);
+//     };
     
-    Ok(true)
-}
+//     Ok(true)
+// }
 
-pub async fn leave_routine (
-    data: Arc<RwLock<TypeMap>>,
-    guild_id: GuildId,
-    manager: Arc<Songbird>
-) -> JoinResult<()>
-{   
-    let handler = manager.get(guild_id).unwrap();
+// pub async fn leave_routine (
+//     data: Arc<RwLock<TypeMap>>,
+//     guild_id: GuildId,
+//     manager: Arc<Songbird>
+// ) -> JoinResult<()>
+// {   
+//     let handler = manager.get(guild_id).unwrap();
 
-    {
-        let mut call = handler.lock().await;
-        call.remove_all_global_events();
-        call.stop();
-    }    
+//     {
+//         let mut call = handler.lock().await;
+//         call.remove_all_global_events();
+//         call.stop();
+//     }    
     
-    manager.remove(guild_id).await?;
+//     manager.remove(guild_id).await?;
 
-    {
-        let mut glob = data.write().await; 
-        let queue = glob.get_mut::<crate::LazyQueueKey>()
-            .expect("Expected LazyQueueKey in TypeMap");
-        queue.remove(&guild_id);
-    }
+//     {
+//         let mut glob = data.write().await; 
+//         let queue = glob.get_mut::<crate::LazyQueueKey>()
+//             .expect("Expected LazyQueueKey in TypeMap");
+//         queue.remove(&guild_id);
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-pub async fn radio_routine(queue: &mut VecDeque<MetadataType>) 
--> (Option<PreloadInput>, Vec<HandlerError>) {
-    let mut errors = Vec::new();
-    while let Some(meta) = queue.pop_front() {
-        let mut tries = 5;   
+// pub async fn radio_routine(queue: &mut VecDeque<MetadataType>) 
+// -> (Option<PreloadInput>, Vec<HandlerError>) {
+//     let mut errors = Vec::new();
+//     while let Some(meta) = queue.pop_front() {
+//         let mut tries = 5;   
 
-        if let None = meta.source_url() {
-            continue
-        }
+//         if let None = meta.source_url() {
+//             continue
+//         }
 
-        match crate::deemix::deemix_preload(&meta.source_url().unwrap()).await {
-            Ok(preload_input) => return ( Some(preload_input), errors),
-            Err(why) =>  {
-                tries -= 1;
+//         match crate::deemix::deemix_preload(&meta.source_url().unwrap()).await {
+//             Ok(preload_input) => return ( Some(preload_input), errors),
+//             Err(why) =>  {
+//                 tries -= 1;
 
-                if 0 >= tries {
-                    break;
-                }
-                tracing::error!("Error preloading radio track: {}", why);
-                errors.push(HandlerError::DeemixError(why));
-            }
-        }
-    }
-    (None, errors)
-}
+//                 if 0 >= tries {
+//                     break;
+//                 }
+//                 tracing::error!("Error preloading radio track: {}", why);
+//                 errors.push(HandlerError::DeemixError(why));
+//             }
+//         }
+//     }
+//     (None, errors)
+// }
 
 
-use crate::deemix::SpotifyRecommendError;
-pub async fn after_enqueue(
-    qctx: Arc<QueueContext>,
-) -> Result<(), SpotifyRecommendError> {   
+// use crate::deemix::SpotifyRecommendError;
+// pub async fn after_enqueue(
+//     qctx: Arc<QueueContext>,
+// ) -> Result<(), SpotifyRecommendError> {   
     
-    let mut queue = qctx.queue; 
-    let pipesize = max_pipe_size().await.expect("Failed to get pipe size");
+//     let mut queue = qctx.queue; 
+//     let pipesize = max_pipe_size().await.expect("Failed to get pipe size");
     
-    if let Some(radio) = queue.radio {
-        let urls = radio.seeds
-            .iter()
-            .filter_map(|x| match x {
-                MetadataType::Deemix(meta) => Some(meta.isrc.unwrap()),
-                _ => None
-            })
-            .join(" ");
+//     if let Some(radio) = queue.radio {
+//         let urls = radio.seeds
+//             .iter()
+//             .filter_map(|x| match x {
+//                 MetadataType::Deemix(meta) => Some(meta.isrc.unwrap()),
+//                 _ => None
+//             })
+//             .join(" ");
     
-        let generated = crate::deemix::recommend(urls, 5).await.unwrap();
-        if generated.is_empty() { return Err(SpotifyRecommendError::BadSeeds) }
+//         let generated = crate::deemix::recommend(urls, 5).await.unwrap();
+//         if generated.is_empty() { return Err(SpotifyRecommendError::BadSeeds) }
 
-        let generated = cold_queue.radio_queue.pop_front();
-        generated.unwrap()
-    }
+//         let generated = queue.queue.pop_front();
+//         generated.unwrap()
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-async fn load_userqueue() -> Result<(), HandlerError> {
+// async fn load_userqueue() -> Result<(), HandlerError> {
     
     
-    todo!()
-}
+//     todo!()
+// }
 
 
 async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
@@ -325,6 +275,8 @@ For the best experience, use 128kbps, & spotify links
     let call_lock = manager.get(guild_id).unwrap(); 
     let mut call = call_lock.lock().await;
 
+
+
     let queuectx =
         if let Channel::Guild(voice_chan_id) = chan {
             QueueContext {
@@ -335,15 +287,18 @@ For the best experience, use 128kbps, & spotify links
                 // data: ctx.data.clone(),
                 manager: manager.clone(),
                 http: ctx.http.clone(),
-                queue: Arc::new(RwLock::new(crate::player::Queue {
-                    cold: VecDeque::new(),
-                    warm: VecDeque::new(),
-                    radio: None,
-                    has_played: VecDeque::new(),
-                    past_transactions: HashMap::new(),
-                    transactions_order: VecDeque::new(),
-                    killed: Vec::new(),
-                })),
+                queue: todo!() 
+                
+                
+                // Arc::new(RwLock::new(crate::player::Queue {
+                //     cold: VecDeque::new(),
+                //     warm: VecDeque::new(),
+                //     radio: None,
+                //     has_played: VecDeque::new(),
+                //     past_transactions: HashMap::new(),
+                //     transactions_order: VecDeque::new(),
+                //     killed: Vec::new(),
+                // })),
                 // sfx: Arc::new(RwLock::new(todo!())),
 
             }
@@ -364,15 +319,15 @@ For the best experience, use 128kbps, & spotify links
 
     let _ = call.deafen(true).await;
     
-    call.add_global_event(
-        Event::Track(TrackEvent::End),
-        crate::player::TrackEndLoader(queuectx.clone())
-    );
+    // call.add_global_event(
+    //     Event::Track(TrackEvent::End),
+    //     crate::player::TrackEndLoader(queuectx.clone())
+    // );
     
-    call.add_global_event(
-        Event::Periodic(crate::TS_ABANDONED_HB, None),
-        crate::player::AbandonedChannel(queuectx.clone())
-    );
+    // call.add_global_event(
+    //     Event::Periodic(crate::TS_ABANDONED_HB, None),
+    //     crate::player::AbandonedChannel(queuectx.clone())
+    // );
 
     Ok(queuectx)
 }
