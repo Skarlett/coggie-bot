@@ -19,6 +19,8 @@ use serde_json::Value;
 use std::os::fd::AsRawFd;
 use tokio::io::AsyncReadExt;
 use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
+use std::collections::VecDeque;
+
 
 #[derive(Debug)]
 pub enum DeemixError {
@@ -138,7 +140,7 @@ pub async fn deemix_metadata(uri: &str) -> std::io::Result<DeemixMetadata> {
     Ok(metadata_from_deemix_output(&serde_json::from_slice(&output.stdout[..])?))
 }
 
-fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixError> {
+fn process_stderr<T: Read>(s: &mut T) -> Result<Value, DeemixError> {
     let mut o_vec = vec![];
     let mut reader = BufReader::new(s.by_ref());
 
@@ -169,14 +171,6 @@ fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixErro
     }
 }
 
-
-pub async fn deemix(
-    uri: &str,
-    balloon: bool,
-) -> Result<(Input, Option<DeemixMetadata>), DeemixError> {
-    _deemix(uri, &[], balloon)
-        .await
-}
 
 async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child, DeemixMetadata), DeemixError> 
 {  
@@ -274,9 +268,23 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
 pub struct PreloadInput {
     pub children: Vec<std::process::Child>,
     pub metadata: Option<DeemixMetadata>,
-    balloon: bool,
 }
 
+pub async fn deemix(
+    uri: &str,
+    balloon: bool,
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError> {
+    _deemix(uri, &[], balloon)
+        .await
+}
+
+pub async fn deemix_preload(uri: &str) 
+    -> Result<PreloadInput, DeemixError>
+{
+    let pipesize = max_pipe_size().await.expect("Failed to get pipe size");
+    _deemix_preload(uri, &[], true, pipesize).await
+
+}
 pub async fn _deemix_preload(
     uri: &str,
     pre_args: &[&str],
@@ -306,8 +314,8 @@ pub async fn _deemix_preload(
 
     return Ok(PreloadInput {
         children,
-        balloon,
         metadata: Some(metadata),
+
     })
 }
 
@@ -347,13 +355,9 @@ pub async fn _deemix(
 
         if pipe_threshold > percentage {
             tokio::time::sleep(std::time::Duration::from_micros(200)).await;
-            tracing::debug!("availbytes: {}", avail);
-            tracing::debug!("pipesize: {}", pipesize);
         }
         else {
             tracing::info!("load time: {}", now.elapsed().as_secs_f64());
-            tracing::debug!("availbytes: {}", avail);
-            tracing::debug!("pipesize: {}", pipesize);
             break
         }
     }
@@ -372,12 +376,19 @@ pub async fn _deemix(
 #[derive(Debug, Clone)]
 pub struct DeemixMetadata {
     pub isrc: Option<String>,
+
     pub metadata: Metadata,
 }
 
 impl Into<Metadata> for DeemixMetadata {
     fn into(self) -> Metadata {
         self.metadata
+    }
+}
+
+impl DeemixMetadata {
+    pub fn from_deemix_output(val: &serde_json::Value) -> DeemixMetadata {
+        metadata_from_deemix_output(val)
     }
 }
 
@@ -429,3 +440,79 @@ fn metadata_from_deemix_output(val: &serde_json::Value) -> DeemixMetadata
         }
     }
 }
+
+fn join_seeds(seeds: &VecDeque<String>, delim: &str) -> String {
+    let mut isrcs = seeds.clone();
+    isrcs.make_contiguous()
+        .join(delim)
+}
+#[derive(Debug, Clone, Copy)]
+pub enum SpotifyRecommendError {
+    BadSeeds,
+}
+
+impl std::fmt::Display for SpotifyRecommendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            SpotifyRecommendError::BadSeeds => write!(f, "Bad seeds"),
+        }
+    }
+}
+
+impl std::error::Error for SpotifyRecommendError {}
+
+pub async fn recommend(isrcs: &VecDeque<String>, limit: u8) -> Result<VecDeque<DeemixMetadata>, SpotifyRecommendError> {
+    let mut buffer = std::collections::HashSet::new();
+
+    if isrcs.is_empty() {
+        return Err(SpotifyRecommendError::BadSeeds)
+    }
+
+    tracing::info!("running spotify-recommend -l {} {}", limit, join_seeds(&isrcs, " ") );
+    let mut recommend = tokio::process::Command::new("spotify-recommend")
+        .arg("-l")
+        .arg(format!("{}", limit))
+        .args(isrcs.iter())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn spotify-recommend")
+        .wait_with_output()
+        .await
+        .unwrap();
+    
+    let rec_out = recommend.stdout.clone(); 
+
+    let rec_out_str = String::from_utf8_lossy(&rec_out);
+    rec_out_str.lines()
+        .for_each(|x| { buffer.insert(x.to_owned()); });
+
+    if buffer.len() == 0 {
+        return Err(SpotifyRecommendError::BadSeeds)
+    }
+
+    let mproc = tokio::process::Command::new("deemix-metadata")
+        .args(buffer.iter())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn deemix-metadata")    
+        .wait_with_output()
+        .await;
+    
+    let stdout = mproc
+        .expect("Failed to get stdout from deemix-metadata")
+        .stdout;
+    
+    let strbuf = String::from_utf8_lossy(&stdout);
+    let chunks = strbuf.split("\n");
+    
+    tracing::info!("spotify-stream finished [{}]", buffer.len());
+    let mut ret = VecDeque::new();
+    for x in chunks {
+        ret.push_back(metadata_from_deemix_output(&serde_json::from_str(&x).unwrap()));   
+    }
+    Ok(ret)
+}
+
