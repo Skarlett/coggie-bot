@@ -61,7 +61,7 @@ pub enum TrackAuthor {
 // -> PreTrackRequest<T>   [prefan]
 //  
 //  -> TrackRequest    [prefan]
-//  -> TrackRequestFetched
+//  -> TrackRequestFetched [fanned]
 //  -> TrackRequestPreload<T> where T: AudioPlayer
 //  -> magic casting .*.*.~ 
 //  -> TrackRequestPreload<Box<dyn AudioPlayer>>
@@ -81,37 +81,31 @@ pub enum TrackAuthor {
 //     fn raw_metadata(&self) -> T;
 // }
 pub struct TrackRequest {
-    pub tranid: uuid::Uuid,
     pub author: TrackAuthor,
     pub uri: String,
 }
 
 impl TrackRequest {
-    pub fn new(uri: String, author: TrackAuthor) -> Self {
-        Self {
-            tranid: uuid::Uuid::new_v4(),
+    pub fn new(uri: String, author: TrackAuthor) -> (uuid::Uuid, Self) {
+        (uuid::Uuid::new_v4(), Self {
             author,
             uri
-        }
+        })
     }
     
-    pub fn user(uri: String,  author: UserId) -> Self {
-        Self {
-            tranid: uuid::Uuid::new_v4(),
-            author: TrackAuthor::User(author),
-            uri
-        }
+    pub fn user(uri: String,  author: UserId) -> (uuid::Uuid, Self) {
+        Self::new(
+            uri,
+            TrackAuthor::User(author)
+        )
     }
 
     pub fn radio(uri: String) -> Self {
-        Self {
-            tranid: uuid::Uuid::new_v4(),
-            author: TrackAuthor::Radio,
-            uri
-        }
+        Self::new(
+            uri,
+            TrackAuthor::Radio,
+        )
     }
-
-   
 }
 
 #[derive(Debug, Clone)]
@@ -186,12 +180,17 @@ pub struct Radio {
     pub seeds: VecDeque<MetadataType>,
 }
 
-pub struct Queue {
-    pub cold: VecDeque<TrackRequestFetched>,
+pub struct Queue<T> {
+
+
+    pub cold: T, 
+    
+    // VecDeque<TrackRequestFetched>,
     pub warm: VecDeque<TrackRequestPreload<Box<dyn AudioPlayer>>>,
     
     pub has_played: VecDeque<TrackRecord>,
-    pub past_transactions: VecDeque<uuid::Uuid>,
+    pub past_transactions: HashMap<uuid::Uuid, TrackRequest>,
+    pub transactions_order: VecDeque<uuid::Uuid>,
 
     pub killed: Vec<std::process::Child>,
     pub radio: Option<Radio>,

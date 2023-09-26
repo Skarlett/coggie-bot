@@ -32,18 +32,70 @@ use std::{
     sync::Arc,
 };
 
+use std::iter::Cycle;
+
 use cutils::{availbytes, bigpipe, max_pipe_size};
 
-use crate::{deemix::{DeemixMetadata, PreloadInput, DeemixError}, player::TrackRequestPreload};
+use crate::{deemix::{DeemixMetadata, PreloadInput, DeemixError}, player::{TrackRequestPreload, TrackRequestFetched}};
 
 use crate::player::{Queue, AudioPlayer, MetadataType, QueueContext, TrackRecord, EventEnd, TrackRequest};
 use crate::ctrlerror::HandlerError;
+
+/// Items moved from cold to warm queue
+trait QueueStrategy {
+    fn next_track(&mut self) -> Option<TrackRequest>;
+
+    fn add_track(&mut self, track: TrackRequest) -> bool;
+}
+
+struct TraditionalQueue {
+    list: VecDeque<TrackRequestFetched>
+}
+
+impl QueueStrategy for TraditionalQueue {
+    fn next_track(&mut self) -> Option<TrackRequestFetched> {
+        self.list.pop_front()
+    }
+} 
+
+struct RoundRobinQueue {
+    map: indexmap::IndexMap<UserId, VecDeque<TrackRequestFetched>>,
+    cyclic: Cycle<UserId>,
+}
+
+// remove all items from cycle
+// maintaing the current order,
+// and append new user to the end
+fn update_cyclic(cyclic: &mut Cycle<UserId>, new_user: UserId ) {
+    let mut items = cyclic.clone().take(cyclic.len()).collect::<Vec<_>>();
+    items.push(new_user);
+
+    *cyclic = items.into_iter().cycle(); 
+}
+
+impl QueueStrategy for RoundRobinQueue {
+    fn next_track(&mut self, ) -> Option<TrackRequestFetched> {
+        loop {
+            if self.map.is_empty() { return None }
+
+            let user = self.cyclic.next();        
+            let track = self.map.get_mut(&user).unwrap().pop_front();   
+            
+            if track.is_none() {
+                self.map.remove(&user);
+                continue
+            }
+            else { return track }
+        }
+        
+    }
+}
 
 
 async fn next_track(queue: &mut VecDeque<TrackRequestPreload<Box<dyn AudioPlayer + Send>>> )
     -> Option<Box<dyn AudioPlayer + Send>> {
     
-    let (mut radio, mut user): (VecDeque<_>, VecDeque<_>) = queue.iter().partition(|x|
+    let (mut radio, mut user): (VecDeque<_>, VecDeque<_>) = queue.iter_mut().partition(|x|
         if let crate::player::TrackAuthor::User(_) = &x.request.author {
             true
         } else {
@@ -68,9 +120,8 @@ async fn next_track(queue: &mut VecDeque<TrackRequestPreload<Box<dyn AudioPlayer
 
 pub async fn play_once_routine(
     req: TrackRequest,
-    has_played: &mut VecDeque<TrackRecord>)
-{
-    
+    has_played: &mut VecDeque<TrackRecord>
+){
     has_played.push_front(
         TrackRecord {
             start: Instant::now(),
@@ -79,8 +130,8 @@ pub async fn play_once_routine(
             req
         }
     );
-    
 }
+
 
 pub async fn play_queue_routine(qctx: Arc<QueueContext>) -> Result<bool, HandlerError> {
     let mut tries = 4;
@@ -115,11 +166,8 @@ pub async fn play_queue_routine(qctx: Arc<QueueContext>) -> Result<bool, Handler
         let (track, trackhandle) = create_player(input);
         
         call.enqueue(track);
-
-        // , metadata
     };
-
-
+    
     Ok(true)
 }
 
@@ -292,6 +340,8 @@ For the best experience, use 128kbps, & spotify links
                     warm: VecDeque::new(),
                     radio: None,
                     has_played: VecDeque::new(),
+                    past_transactions: HashMap::new(),
+                    transactions_order: VecDeque::new(),
                     killed: Vec::new(),
                 })),
                 // sfx: Arc::new(RwLock::new(todo!())),
