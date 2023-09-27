@@ -13,7 +13,8 @@ pub struct YtdlUri(pub String);
 pub struct DeemixParser;
 
 
-pub trait LinkParser<T> {
+pub trait LinkParser<T> 
+{
     fn parse_url(uri: &str) -> Option<T>; 
 }
 

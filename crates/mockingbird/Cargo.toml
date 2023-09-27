@@ -12,24 +12,23 @@ tracing = { version = "0.1"}
 tokio = {version = "1.0", default-features=false, features = ["time", "rt"]}
 
 
-[dependencies.uuid]
-version = "1.4.1"
-
 ####
 serde = { version = "1.0", optional=true }
 serde_json = { version = "1.0", optional=true }
 reqwest = { version = "0.11", optional = true, features = ["cookies"]}
-uuid = { version = "^1.4.1", optional = true }
-chrono = {version = "^0.4.26", optional = true }
+chrono = { version = "^0.4.26", optional = true }
 cutils = { path = "../cutils", features = ["tokio"], optional=true }
 
+uuid = { version = "^1.4.1", features = ["v4" ]}
+indexmap = { version = "^2.0.0", optional=true }
 
 [features]
-default = ["controller", "deemix", "ytdl"]
+default = ["controller", "deemix", "ytdl", "roundrobin-queue"]
 controller = []
 debug = []
 
-radio = ["dep:uuid"]
+roundrobin-queue = ["dep:indexmap"]
+
 
 check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]
 ytdl = ["songbird/yt-dlp"]

@@ -3,44 +3,28 @@
 use serenity::{
     async_trait,
     client::Cache,
-    prelude::*,
-    
     model::prelude::*, http::Http
 };
 
 use songbird::{
-    events::{Event, EventContext},
-    EventHandler as VoiceEventHandler,
     Songbird,
-    Call, 
-    create_player,
     input::{
         Input,
-        error::Error as SongbirdError,
         Metadata,
         Codec,
         Container,
         children_to_reader
-    },
-    tracks::{TrackHandle, Track},
+    }, create_player,
 
-    TrackEvent
 };
 
 use std::{
-    process::Stdio,
-    time::{Duration, Instant},
+    time::{Instant},
     collections::{VecDeque, HashSet},
     sync::Arc,
     collections::HashMap,
-    iter::Cycle
 };
 
-use tokio::{
-    io::AsyncBufReadExt,
-    process::Command,
-
-};
 
 use crate::{deemix::deemix_preload};
 use crate::deemix::{DeemixMetadata, PreloadInput};
@@ -82,6 +66,7 @@ pub enum TrackAuthor {
 // trait MetadataTrack<T> {
 //     fn raw_metadata(&self) -> T;
 // }
+
 #[derive(Debug, Clone)]
 pub struct TrackRequest {
     pub tranid: uuid::Uuid,
@@ -116,16 +101,14 @@ impl TrackRequest {
 
 #[derive(Debug, Clone)]
 pub struct TrackRequestFetched {
-    pub author: TrackAuthor,
-    pub metadata: MetadataType,
     pub track_request: TrackRequest,
+    pub metadata: MetadataType,
 }
 
 impl TrackRequestFetched {
-    pub fn new(track_request: TrackRequest, author: TrackAuthor, metadata: MetadataType) -> Self {
+    pub fn new(track_request: TrackRequest, metadata: MetadataType) -> Self {
         Self {
             track_request,
-            author,
             metadata
         }    
     }
@@ -137,36 +120,35 @@ impl TrackRequestFetched {
                         x.preload().await.unwrap(),
                         self.track_request
                     );
-
-                    todo!()
+                    x.unwrap().into()
             }
-            MetadataType::Standard(x) => todo!()
+            MetadataType::Standard(x) => {
+                let x = TrackRequestPreload::new(
+                    YtdlUri(x.source_url.unwrap()),
+                    self.track_request
+                );
+                x.unwrap().into()   
+            }
         }
     }
 }
+
 
 pub struct TrackRequestPreload<T> {
     pub input: T,
     pub request: TrackRequest
 }
 
-impl<T> TrackRequestPreload<T> {
+impl<T> TrackRequestPreload<T>
+{
     fn new(input: T, req: TrackRequest) -> Result<Self, HandlerError>
     {
         Ok(Self {
-            input,
+            input: input,
             request: req
         })
     }
 }
-
-#[async_trait]
-impl<T> AudioPlayer for TrackRequestPreload<T>
-where T: AudioPlayer + Send {
-    async fn load(self) -> Result<(Input, Option<MetadataType>), HandlerError> {
-        self.input.load().await
-    }
-} 
 
 impl<T> From<TrackRequestPreload<T>> for TrackRequestPreload<Box<dyn AudioPlayer>>
 where T: AudioPlayer + Send + 'static
@@ -190,7 +172,7 @@ pub struct TrackRecord {
 
 pub struct Radio {
     pub suggestions: VecDeque<TrackRequestFetched>,
-    pub seeds: VecDeque<MetadataType>,
+    pub seeds: VecDeque<TrackRequestFetched>,
 }
 
 pub struct QueueHistory {
@@ -211,13 +193,31 @@ pub struct Queue {
 
 
 impl Queue {
-    pub fn warm_track(&mut self, strats: &[ Box<dyn QueueStrategy> ]) {
-        for strat in strats {
-            // if let Some(track) = strat.next_track() {
+    pub async fn warm_track(&mut self, strats: &mut [ Box<dyn QueueStrategy> ]) {
+        for strat in strats.iter_mut() {
+            if let Some(track) = strat.next_track(&self.past) {
+                self.warm.push_back(track.into_preload().await);
+                break;
                 // self.warm.push_back(track.preload());
                 // return
-            // }
+            }
         }
+    }
+
+    pub async fn hot_track(&mut self)
+    {
+        if let Some(preload) = self.warm.pop_front() {
+            let mut x = preload.input;
+            match x.load().await {
+                Ok(x) => todo!(),
+                Err(x) => todo!()
+            }
+        }
+
+
+        // }
+        // todo!()
+        // create_player(x)
     }
 }
 
@@ -227,22 +227,18 @@ impl Queue {
 // multiple open locks to access
 // keeping it as one structure reduces the number of locks
 pub struct QueueContext {
+    pub queue: Queue,
+    
     pub guild_id: GuildId,
     pub invited_from: ChannelId,
     pub voice_chan_id: GuildChannel,
     pub cache: Arc<Cache>,
- 
+
     // pub data: Arc<RwLock<TypeMap>>,
     pub http: Arc<Http>,
-    pub queue: Queue,
     
     //avoid    
     pub manager: Arc<Songbird>,
-}
-
-struct Fetched {
-    inner: MetadataType,   
-    from_request_id: uuid::Uuid,
 }
 
 
@@ -288,13 +284,13 @@ impl MetadataType {
 }
 
 #[async_trait]
-pub trait AudioPlayer: Send + Sync {
-    async fn load(self) -> Result<(Input, Option<MetadataType>), HandlerError>;
+pub trait AudioPlayer: Sync + Send {
+    async fn load(&mut self) -> Result<(Input, Option<MetadataType>), HandlerError>;
 }
 
 #[async_trait]
 impl AudioPlayer for DeemixUri {
-    async fn load(self) -> Result<(Input, Option<MetadataType>), HandlerError>
+    async fn load(&mut self) -> Result<(Input, Option<MetadataType>), HandlerError>
     {
         crate::deemix::deemix(&self.0, true).await
             .map_err(HandlerError::from)
@@ -304,7 +300,7 @@ impl AudioPlayer for DeemixUri {
 
 #[async_trait]
 impl AudioPlayer for YtdlUri {
-    async fn load(mut self) -> Result<(Input, Option<MetadataType>), HandlerError>
+    async fn load(&mut self) -> Result<(Input, Option<MetadataType>), HandlerError>
     {
         songbird::ytdl(&self.0).await
             .map_err(HandlerError::from)
@@ -314,14 +310,16 @@ impl AudioPlayer for YtdlUri {
 
 #[async_trait]
 impl AudioPlayer for PreloadInput {
-    async fn load(mut self) -> Result<(Input, Option<MetadataType>), HandlerError>
+    async fn load(&mut self) -> Result<(Input, Option<MetadataType>), HandlerError>
     {
+        let x = self.metadata.clone();
+        
         Ok((Input::new(
             true, 
             children_to_reader::<f32>(self.children.drain(..).collect()),
             Codec::FloatPcm,
             Container::Raw,
-        self.metadata.clone().map(|x| x.into())), self.metadata.map(|x| x.into())))
+        self.metadata.clone().map(|x| x.into())), x.map(|x| x.into())))
     }
 }
 #[async_trait]
@@ -369,50 +367,19 @@ impl Kill for PreloadInput {
     }
 }
 
-enum InnerQueueStage {
-    Before,
-    After(TrackRequestFetched),
-}
-
-// struct RadioStrategyLast<Q>
-// {
-    
-// } 
-
-// impl RadioStrategy<InnerQueueStage> for RadioStrategyLast {
-//     fn act(&mut self, event: InnerQueueStage) -> Option<TrackRequestFetched> {
-//         match event {
-//             InnerQueueStage::Before => {}
-//             InnerQueueStage::After(track) => {                
-//                 let mut queue = self.qctx.queue.cold.write().await;
-//                 queue.radio_next = Some(track);
-//             }
-//         }
-//         None
-//     }
-// }
-
-
-
-trait RadioStrategy {
-    fn act(&mut self) -> Option<TrackRequestFetched> { None }
-}
-
 /// Items moved from cold to warm queue
 /// Whenever QueueStrategy returns None,
 /// RadioStrategy<T> is called with the last
-trait QueueStrategy: Sync + Send {
+pub trait QueueStrategy: Sync + Send {
     /// Coming out of cold queue into warm
-    fn next_track(&mut self) -> Option<TrackRequestFetched>;
-    
+    fn next_track(&mut self, history: &QueueHistory) -> Option<TrackRequestFetched>;
     
     /// Coming into cold queue
-    fn add_tracks(&mut self, tracks: &[TrackRequestFetched]) -> bool;
-
-
+    fn add_tracks(&mut self, tracks: &[TrackRequestFetched]);
 
     /// remove tracks from cold queue
     fn remove_tracks(&mut self, tracks: &[TrackRequestFetched]) {}
+
 }
 
 struct TraditionalQueue {
@@ -420,12 +387,11 @@ struct TraditionalQueue {
 }
 
 impl QueueStrategy for TraditionalQueue {
-    fn next_track(&mut self) -> Option<TrackRequestFetched> {
+    fn next_track(&mut self, history: &QueueHistory) -> Option<TrackRequestFetched> {
         self.list.pop_front()
     }
 
-    fn add_tracks(&mut self, tracks: &[TrackRequestFetched]) -> bool {
-        
+    fn add_tracks(&mut self, tracks: &[TrackRequestFetched]) {
         let mut new = VecDeque::from(
             tracks.iter()
                 .cloned()
@@ -433,75 +399,75 @@ impl QueueStrategy for TraditionalQueue {
         );
         
         self.list.append(&mut new);
-
-        
-        true
     }
 } 
 
-struct RoundRobinQueue {
+
+impl QueueStrategy for Radio {
+    fn next_track(&mut self, history: &QueueHistory) -> Option<TrackRequestFetched> {
+        self.suggestions.pop_front()
+    }
+
+    fn add_tracks(&mut self, tracks: &[TrackRequestFetched]) {
+        let mut new = VecDeque::from(
+            tracks.iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        );
+        
+        self.suggestions.append(&mut new);
+    }
+}
+
+
+
+/// Round robin queue
+struct RRQueue {
     lookup: HashMap<UserId, VecDeque<TrackRequestFetched>>,
     turns: Vec<UserId>,
     position: usize,
 }
-
-// remove all items from cycle
-// maintaing the current order,
-// and append new user to the end
-fn update_cyclic<I>(cyclic: &mut Cycle<I>, new_user: UserId )
-where 
-    I: Iterator<Item = UserId> + Clone
+// TODO: On failure from Some(...), 
+// ensure user doesn't lose turn
+// in the queue
+impl QueueStrategy for RRQueue
 {
- 
-}
-
-impl QueueStrategy for RoundRobinQueue
-{
-    fn next_track(&mut self) -> Option<TrackRequestFetched> {
-        let first_user = self.turns.len() % self.position;
-        todo!()
-        // let mut user = first_user;
-
-        // loop {
-        //     if self.map.is_empty() { return None }
-
-        //     let track = self.map.get_mut(&user)
-        //         .unwrap()
-        //         .pop_front();   
+    fn next_track(&mut self, history: &QueueHistory) -> Option<TrackRequestFetched>
+    {        
+        for _ in 0..self.turns.len()
+        {
+            if self.lookup.is_empty() || self.turns.is_empty() 
+            { return None }
             
-        //     if let None = track {
-        //         self.map.remove(&user);
-        //     }
-            
-        //     else {
-        //         return track;
-        //     }
+            let turn = self.turns.len() % self.position;
+            let user = self.turns[turn];
 
-        //     user = self.cyclic.next().expect("inf iter");
-        // }
+            let track = self.lookup.get_mut(&user)
+                .unwrap()
+                .pop_front();
+
+            if let None = track {
+                self.lookup.remove(&user);
+            } else {
+                return track;
+            }
+
+            self.position += 1;
+        }
+        return None
     }
 
-    fn add_tracks(&mut self, tracks: &[TrackRequestFetched]) -> bool {
-        // let mut reconstruct_cycler = false;        
-
-        // for track in tracks
-        // {        
-        //     let uid = match track.author {
-        //         TrackAuthor::User(uid) => uid,                 
-        //         TrackAuthor::Radio => unreachable!()
-        //     };
+    fn add_tracks(&mut self, tracks: &[TrackRequestFetched])
+    {
+        for track in tracks {        
+            let uid = match track.track_request.author {
+                TrackAuthor::User(uid) => uid,                 
+                TrackAuthor::Radio => unreachable!()
+            };
             
-        //     self.map.entry(uid) 
-        //         .or_insert_with(|| {
-        //             reconstruct_cycler = true;
-        //             VecDeque::new()
-        //         })
-        //         .push_back(TrackRequestFetched::new(
-        //             track.track_request,
-        //             track.author,
-        //             track.metadata.clone()
-        //         ));            
-        // }
-        todo!()
+            self.lookup.entry(uid) 
+                .or_insert_with(|| VecDeque::new())
+                .push_back(track.clone());            
+        }
     }
 }

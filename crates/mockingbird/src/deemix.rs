@@ -278,13 +278,11 @@ pub async fn deemix(
         .await
 }
 
-pub async fn deemix_preload(uri: &str) 
-    -> Result<PreloadInput, DeemixError>
-{
+pub async fn deemix_preload(uri: &str) -> Result<PreloadInput, DeemixError> {
     let pipesize = max_pipe_size().await.expect("Failed to get pipe size");
     _deemix_preload(uri, &[], true, pipesize).await
-
 }
+
 pub async fn _deemix_preload(
     uri: &str,
     pre_args: &[&str],
