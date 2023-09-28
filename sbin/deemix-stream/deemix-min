@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+from deemix_stream.__init__ import SpotifyStreamer
+
+import click
+import requests
+import sys
+import json
+
+from pathlib import Path
+from requests import get
+from deezer import Deezer
+from deezer import TrackFormats
+from deemix.types.Track import Track
+from deemix import generateDownloadObject, parseLink
+from deemix.settings import DEFAULTS as DEFAULT_SETTINGS, load as loadSettings
+from deemix.downloader import getPreferredBitrate, formatsName, streamTrack
+from deemix.errors import DownloadFailed, MD5NotFound, \
+    DownloadCanceled, PreferredBitrateNotFound, \
+    TrackNot360, AlbumDoesntExists,  \
+    DownloadError, DownloadEmpty
+
+from deezer.errors import WrongLicense, WrongGeolocation
+
+from deemix.utils import USER_AGENT_HEADER
+from deemix.utils.crypto import generateBlowfishKey, decryptChunk
+
+
+from deemix.utils import getBitrateNumberFromText, formatListener
+import deemix.utils.localpaths as localpaths
+from deemix.downloader import Downloader
+from deemix.itemgen import GenerationError
+
+
+try:
+    from deemix.plugins.spotify import Spotify
+except ImportError:
+    Spotify = None
+
+class SpotifyMin(Spotify):
+    def __init__(self, configFolder, clientID, clientSecret):
+        super().__init__(configFolder)
+        self.credentials = {'clientId': clientID, 'clientSecret': clientSecret}
+
+def downloadLinks(dz, url, plugins=None, settings=None):
+    downloadObjects = []
+    bitrate = settings.get("maxBitrate", TrackFormats.MP3_320)
+    
+    try:
+        downloadObject = generateDownloadObject(
+            dz, url, bitrate, plugins=plugins
+        )
+    except GenerationError as e:
+        print(f"{e.link}: {e.message}")
+        return
+
+    if isinstance(downloadObject, list):
+        downloadObjects += downloadObject
+    else:
+        downloadObjects.append(downloadObject)
+
+    for obj in downloadObjects:
+        if obj.__type__ == "Convertable":
+            obj = plugins[obj.plugin].convert(dz, obj, settings)
+        Downloader(dz, obj, settings).start()
+
+@click.command()
+@click.option('-p', '--path', type=str, default=None, help='ARL token to use')
+@click.option('-a', '--arl', type=str, default=None, help='ARL token to use')
+@click.option('-s', '--spt-id', type=str, help='Path to the config folder')
+@click.option('-ss', '--spt-secret', type=str, help='Path to the config folder')
+@click.option('-sc', '--spt-cache', type=str, help='Path to the config folder')
+@click.option('-f', '--flac', is_flag=True, help='Path to the config folder')
+@click.argument('url', nargs=-1, required=True)
+def download(url, path, arl, spt_id, spt_secret, spt_cache, flac):
+    dz = Deezer()
+    assert arl, 'You must provide an ARL token'
+    assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
+
+    settings = DEFAULT_SETTINGS
+
+    if flac: settings["maxBitrate"] = str(TrackFormats.FLAC)
+
+    if path is not None:
+        if path == '': path = '.'
+        path = Path(path)
+    settings['downloadLocation'] = str(path)
+    
+    plugins = {
+        "spotify": SpotifyStreamer(spt_id, spt_secret, spt_cache)
+    }
+    plugins["spotify"].setup()
+    
+   
+    print(url, url.__class__)
+    downloadLinks(dz, url[0], plugins, settings)
+    
+    click.echo("All done!")
+
+if __name__ == '__main__':
+    download(auto_envvar_prefix='DEEMIX')
