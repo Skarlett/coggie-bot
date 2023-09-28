@@ -23,7 +23,7 @@ sub except_opened {
 sub cleanup {
     my $dir = $_[0] or die "No directory specified";
     
-    my $rmraw=`find $CACHE -type f -cmin +$EXPIRE`;
+    my $rmraw=`find $dir -type f -cmin +$EXPIRE`;
     my @rmlist=split("\n", $rmraw);
     $REMOVE->insert(@rmlist);
 
