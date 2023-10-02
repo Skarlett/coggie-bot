@@ -177,8 +177,8 @@ async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child
     let mut deemix = std::process::Command::new("deemix-stream")
         .arg(uri.trim())
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(Stdio::piped()) // byte is transferred
+        .stderr(Stdio::piped()) // metadata is transferred 
         .spawn()?;
     
     let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
@@ -326,11 +326,12 @@ pub async fn _deemix(
 {
     let pipesize = max_pipe_size().await.unwrap();
     
+    // preload is used to quickly gather 
+    // all the children processes
     let preload_input = _deemix_preload(uri, pre_args, balloon, pipesize).await?;
     let (children, metadata) = (preload_input.children, preload_input.metadata);
     
     let ffmpeg = children.last().unwrap();
-
     let ffmpeg_ptr = ffmpeg.stdout.as_ref()
         .ok_or(SongbirdError::Stdout)?
         .as_raw_fd();
@@ -374,7 +375,7 @@ pub async fn _deemix(
 #[derive(Debug, Clone)]
 pub struct DeemixMetadata {
     pub isrc: Option<String>,
-
+    
     pub metadata: Metadata,
 }
 

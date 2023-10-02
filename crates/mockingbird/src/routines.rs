@@ -36,7 +36,7 @@ use std::iter::Cycle;
 
 use cutils::{availbytes, bigpipe, max_pipe_size};
 
-use crate::{deemix::{DeemixMetadata, PreloadInput, DeemixError}, player::{TrackRequestPreload, TrackRequestFetched}};
+use crate::{deemix::{DeemixMetadata, PreloadInput, DeemixError}, player::{TrackRequestPreload, TrackRequestFetched, QueueHistory}};
 
 use crate::player::{Queue, AudioPlayer, MetadataType, QueueContext, TrackRecord, EventEnd, TrackRequest};
 use crate::ctrlerror::HandlerError;
@@ -121,31 +121,6 @@ use crate::ctrlerror::HandlerError;
 //     Ok(true)
 // }
 
-// pub async fn leave_routine (
-//     data: Arc<RwLock<TypeMap>>,
-//     guild_id: GuildId,
-//     manager: Arc<Songbird>
-// ) -> JoinResult<()>
-// {   
-//     let handler = manager.get(guild_id).unwrap();
-
-//     {
-//         let mut call = handler.lock().await;
-//         call.remove_all_global_events();
-//         call.stop();
-//     }    
-    
-//     manager.remove(guild_id).await?;
-
-//     {
-//         let mut glob = data.write().await; 
-//         let queue = glob.get_mut::<crate::LazyQueueKey>()
-//             .expect("Expected LazyQueueKey in TypeMap");
-//         queue.remove(&guild_id);
-//     }
-
-//     Ok(())
-// }
 
 // pub async fn radio_routine(queue: &mut VecDeque<MetadataType>) 
 // -> (Option<PreloadInput>, Vec<HandlerError>) {
@@ -207,8 +182,60 @@ use crate::ctrlerror::HandlerError;
 //     todo!()
 // }
 
+use crate::player::QueueStrategy;
 
-async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
+pub async fn next_cold_track(
+    strats: &mut [ &mut Box<dyn QueueStrategy> ],
+    history: &QueueHistory
+) -> Option<TrackRequestPreload<Box<dyn AudioPlayer>>>{
+    for strat in strats.iter_mut() {
+        if let Some(fetched) = strat.next_track(&history) {
+            return Some(fetched.into_preload().await);
+        }
+    }
+    None
+}
+
+pub async fn next_hot_track(
+    strats: &mut [ &mut Box<dyn QueueStrategy> ],
+    history: &mut QueueHistory
+) -> Option<TrackRequestPreload<Box<dyn AudioPlayer>>>
+{
+    for strat in strats.iter_mut() {
+        if let Some(fetched) = strat.next_track(&history) {
+            return Some(fetched.into_preload().await);
+        }
+    }
+    None
+}
+
+pub async fn leave_routine (
+    data: Arc<RwLock<TypeMap>>,
+    guild_id: GuildId,
+    manager: Arc<Songbird>
+) -> JoinResult<()>
+{   
+    let handler = manager.get(guild_id).unwrap();
+
+    {
+        let mut call = handler.lock().await;
+        call.remove_all_global_events();
+        call.stop();
+    }    
+    
+    manager.remove(guild_id).await?;
+
+    {
+        let mut glob = data.write().await; 
+        let queue = glob.get_mut::<crate::LazyQueueKey>()
+            .expect("Expected LazyQueueKey in TypeMap");
+        queue.remove(&guild_id);
+    }
+
+    Ok(())
+}
+
+pub async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 
@@ -274,8 +301,6 @@ For the best experience, use 128kbps, & spotify links
     
     let call_lock = manager.get(guild_id).unwrap(); 
     let mut call = call_lock.lock().await;
-
-
 
     let queuectx =
         if let Channel::Guild(voice_chan_id) = chan {

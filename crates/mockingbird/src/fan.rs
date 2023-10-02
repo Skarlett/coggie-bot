@@ -1,5 +1,5 @@
 use serenity::async_trait;
-use crate::player::MetadataType;
+use crate::player::{MetadataType, TrackRequest};
 use crate::ctrlerror::HandlerError;
 use crate::deemix::DeemixMetadata;
 use songbird::input::Metadata;
@@ -7,24 +7,25 @@ use std::collections::VecDeque;
 use std::process::Stdio;
 use tokio::{process::Command, io::AsyncBufReadExt};
 
-
-pub struct DeemixUri(pub String);
-pub struct YtdlUri(pub String);
-pub struct DeemixParser;
+use serenity::model::channel::Message;
+use serenity::prelude::Context;
 
 
-pub trait LinkParser<T> 
-{
-    fn parse_url(uri: &str) -> Option<T>; 
+pub struct DeemixUri;
+pub struct YtdlUri;
+
+
+pub trait LinkParser {
+    fn parse_url(&mut self, msg: &Message, context: &mut Context) -> Option<TrackRequest>; 
 }
 
 #[async_trait]
-pub trait FanUri {
-    async fn fan(self, buf: &mut VecDeque<MetadataType>) -> Result<usize, HandlerError>;
+pub trait FetchMetadata {
+    async fn fetch_metadata(self, buf: &mut VecDeque<MetadataType>) -> Result<usize, HandlerError>;
 }
 
-impl LinkParser<DeemixUri> for DeemixParser {
-    fn parse_url(uri: &str) -> Option<DeemixUri> {
+impl LinkParser for DeemixUri {
+    fn parse_url(&mut self, msg: &Message, context: &mut Context) -> Option<TrackRequest> {
         const DEEMIX: [&'static str; 4] = [
             "deezer.page.link",
             "deezer.com",
@@ -32,36 +33,40 @@ impl LinkParser<DeemixUri> for DeemixParser {
             "spotify.link"
         ];
 
+        let uri = msg.content.clone();
+
         if DEEMIX.iter().any(|x| uri.contains(x)) {
-            return Some(DeemixUri(uri.to_owned()))
+            return Some(TrackRequest::user(uri.to_owned(), msg.author.id))
         }
         None
     }
 }
 
-struct YtdlParser;
-impl LinkParser<YtdlUri> for YtdlParser {
-    fn parse_url(uri: &str) -> Option<YtdlUri> {
+impl LinkParser for YtdlUri {
+    fn parse_url(&mut self, msg: &Message, context: &mut Context) -> Option<TrackRequest> {
         const YTDL: [&'static str; 4] = [
             "youtube.com",
             "youtu.be",
             "music.youtube.com",
             "soundcloud.com"
         ];
+
+        let uri = msg.content.clone();
+
         if YTDL.iter().any(|x|uri.contains(x)) {
-            return Some(YtdlUri(uri.to_owned()))
+            return Some(TrackRequest::user(uri.to_owned(), msg.author.id))
         }
         None
     }
 }
 
 #[async_trait]
-impl FanUri for DeemixUri {
-    async fn fan(self, buf: &mut VecDeque<MetadataType>) -> Result<usize, HandlerError> {
+impl FetchMetadata for DeemixUri {
+    async fn fetch_metadata(&mut self, msg: &Message, buf: &mut VecDeque<MetadataType>) -> Result<usize, HandlerError> {
         let mut json_buf = Vec::new();
         let mut err_cnt = 0;
         
-        metadata_url("deemix-metadata", &[&self.0], &mut json_buf).await?;
+        metadata_url("deemix-metadata", &[&self], &mut json_buf).await?;
 
         for x in json_buf {
             let meta = DeemixMetadata::from_deemix_output(&x);
@@ -73,8 +78,8 @@ impl FanUri for DeemixUri {
 }
 
 #[async_trait]
-impl FanUri for YtdlUri {
-    async fn fan(self, buf: &mut VecDeque<MetadataType>) -> Result<usize, HandlerError> {
+impl FetchMetadata for YtdlUri {
+    async fn expand(self, buf: &mut VecDeque<MetadataType>) -> Result<usize, HandlerError> {
         let mut json_buf = Vec::new();
         let mut err_cnt = 0;
         metadata_url("yt-dlp", &["--flat-playlist", "-j", &self.0], &mut json_buf).await?;

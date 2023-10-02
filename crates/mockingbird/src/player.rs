@@ -14,7 +14,7 @@ use songbird::{
         Codec,
         Container,
         children_to_reader
-    }, create_player,
+    }, create_player, constants::SAMPLE_RATE_RAW,
 
 };
 
@@ -25,6 +25,7 @@ use std::{
     collections::HashMap,
 };
 
+use serde_json::Value;
 
 use crate::{deemix::deemix_preload};
 use crate::deemix::{DeemixMetadata, PreloadInput};
@@ -44,8 +45,9 @@ pub enum TrackAuthor {
     User(UserId)
 }
 
-// -> PreTrackRequest<T>   [prefan]
-//  
+//  -> 
+//  -> LinkParser(url, ctx: &Context) -> TrackRequest
+//     
 //  -> TrackRequest    [prefan]
 //  -> TrackRequestFetched [fanned]
 //  -> TrackRequestPreload<T> where T: AudioPlayer
@@ -133,14 +135,12 @@ impl TrackRequestFetched {
     }
 }
 
-
 pub struct TrackRequestPreload<T> {
     pub input: T,
     pub request: TrackRequest
 }
 
-impl<T> TrackRequestPreload<T>
-{
+impl<T> TrackRequestPreload<T> {
     fn new(input: T, req: TrackRequest) -> Result<Self, HandlerError>
     {
         Ok(Self {
@@ -182,6 +182,11 @@ pub struct QueueHistory {
     pub killed: Vec<std::process::Child>,
 }
 
+struct QueueX<T> {
+    pub inner: T
+}
+
+
 
 pub struct Queue {
     // UserQueue, Radio
@@ -190,37 +195,6 @@ pub struct Queue {
     pub past: QueueHistory,
     pub warm: VecDeque<TrackRequestPreload<Box<dyn AudioPlayer>>>,
 }
-
-
-impl Queue {
-    pub async fn warm_track(&mut self, strats: &mut [ Box<dyn QueueStrategy> ]) {
-        for strat in strats.iter_mut() {
-            if let Some(track) = strat.next_track(&self.past) {
-                self.warm.push_back(track.into_preload().await);
-                break;
-                // self.warm.push_back(track.preload());
-                // return
-            }
-        }
-    }
-
-    pub async fn hot_track(&mut self)
-    {
-        if let Some(preload) = self.warm.pop_front() {
-            let mut x = preload.input;
-            match x.load().await {
-                Ok(x) => todo!(),
-                Err(x) => todo!()
-            }
-        }
-
-
-        // }
-        // todo!()
-        // create_player(x)
-    }
-}
-
 
 // Dont break up this structure into smaller pieces
 // It is accessed via a global lock, and would require
@@ -234,12 +208,104 @@ pub struct QueueContext {
     pub voice_chan_id: GuildChannel,
     pub cache: Arc<Cache>,
 
+
+    pub warm: VecDeque<TrackRequestPreload<Box<dyn AudioPlayer>>>,
     // pub data: Arc<RwLock<TypeMap>>,
     pub http: Arc<Http>,
     
     //avoid    
     pub manager: Arc<Songbird>,
 }
+
+struct MetadataRaw(serde_json::Value);
+
+impl Into<Metadata> for MetadataRaw {
+    fn into(self) -> Metadata {
+        songbird::input::Metadata::from_ytdl_output(self.0)
+    }
+}
+
+impl From<MetadataRaw> for DeemixMetadata {
+    fn from(val: MetadataRaw) -> DeemixMetadata {
+        let obj = val.0.as_object();
+
+        let track = obj
+            .and_then(|m| m.get("title"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .clone();
+
+        let artist = obj
+            .and_then(|m| m.get("artist"))
+            .and_then(|x| x.get("name"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .clone();
+    
+        let duration = obj
+            .and_then(|m| m.get("duration"))
+            .and_then(Value::as_f64)
+            .map(std::time::Duration::from_secs_f64)
+            .clone();
+
+        let source_url = obj
+            .and_then(|m| m.get("link"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .clone();
+
+        let isrc = obj
+            .and_then(|m| m.get("isrc"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .clone();
+
+        DeemixMetadata {
+            isrc,
+            metadata: Metadata {
+                track,
+                artist,
+                channels: Some(2),
+                duration,
+                source_url,
+                sample_rate: Some(SAMPLE_RATE_RAW as u32),
+                ..Default::default()
+            }
+        }
+    }
+}
+
+
+
+
+#[async_trait]
+trait EnqueueStrategy {
+    async fn enqueue(self, queue: &mut VecDeque<TrackRequestFetched>) -> Result<(), HandlerError>;    
+}
+
+#[async_trait]
+impl EnqueueStrategy for DeemixUri {
+    async fn enqueue(self, queue: &mut VecDeque<TrackRequestFetched>) -> Result<(), HandlerError> {
+        // let mut json_buf = Vec::new();
+        // let mut err_cnt = 0;
+        
+        // crate::deemix::deemix_metadata("deemix-metadata", &[&self.0], &mut json_buf).await?;
+        
+        // let json = serde_json::from_slice::<serde_json::Value>(&json_buf)
+        //     .map_err(HandlerError::from)?;
+        
+        // let meta = MetadataRaw(json).into();
+        // let track = TrackRequestFetched::new(
+        //     TrackRequest::radio(self.0),
+        //     MetadataType::Standard(meta)
+        // );
+        
+        // queue.push_back(track);
+        // Ok(())
+        todo!()
+    }
+}
+
 
 
 #[derive(Debug, Clone)]
@@ -419,8 +485,6 @@ impl QueueStrategy for Radio {
     }
 }
 
-
-
 /// Round robin queue
 struct RRQueue {
     lookup: HashMap<UserId, VecDeque<TrackRequestFetched>>,
@@ -471,3 +535,5 @@ impl QueueStrategy for RRQueue
         }
     }
 }
+
+
