@@ -3,8 +3,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-int availbytes(int fd)
-{
+int availbytes(int fd) {
     int bytes_available = 0;
 
     if (!fd) {

@@ -1,0 +1,28 @@
+[package]
+name = "balloon"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cutils = { path = "../cutils", features = ["stdio"] }
+
+
+# Example of customizing binaries in Cargo.toml.
+[[bin]]
+name = "balloon"
+path = "src/bin/balloon.rs"
+test = false
+bench = false
+required_features = ["debug"]
+
+[[bin]]
+name = "slowread"
+path = "src/bin/slowread.rs"
+test = false
+bench = false
+
+[features]
+default = ["debug"]
+debug = []
