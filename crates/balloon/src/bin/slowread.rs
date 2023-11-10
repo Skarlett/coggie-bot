@@ -1,5 +1,4 @@
 use std::io::Read;
-
 /// Just used in testing to simulate a slow reader.
 fn main() {
     let mut stdin = std::io::stdin();    

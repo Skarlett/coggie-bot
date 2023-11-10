@@ -17,8 +17,6 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     for it in buffer.chunks(CHUNK_SIZE) {
-        // TODO: I have no idea if this works, 
-        // but it's a start. (I think it does work.)
         chunk.copy_from_slice(it);
         writer.write_all(&chunk)?;
     }
