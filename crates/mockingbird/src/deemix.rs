@@ -277,6 +277,14 @@ pub struct PreloadInput {
     balloon: bool,
 }
 
+impl Drop for PreloadInput {
+    fn drop(&mut self) {
+        for child in self.children.iter_mut() {
+            child.kill().unwrap();
+        }
+    }
+}
+
 pub async fn _deemix_preload(
     uri: &str,
     pre_args: &[&str],
@@ -320,10 +328,8 @@ pub async fn _deemix(
 {
     let pipesize = max_pipe_size().await.unwrap();
     
-    let preload_input = _deemix_preload(uri, pre_args, balloon, pipesize).await?;
-    let (children, metadata) = (preload_input.children, preload_input.metadata);
-    
-    let ffmpeg = children.last().unwrap();
+    let mut preload_input = _deemix_preload(uri, pre_args, balloon, pipesize).await?;
+    let ffmpeg = preload_input.children.last().unwrap();
 
     let ffmpeg_ptr = ffmpeg.stdout.as_ref()
         .ok_or(SongbirdError::Stdout)?
@@ -361,12 +367,12 @@ pub async fn _deemix(
     Ok((
         Input::new(
         true,
-        children_to_reader::<f32>(children),
+        children_to_reader::<f32>(preload_input.children.drain(..).collect()),
         Codec::FloatPcm,
         Container::Raw,
-        metadata.clone().map(|x| x.into()),
+        preload_input.metadata.clone().map(|x| x.into()),
     ), 
-    metadata))
+    preload_input.metadata.clone()))
 }
 
 #[derive(Debug, Clone)]

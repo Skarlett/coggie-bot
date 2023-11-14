@@ -249,6 +249,11 @@ impl VoiceEventHandler for TrackEndLoader {
 
 
             cold_queue.radio_queue.clear();
+            if let Some(mut x) = cold_queue.radio_next.take() {
+                for mut c in x.children.drain(..) {
+                    let _ = c.kill();
+                }
+            }
             cold_queue.radio_next = None;
 
             let _ = preload_radio_track(&mut cold_queue).await;
