@@ -128,7 +128,7 @@ impl From<crate::deemix::DeemixMetadata> for MetadataType {
 }
 
 #[group]
-#[commands(join, leave, queue, now_playing, skip)]
+#[commands(join, leave, queue, now_playing, skip, radio, seed, list)]
 struct BetterPlayer;
 
 async fn seed_from_history(has_played: &VecDeque<TrackRecord>) -> std::io::Result<VecDeque<String>> {
@@ -1108,6 +1108,51 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             return Ok(())
         }
     };
+
+    msg.channel_id
+       .say(
+            &ctx.http,
+            format!("Song skipped [{}]: {} in queue.", skipn, skipn-cold_queue_len as isize),
+       )
+       .await?;
+
+    Ok(())
+}
+
+
+#[command]
+#[only_in(guilds)]
+/// @bot radio [on/off/status]
+async fn list(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    todo!();
+}
+
+#[command]
+#[only_in(guilds)]
+/// @bot radio [on/off/status]
+async fn seed(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    todo!();
+}
+
+#[command]
+#[only_in(guilds)]
+/// @bot radio [on/off/status]
+async fn radio(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    todo!();
+
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let qctx = ctx.data.write().await
+        .get_mut::<LazyQueueKey>().unwrap()
+        .get_mut(&guild_id).unwrap().clone();
+
+    let cold_queue_len = qctx.cold_queue.read().await.queue.len();
+
+    let skipn = args.remains()
+        .unwrap_or("1")
+        .parse::<isize>()
+        .unwrap_or(1);
 
     msg.channel_id
        .say(
