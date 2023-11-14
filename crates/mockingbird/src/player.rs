@@ -989,21 +989,27 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 uris.clear();
                 uris.push_back(url.clone());
             }
-            
-            qctx.cold_queue.write().await.queue.extend(uris.drain(..));    
 
-            // check for hot loaded track
-            let hot_loaded = {
-                let call = call.lock().await;
-                call.queue().len() > 0
-            };
+            // --- START
+            // WARNING: removing these curly braces will cause a deadlock.
+            // amount of hours spent on this: 3
             {
+                qctx.cold_queue.write().await.queue.extend(uris.drain(..));
+
+                // check for hot loaded track
+                let hot_loaded = {
+                    let call = call.lock().await;
+                    call.queue().len() > 0
+                };
+
+
                 let mut call = call.lock().await;
                 let mut cold_queue = qctx.cold_queue.write().await;
                 if hot_loaded == false {
                     user_queue_routine(&mut call, &mut cold_queue, qctx.clone()).await?;
                 }
             }
+            // --- END
 
 
             let content = format!(
