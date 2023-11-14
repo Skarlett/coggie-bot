@@ -33,7 +33,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
         cfg,
         {
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
-            ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
+            ["prerelease"] => [prerelease::PRERELEASE_GROUP],
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],

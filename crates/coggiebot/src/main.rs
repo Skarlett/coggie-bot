@@ -7,12 +7,17 @@ use serenity::{
         StandardFramework,
         DispatchError,
         macros::hook
-    }
+    }, model::prelude::UserId, client::ClientBuilder
 };
 
 use serenity::model::channel::Message;
 use serenity::prelude::*;
 use structopt::StructOpt;
+use tokio::sync::oneshot::{Receiver, Sender};
+use std::sync::Arc;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+
 
 pub const LICENSE:  &'static str = include_str!("../LICENSE");
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -22,6 +27,13 @@ pub const REPO: &'static str = "https://github.com/skarlett/coggie-bot";
 
 pub fn get_rev() -> &'static str {
     option_env!("REV").unwrap_or("canary")
+}
+
+#[derive(Debug)]
+pub enum CoggieProc {
+    Kill,
+    RestartClient,
+    UntilSignal(oneshot::Receiver<()>),
 }
 
 /// Environment variables used at runtime to
@@ -62,6 +74,33 @@ async fn dispatch_error(_ctx: &Context, _msg: &Message, error: DispatchError, _c
     tracing::error!("Error: {:?}]", error);
 }
 
+async fn mkClient(token: &str, bot_id: UserId) -> ClientBuilder
+{
+    let framework = StandardFramework::new()
+        .configure(|c| {
+            c.with_whitespace(true)
+                .ignore_bots(true)
+                .prefix(".")
+                .on_mention(Some(bot_id))
+                .delimiters(vec![", ", ","])
+                .owners(std::collections::HashSet::new())
+        })
+        .on_dispatch_error(dispatch_error);
+
+    let framework = controllers::setup_framework(framework);
+
+    controllers::setup_state(
+        Client::builder(token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
+        .framework(framework)
+        .event_handler(controllers::EvHandler))
+        .await
+}
+
+struct ProcCtlKey;
+impl TypeMapKey for ProcCtlKey {
+    type Value = Sender<CoggieProc>;
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>
 {
@@ -90,30 +129,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
     println!("{}", LICENSE);
 
     tracing_subscriber::fmt::init();   
+    loop {
+        let http = Http::new(&cli.token);
+        let bot_id = http.get_current_user().await?.id;
 
-    let http = Http::new(&cli.token);
-    let bot_id = http.get_current_user().await?.id;
+        // this future never returns
+    
+        let client = mkClient(&cli.token, bot_id).await;
+        
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        
+        
+        let client = client.type_map_insert::<ProcCtlKey>(tx);
+        let mut client = client.await?;
 
-    let framework = StandardFramework::new()
-        .configure(|c| {
-            c.with_whitespace(true)
-                .ignore_bots(true)
-                .prefix(".")
-                .on_mention(Some(bot_id))
-                .delimiters(vec![", ", ","])
-                .owners(std::collections::HashSet::new())
-        })
-        .on_dispatch_error(dispatch_error);
+        tokio::select! {
+            _ = client.start() => {},
+            ev = rx => match ev {
+                Ok(CoggieProc::Kill) => {
+                    tracing::info!("Killing client");
+                    // client.kill().await;
+                    break;
+                },
+                Ok(CoggieProc::RestartClient) => {
+                    tracing::info!("Restarting client");
+                    break;
+                },
+                
+                Ok(CoggieProc::UntilSignal(rx)) => {
+                    tracing::info!("Halting client until signal");
+                    tracing::info!("Received signal, restarting client");
+                    let _ = rx.await; 
+                }
+                
+                _ => todo!(),
+                Err(_) => {}
+            }   
+        }
+    }
 
-    let framework = controllers::setup_framework(framework);
-
-    let mut client = controllers::setup_state(
-        Client::builder(&cli.token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
-        .framework(framework)
-        .event_handler(controllers::EvHandler))
-        .await
-        .await?;
-
-    client.start().await?;
-    unreachable!();
+    Ok(())
 }
