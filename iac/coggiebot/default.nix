@@ -240,8 +240,8 @@ rec {
               pkg-override = (prev: {
                   postInstall = prev.postInstall + ''
                     wrapProgram $out/bin/${prev.name} \
-                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}
-                  '';
+                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}:$out/bin
+                     '';
                   nativeBuildInputs = prev.nativeBuildInputs ++ [ pkgs.makeWrapper ];
               });
             }

@@ -45,8 +45,10 @@ use tokio::{
 
 };
 
-use crate::deemix::{DeemixMetadata, PreloadInput, _deemix_preload};
 use cutils::{availbytes, bigpipe, max_pipe_size};
+
+#[cfg(feature = "deemix")]
+use crate::deemix::{DeemixMetadata, PreloadInput, _deemix_preload};
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
@@ -57,6 +59,12 @@ enum EventEnd {
     Skipped,
     Finished,
     UnMarked
+}
+
+type LazyQueue = HashMap<GuildId, Arc<QueueContext>>;
+pub struct LazyQueueKey;
+impl TypeMapKey for LazyQueueKey {
+    type Value = LazyQueue;
 }
 
 #[derive(Debug, Clone)]
@@ -75,12 +83,6 @@ struct ColdQueue {
     // urls
     pub radio_queue: VecDeque<String>,
     pub radio_next: Option<PreloadInput>,
-}
-
-type LazyQueue = HashMap<GuildId, Arc<QueueContext>>;
-pub struct LazyQueueKey;
-impl TypeMapKey for LazyQueueKey {
-    type Value = LazyQueue;
 }
 
 pub struct QueueContext {
@@ -129,13 +131,95 @@ impl From<crate::deemix::DeemixMetadata> for MetadataType {
 #[commands(join, leave, queue, now_playing, skip)]
 struct BetterPlayer;
 
-async fn next_track(call: &mut Call, uri: &str) -> Result<(TrackHandle, Option<MetadataType>), HandlerError> {
-    let player = Players::from_str(&uri)
-        .ok_or_else(|| HandlerError::NotImplemented)?;
-    
-    player.play(call, &uri).await
+async fn seed_from_history(has_played: &VecDeque<TrackRecord>) -> std::io::Result<VecDeque<String>> {
+    let seeds =
+        has_played
+            .iter()
+            // Don't include skipped tracks
+            .filter(|x| x.stop_event != EventEnd::Skipped)
+            .filter_map(|x|
+                match &x.metadata {
+                    MetadataType::Deemix(meta) => meta.isrc.clone(),
+                    _ => None
+                })
+            .collect::<Vec<_>>();
+
+
+    if seeds.is_empty() {
+        return Ok(seeds.into());
+    }
+
+    return recommend(&seeds, 5).await;
+
 }
 
+async fn preload_radio_track(
+    cold_queue: &mut ColdQueue
+) -> Result<(), String> {
+    // pop seeds in radio
+    let mut tries = 5;
+    // attempts/tries loop
+    loop {
+        let uri = match cold_queue.radio_queue.pop_front() {
+            Some(x) => Some(x),
+            None => {
+                cold_queue.radio_queue.clear();
+                cold_queue.radio_queue.extend(seed_from_history(&cold_queue.has_played).await.unwrap_or_else(|_| VecDeque::new()));
+                cold_queue.radio_queue.pop_front()
+            }
+        };
+
+        if let Some(uri) = uri {
+            let pipesize = max_pipe_size().await.unwrap();
+            match _deemix_preload(&uri, &[], true, pipesize).await {
+                Ok(preload_input) => {
+                    cold_queue.radio_next = Some(preload_input);
+                    return Ok(())
+                }
+
+                Err(why) =>  {
+                    tries -= 1;
+                    tracing::error!("Error preloading radio track: {}", why);
+                    if 0 >= tries {
+                        return Err("Exceeded max tries".to_string());
+                    }
+                    continue
+                }
+            }
+        }
+        return Err("Fall through".to_string());
+    }
+}
+
+async fn play_preload_radio_track(
+    call: &mut Call,
+    radio_preload: &mut PreloadInput,
+    qctx: Arc<QueueContext>
+)
+{
+
+    let preload_result = Players::play_preload(call, &mut radio_preload.children,
+        radio_preload
+            .metadata
+            .clone()
+            .map(|x| x.into())
+    ).await;
+
+    match preload_result {
+        Err(why) =>{
+            tracing::error!("Failed to play radio track: {}", why);
+        }
+        Ok((handle, _)) => handle.add_event(
+            Event::Delayed(
+                handle.metadata()
+                      .duration
+                      .unwrap()
+                    - TS_PRELOAD_OFFSET
+            ),
+            PreemptLoader(qctx.clone()),
+        ).unwrap()
+    }
+}
 struct TrackEndLoader(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for TrackEndLoader {
@@ -144,109 +228,30 @@ impl VoiceEventHandler for TrackEndLoader {
             let mut call = call.lock().await;
             let mut cold_queue = self.0.cold_queue.write().await;
 
-            if call.queue().current().is_none() {
-                // if user's play list is empty 
-                if cold_queue.queue.is_empty() {
-                
-                // try the preloaded radio track
-                if let Some(ref mut radio_preload) = cold_queue.radio_next {          
-                        let preload_result = Players::play_preload(
-                            &mut call,
-                            &mut radio_preload.children,
-                            radio_preload.metadata.clone()
-                                .map(|x| x.into())
-                        ).await;
-                        
-                        match preload_result {
-                            Err(why) =>{        
-                                tracing::error!("Failed to play radio track: {}", why);
-                                return None
-                            }
-                            Ok((handle, _)) => {
-                                handle.add_event(
-                                    Event::Delayed(handle.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                                    PreemptLoader(self.0.clone())
-                                ).unwrap();
-
-                            }
-                        }
-
-                        cold_queue.radio_next = None;
-                    }
-                }
-                drop(call);
-                drop(cold_queue);
+            // `PreemptLoader` may have placed a track (from the user queue)
+            // before this event was fired.
+            // If true, we clear our trackers.
+            if let Some(_current_track_handle) = call.queue().current() {
+                // do nothing
             }
+
+            else if let Ok(true) = user_queue_routine(&mut call, &mut cold_queue, self.0.clone()).await {
+                // do nothing.
+            }
+
             else {
-                cold_queue.radio_queue.clear();
-                cold_queue.radio_next = None;
-
-                drop(cold_queue);
-                drop(call);
-                
-                let _ = play_routine(self.0.clone()).await;                
-            }
-            
-            let mut cold_queue = self.0.cold_queue.write().await;
-            let mut tries = 5;
-            loop {
-                let uri = match cold_queue.radio_queue.pop_front() {
-                    Some(x) => Some(x),
-
-                    None => {
-                        let has_played = &cold_queue.has_played;
-                        let seeds = has_played.iter()
-                            .filter(|x| x.stop_event != EventEnd::Skipped)
-                            .filter_map(|x| 
-                                match &x.metadata {
-                                    MetadataType::Deemix(meta) 
-                                        => meta.isrc.clone(),
-                                        _ => None
-                                }
-                            )
-                            .collect::<Vec<_>>();
-                        
-                        if seeds.is_empty() {
-                            return None
-                        }
-                        
-                        let generated = recommend(&seeds, 5).await.unwrap();
-                        if generated.is_empty() { return None }
-
-                        cold_queue.radio_queue = generated;
-                        cold_queue.radio_queue.pop_front()                
-                    }
-                };
-
-                match uri {
-                    Some(x) => {
-                        let pipesize = max_pipe_size().await;
-                        match _deemix_preload(
-                            &x,
-                            &[],
-                            true,
-                            pipesize.unwrap()    
-                        ).await
-                        {
-                            Ok(preload_input) => {
-                                cold_queue.radio_next = Some(preload_input);
-                                break
-                            }
-                            Err(why) =>  {
-                                
-                                tries -= 1;
-                                tracing::error!("Error preloading radio track: {}", why);   
-                                
-                                if 0 >= tries {
-                                    break;
-                                }
-                                continue
-                            }
-                        }
-                    }
-                    None => return None
+                // if the user queue is empty, try the preloaded radio track
+                if let Some(ref mut radio_preload) = cold_queue.radio_next {
+                    play_preload_radio_track(&mut call, radio_preload, self.0.clone()).await;
+                    cold_queue.radio_next = None;
                 }
             }
+
+
+            cold_queue.radio_queue.clear();
+            cold_queue.radio_next = None;
+
+            let _ = preload_radio_track(&mut cold_queue).await;
         }
         None
     }
@@ -275,7 +280,11 @@ struct PreemptLoader(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for PreemptLoader {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {      
-        let _ = play_routine(self.0.clone()).await;
+        if let Some(call) = self.0.manager.get(self.0.guild_id) {
+            let mut call = call.lock().await;
+            let mut cold_queue = self.0.cold_queue.write().await;
+            let _ = user_queue_routine(&mut call, &mut cold_queue, self.0.clone()).await;
+        }
         None
     }
 }
@@ -390,12 +399,12 @@ async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, Handle
 }
 
 #[cfg(not(feature="deemix"))]
-async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<(), HandlerError>  {
+async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
     return Err(HandlerError::NotImplemented)
 }
 
 #[cfg(not(feature="ytdl"))]
-async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
+async fn fan_ytdl(_uri: &str, _buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
     return Err(HandlerError::NotImplemented)
 }
 
@@ -443,7 +452,8 @@ async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> st
     let mut lines = stdout.stdout.lines();
    
     while let Some(line) = lines.next_line().await? {
-        let json = serde_json::from_str(&line).unwrap();
+        let json =
+            serde_json::from_str(&line).unwrap();
         buf.push(json);
     } 
     Ok(())
@@ -539,28 +549,41 @@ impl Players {
     }
 }
 
-async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
+async fn user_queue_routine(
+    call: &mut Call,
+    cold_queue: &mut ColdQueue,
+    qctx_arc: Arc<QueueContext>
+) -> Result<bool, HandlerError> {
     let mut tries = 4;
-    let handler = qctx.manager.get(qctx.guild_id)
-        .ok_or_else(|| HandlerError::NoCall)?;
-    
-    let mut call = handler.lock().await;
-    let mut cold_queue = qctx.cold_queue.write().await;
+    // let handler = qctx.manager.get(qctx.guild_id)
+    //     .ok_or_else(|| HandlerError::NoCall)?;
+
+    // let mut call = handler.lock().await;
+    // let mut cold_queue = qctx.cold_queue.write().await;
 
     while let Some(uri) = cold_queue.queue.pop_front() {
-        match next_track(&mut call, &uri).await {
+        let player = Players::from_str(&uri)
+            .ok_or_else(|| HandlerError::NotImplemented)?;
+
+        match player.play(call, &uri).await {
             Ok((track, metadata)) => {
                 if cold_queue.has_played.len() > HASPLAYED_MAX_LEN {
                     let _ = cold_queue.has_played.pop_back();
                 }
 
+                // --- START
+                // This portion of code marks songs as finished or not.
+                // Under normal circumstances, this would be placed on the "EndTrack"
+                // Event. It also happens that pausing, skipping, and leaving
+                // all cause this event to fire.
+                // So instead, its placed here to avoid those.
                 if let Some(x) = cold_queue.has_played.front_mut() {
                     if let EventEnd::UnMarked = x.stop_event {
                         x.stop_event = EventEnd::Finished;
                         x.end = Instant::now();
                     }
                 }
-                
+
                 let data = TrackRecord {
                     metadata: metadata.unwrap_or(MetadataType::from(track.metadata().clone())),
                     stop_event: EventEnd::UnMarked,
@@ -569,17 +592,21 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
                 };
 
                 cold_queue.has_played.push_front(data);
-            
+                // --- END
+
+                // Preemptively load the next audio track
+                // `TS_PRELOAD_OFFSET` seconds before this `track`
+                // ends.
                 track.add_event(
                     Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                    PreemptLoader(qctx.clone())
+                    PreemptLoader(qctx_arc)
                 ).unwrap();
 
-                break
+                return Ok(true);
             },
+
             Err(e) => {
                 tracing::error!("Failed to play next track: {}", e);
-                
                 let response = match e {
                     HandlerError::NotImplemented 
                         => "Not implemented/enabled".to_string(),
@@ -593,8 +620,8 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
                     #[cfg(feature = "deemix")]
                     HandlerError::DeemixError(crate::deemix::DeemixError::BadJson(text))
                         => {
-                            qctx.invited_from.send_files(
-                                &qctx.http,
+                            qctx_arc.invited_from.send_files(
+                                &qctx_arc.http,
                                 vec![ (text.as_bytes(), "error.txt") ],
                                 |m| m
                             ).await?;
@@ -605,21 +632,21 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
                 };
 
                 if tries == 0 {
-                    let _ = qctx.invited_from
-                        .say(&qctx.http, format!("Halting. Last try: {}", &uri))
+                    let _ = qctx_arc.invited_from
+                        .say(&qctx_arc.http, format!("Halting. Last try: {}", &uri))
                         .await;
                     break
                 }
 
-                let _ = qctx.invited_from
-                    .say(&qctx.http, format!("Couldn't play track {}\n{}", &uri, &response))
+                let _ = qctx_arc.invited_from
+                    .say(&qctx_arc.http, format!("Couldn't play track {}\n{}", &uri, &response))
                     .await;
 
                 tries -= 1;
             }
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 async fn leave_routine (
@@ -912,13 +939,23 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     let qctx: Arc<QueueContext>;
 
+    // grab the call object from guild ID.
     let call = match manager.get(guild_id) {
         Some(call_lock) => {
-            qctx = ctx.data.write().await.get_mut::<LazyQueueKey>().unwrap().get_mut(&guild_id).unwrap().clone();
+            qctx = ctx.data.write()
+                .await
+                .get_mut::<LazyQueueKey>()
+                .unwrap()
+                .get_mut(&guild_id)
+                .unwrap()
+                .clone();
+
             call_lock
         },
         
         None => {
+            // Join the VC the user is in,
+            // then try again.
             let tmp = join_routine(ctx, msg).await;            
 
             if let Err(ref e) = tmp {
@@ -955,15 +992,19 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             
             qctx.cold_queue.write().await.queue.extend(uris.drain(..));    
 
-            let maybe_hot = {
+            // check for hot loaded track
+            let hot_loaded = {
                 let call = call.lock().await;
-                call.queue().len() > 0            
+                call.queue().len() > 0
             };
-
-            drop(call); // probably not needed, but just in case
-            if !maybe_hot {
-                play_routine(qctx.clone()).await?;
+            {
+                let mut call = call.lock().await;
+                let mut cold_queue = qctx.cold_queue.write().await;
+                if hot_loaded == false {
+                    user_queue_routine(&mut call, &mut cold_queue, qctx.clone()).await?;
+                }
             }
+
 
             let content = format!(
                 "Added {} Song(s) [{}] queued",
@@ -1022,7 +1063,9 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         cold_queue.queue.clear();
         cold_queue.queue.extend(bottom);
     }
-    
+
+    // --- START
+    // stand alone section, writes historical actions.
     {
         let mut cold_queue = qctx.cold_queue.write().await;
         if let Some(x) = cold_queue.has_played.front_mut()
@@ -1034,6 +1077,7 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             }
         }
     }
+    // -- END
 
     let manager = songbird::get(ctx)
         .await
