@@ -50,6 +50,16 @@ use cutils::{availbytes, bigpipe, max_pipe_size};
 #[cfg(feature = "deemix")]
 use crate::deemix::{DeemixMetadata, PreloadInput, _deemix_preload};
 
+#[group]
+#[commands(join, leave, queue, now_playing, skip, list)]
+pub struct BetterPlayer;
+
+
+#[group]
+#[commands(seed, radio)]
+pub struct Radio;
+
+
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
@@ -80,6 +90,7 @@ struct ColdQueue {
     pub queue: VecDeque<String>,
     pub has_played: VecDeque<TrackRecord>,
 
+    pub use_radio: bool,
     // urls
     pub radio_queue: VecDeque<String>,
     pub radio_next: Option<PreloadInput>,
@@ -126,10 +137,6 @@ impl From<crate::deemix::DeemixMetadata> for MetadataType {
         Self::Deemix(meta)
     }
 }
-
-#[group]
-#[commands(join, leave, queue, now_playing, skip, radio, seed, list)]
-struct BetterPlayer;
 
 async fn seed_from_history(has_played: &VecDeque<TrackRecord>) -> std::io::Result<VecDeque<String>> {
     let seeds =
@@ -197,7 +204,6 @@ async fn play_preload_radio_track(
     qctx: Arc<QueueContext>
 )
 {
-
     let preload_result = Players::play_preload(call, &mut radio_preload.children,
         radio_preload
             .metadata
@@ -239,7 +245,7 @@ impl VoiceEventHandler for TrackEndLoader {
                 // do nothing.
             }
 
-            else {
+            else if cold_queue.use_radio {
                 // if the user queue is empty, try the preloaded radio track
                 if let Some(ref mut radio_preload) = cold_queue.radio_next {
                     play_preload_radio_track(&mut call, radio_preload, self.0.clone()).await;
@@ -252,6 +258,7 @@ impl VoiceEventHandler for TrackEndLoader {
             if let Some(mut x) = cold_queue.radio_next.take() {
                 for mut c in x.children.drain(..) {
                     let _ = c.kill();
+                    let _ = c.wait();
                 }
             }
             cold_queue.radio_next = None;
@@ -763,6 +770,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
                 cold_queue: Arc::new(RwLock::new(ColdQueue {
                     queue: VecDeque::new(),
                     has_played: VecDeque::new(),
+                    use_radio: false,
                     radio_next: None,
                     radio_queue: VecDeque::new(),
                 })),
@@ -1119,47 +1127,141 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     Ok(())
 }
 
-
 #[command]
 #[only_in(guilds)]
-/// @bot radio [on/off/status]
-async fn list(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    todo!();
-}
-
-#[command]
-#[only_in(guilds)]
-/// @bot radio [on/off/status]
-async fn seed(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    todo!();
-}
-
-#[command]
-#[only_in(guilds)]
-/// @bot radio [on/off/status]
-async fn radio(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    todo!();
-
+#[aliases("ls", "l")]
+/// @bot list
+async fn list(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 
-    let qctx = ctx.data.write().await
-        .get_mut::<LazyQueueKey>().unwrap()
-        .get_mut(&guild_id).unwrap().clone();
+    let mut _qctx_lock = ctx.data.write().await;
+    let mut _qctx = _qctx_lock
+        .get_mut::<LazyQueueKey>()
+        .expect("Expected LazyQueueKey in TypeMap");
 
-    let cold_queue_len = qctx.cold_queue.read().await.queue.len();
-
-    let skipn = args.remains()
-        .unwrap_or("1")
-        .parse::<isize>()
-        .unwrap_or(1);
+    if let None = _qctx.get(&guild_id) {
+        msg.channel_id
+           .say(&ctx.http, "Not in a voice channel")
+           .await?;
+        return Ok(())
+    }
+    let qctx = _qctx.get_mut(&guild_id).unwrap();
+    let cold_queue = qctx.cold_queue.read().await;
 
     msg.channel_id
-       .say(
-            &ctx.http,
-            format!("Song skipped [{}]: {} in queue.", skipn, skipn-cold_queue_len as isize),
-       )
-       .await?;
+       .say(&ctx.http,
+            format!(
+                "{}\n[{}] songs in queue",
+                cold_queue
+                    .queue.clone()
+                    .drain(..)
+                    .chain(cold_queue.radio_queue.clone().drain(..))
+                    .chain(
+                        cold_queue.radio_next
+                        .iter()
+                        .filter_map(
+                            |next|
+                            next.metadata
+                                .clone()
+                                .unwrap()
+                                .metadata
+                                .source_url
+                                .map(|x| x.to_string())
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
 
+                cold_queue.queue.len())
+       ).await?;
+
+    return Ok(());
+}
+
+#[command]
+#[only_in(guilds)]
+/// @bot seed [on/off/(default: status)/uri]
+async fn seed(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let mut _qctx_lock = ctx.data.write().await;
+    let mut _qctx = _qctx_lock
+        .get_mut::<LazyQueueKey>()
+        .expect("Expected LazyQueueKey in TypeMap");
+
+    if let None = _qctx.get(&guild_id) {
+        msg.channel_id
+           .say(&ctx.http, "Not in a voice channel")
+           .await?;
+        return Ok(())
+    }
+
+    let qctx = _qctx.get_mut(&guild_id).unwrap();
+    let act = args.remains()
+        .unwrap_or("status");
+
+    match act {
+        "status" =>
+            { msg.channel_id
+                .say(
+                    &ctx.http,
+                    qctx.cold_queue.read().await.radio_queue.clone().into_iter().collect::<Vec<_>>().join("\n")
+                ).await?; },
+
+        _ => {}
+    }
+
+    Ok(())
+}
+
+#[command]
+#[only_in(guilds)]
+/// @bot radio [on/off/(default: status)]
+async fn radio(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let mut _qctx_lock = ctx.data.write().await;
+    let mut _qctx = _qctx_lock
+        .get_mut::<LazyQueueKey>()
+        .expect("Expected LazyQueueKey in TypeMap");
+
+    if let None = _qctx.get(&guild_id) {
+        msg.channel_id
+           .say(&ctx.http, "Not in a voice channel")
+           .await?;
+        return Ok(())
+    }
+    let qctx = _qctx.get_mut(&guild_id).unwrap();
+    let act = args.remains()
+        .unwrap_or("status");
+
+    match act {
+        "status" =>
+            { msg.channel_id
+                .say(
+                    &ctx.http,
+                    if qctx.cold_queue.read().await.use_radio
+                    { "on" } else { "off" },
+                ).await?; },
+
+        "on" => {
+            qctx.cold_queue.write().await.use_radio = true;
+            msg.channel_id
+               .say(&ctx.http, "Radio enabled")
+               .await?;
+        }
+        "off" => {
+            let mut lock = qctx.cold_queue.write().await;
+            lock.radio_queue.clear();
+            lock.use_radio = false;
+
+            msg.channel_id
+               .say(&ctx.http, "Radio disabled")
+               .await?;
+        }
+        _ => {}
+    }
     Ok(())
 }

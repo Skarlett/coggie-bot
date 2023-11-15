@@ -281,6 +281,7 @@ impl Drop for PreloadInput {
     fn drop(&mut self) {
         for child in self.children.iter_mut() {
             child.kill().unwrap();
+            child.wait().unwrap();
         }
     }
 }
@@ -410,7 +411,7 @@ fn metadata_from_deemix_output(val: &serde_json::Value) -> DeemixMetadata
         .map(Duration::from_secs_f64)
         .clone();
 
-    let source_url = obj
+   let source_url = obj
         .and_then(|m| m.get("link"))
         .and_then(Value::as_str)
         .map(str::to_string)

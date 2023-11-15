@@ -14,7 +14,7 @@ tracing-subscriber = "0.3"
 mockingbird = { path = "../mockingbird", optional=true }
 
 [features]
-default = []
+default = ["mockingbird-radio", "mockingbird-deemix"]
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
@@ -26,6 +26,7 @@ mockingbird-core = ["dep:mockingbird"]
 mockingbird-arl-cmd = ["mockingbird?/arl-cmd"]
 mockingbird-ctrl = ["mockingbird?/controller"]
 mockingbird-debug = ["mockingbird?/debug"]
+mockingbird-radio = ["mockingbird?/radio"]
 
 ################
 # mockingbird is compatiable with youtube & soundcloud

@@ -71,7 +71,9 @@ let
           { name = "mockingbird-debug";
             dependencies = [];
           }
-
+          { name = "mockingbird-radio";
+            dependencies = ["mockingbird-deemix" "mockingbird-core" "mockingbird-ctrl"];
+          }
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];
@@ -235,8 +237,6 @@ rec {
               flagName = "";
 
               rustFeature = false;
-
-              
               pkg-override = (prev: {
                   postInstall = prev.postInstall + ''
                     wrapProgram $out/bin/${prev.name} \
