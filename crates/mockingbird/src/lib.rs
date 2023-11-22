@@ -3,7 +3,7 @@
 pub mod player;
 
 #[cfg(feature = "deemix")]
-mod deemix;
+pub mod deemix;
 
 #[cfg(feature = "check")]
 pub mod check;

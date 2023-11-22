@@ -99,22 +99,33 @@ where
     async fn call_restart(&mut self, time: Option<Duration>) -> Result<Input, SongbirdError> {
         if let Some(time) = time {
             let ts = format!("{:.3}", time.as_secs_f64());
-            _deemix(self.uri.as_ref(), &["-ss", &ts])
+            _deemix(self.uri.as_ref(), &["-ss", &ts], true)
                 .await
                 .map_err(DeemixError::into)
+                .map(|(i, _)| i)
         } else {
-            deemix(self.uri.as_ref())
+            deemix(self.uri.as_ref(), true)
                 .await
                 .map_err(DeemixError::into)
+                .map(|(i, _)| i)
         }
     }
 
     async fn lazy_init(&mut self) -> Result<(Option<Metadata>, Codec, Container), SongbirdError> {
-        Ok(( Some(deemix_metadata(self.uri.as_ref()).await.unwrap()), Codec::FloatPcm, Container::Raw))
+        Ok(
+        (
+            Some(deemix_metadata(self.uri.as_ref())
+                    .await
+                    .map(DeemixMetadata::into)
+                    .map_err(SongbirdError::from)?
+            ),
+            Codec::FloatPcm, Container::Raw)
+        )
     }
 }
 
-pub async fn deemix_metadata(uri: &str) -> std::io::Result<Metadata> {
+
+pub async fn deemix_metadata(uri: &str) -> std::io::Result<DeemixMetadata> {
     let deemix = tokio::process::Command::new("deemix-metadata")
         .arg(uri.trim())
         .stdin(Stdio::null())
@@ -161,17 +172,69 @@ fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixErro
 
 pub async fn deemix(
     uri: &str,
-) -> Result<Input, DeemixError> {
-    _deemix(uri, &[])
+    balloon: bool,
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError> {
+    _deemix(uri, &[], balloon)
         .await
 }
 
-pub async fn _deemix(
-    uri: &str,
-    pre_args: &[&str],
-) -> Result<Input, DeemixError>
-{
-    let pipesize = max_pipe_size().await.unwrap();
+async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child, DeemixMetadata), DeemixError> 
+{  
+    let mut deemix = std::process::Command::new("deemix-stream")
+        .arg(uri.trim())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    
+    let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
+    unsafe { bigpipe(deemix_out, pipesize); }
+    
+    let stderr = deemix.stderr.take();
+    // Read first line of stderr
+    // for metadata, but read entire buffer if error.
+    let threadout = tokio::task::spawn_blocking(move || {
+        let mut s = stderr.unwrap();        
+        let out = process_stderr(&mut s);  
+        (s, out)
+    })
+    .await?;
+
+    let (returned_stderr, metadata_raw) = threadout;
+
+    deemix.stderr = Some(returned_stderr);
+    
+    let metadata_raw = metadata_raw?;
+    if let Some(_) = metadata_raw.get("error") {
+        return Err(DeemixError::Metadata);
+    }
+
+    let _filesize = metadata_raw["filesize"].as_u64();
+
+    Ok((deemix, metadata_from_deemix_output(&metadata_raw)))
+}
+
+fn _balloon_loader(proc: &mut std::process::Child, pipesize: i32) -> Result<std::process::Child, DeemixError> {
+    let balloon = std::process::Command::new("balloon")
+        .stdin(
+            proc.stdout.take()
+                .ok_or(SongbirdError::Stdout)?       
+        )
+        .stderr(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to start child process");
+
+    let balloon_ptr = balloon.stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+    
+    unsafe { bigpipe(balloon_ptr, pipesize); }
+    
+    Ok(balloon)
+}
+
+fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> { 
     let ffmpeg_args = [
         "-f",
         "s16le",
@@ -183,58 +246,97 @@ pub async fn _deemix(
         "pcm_f32le",
         "-",
     ];
-    
-    tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
-    let mut deemix = std::process::Command::new("deemix-stream")
-        .arg(uri.trim())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    
-    let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
-    unsafe { bigpipe(deemix_out, pipesize); }
-
-    let stderr = deemix.stderr.take();
-    // Read first line of stderr
-    // for metadata, but read entire buffer if error.
-    let threadout = tokio::task::spawn_blocking(move || {
-        let mut s = stderr.unwrap();        
-        let out = process_stderr(&mut s);  
-        (s, out)
-    })
-    .await?;
-
-    let (returned_stderr, value) = threadout;
-
-    deemix.stderr = Some(returned_stderr);
-    
-    let metadata_raw = value?;
-    if let Some(_) = metadata_raw.get("error") {
-        return Err(DeemixError::Metadata);
-    }
-
-    let _filesize = metadata_raw["filesize"].as_u64();
-    let metadata = Some(metadata_from_deemix_output(&metadata_raw));
-
-    tracing::info!("running ffmpeg");
+ 
     let ffmpeg = std::process::Command::new("ffmpeg")
         .args(pre_args)
         .arg("-i")
         .arg("-")
         .args(&ffmpeg_args)
-        .stdin(deemix.stdout.take().ok_or(SongbirdError::Stdout)?)
+        .stdin(
+            proc.stdout
+                .take()
+                .ok_or(SongbirdError::Stdout)?       
+        )
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process");
     
-    tracing::info!("deezer metadata {:?}", metadata);
-    let ffmpeg_ptr = ffmpeg.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
+    let ffmpeg_ptr = ffmpeg.stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+    
     unsafe { bigpipe(ffmpeg_ptr, pipesize); }
     
-    let now = std::time::Instant::now();
+    Ok(ffmpeg)
+}
+
+pub struct PreloadInput {
+    pub children: Vec<std::process::Child>,
+    pub metadata: Option<DeemixMetadata>,
+    balloon: bool,
+}
+
+impl Drop for PreloadInput {
+    fn drop(&mut self) {
+        for child in self.children.iter_mut() {
+            child.kill().unwrap();
+            child.wait().unwrap();
+        }
+    }
+}
+
+pub async fn _deemix_preload(
+    uri: &str,
+    pre_args: &[&str],
+    balloon: bool,
+    pipesize: i32
+) -> Result<PreloadInput, DeemixError>
+{
+    tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
+    let (mut deemix, metadata) =  _deemix_stream(uri, pipesize).await?;
+
+    let mut balloon_proc = if balloon {
+        tracing::info!("running balloon");
+        Some(_balloon_loader(&mut deemix, pipesize)?)
+    } else { None };
+    
+    let output = balloon_proc.as_mut()
+        .unwrap_or(&mut deemix);
+    
+    let ffmpeg = _ffmpeg(output, pre_args, pipesize)?;
+ 
+    let mut children = Vec::with_capacity(3);
+    children.push(deemix);
+    if let Some(balloon) = balloon_proc {
+        children.push(balloon);
+    }
+    children.push(ffmpeg);
+
+    return Ok(PreloadInput {
+        children,
+        balloon,
+        metadata: Some(metadata),
+    })
+}
+
+
+pub async fn _deemix(
+    uri: &str,
+    pre_args: &[&str],
+    balloon: bool,
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError>
+{
     let pipesize = max_pipe_size().await.unwrap();
+    
+    let mut preload_input = _deemix_preload(uri, pre_args, balloon, pipesize).await?;
+    let ffmpeg = preload_input.children.last().unwrap();
+
+    let ffmpeg_ptr = ffmpeg.stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+
+    let now = std::time::Instant::now();
     let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
         .unwrap_or_else(|_| "0.8".to_string())
         .parse::<f32>()
@@ -261,49 +363,76 @@ pub async fn _deemix(
             tracing::debug!("pipesize: {}", pipesize);
             break
         }
-    }  
- 
-    Ok(Input::new(
+    }
+
+    Ok((
+        Input::new(
         true,
-        children_to_reader::<f32>(vec![deemix, ffmpeg]),
+        children_to_reader::<f32>(preload_input.children.drain(..).collect()),
         Codec::FloatPcm,
         Container::Raw,
-        metadata,
-    ))
+        preload_input.metadata.clone().map(|x| x.into()),
+    ), 
+    preload_input.metadata.clone()))
 }
 
-fn metadata_from_deemix_output(val: &serde_json::Value) -> Metadata
+#[derive(Debug, Clone)]
+pub struct DeemixMetadata {
+    pub isrc: Option<String>,
+    pub metadata: Metadata,
+}
+
+impl Into<Metadata> for DeemixMetadata {
+    fn into(self) -> Metadata {
+        self.metadata
+    }
+}
+
+fn metadata_from_deemix_output(val: &serde_json::Value) -> DeemixMetadata
 {
     let obj = val.as_object();
 
     let track = obj
         .and_then(|m| m.get("title"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
 
     let artist = obj
         .and_then(|m| m.get("artist"))
         .and_then(|x| x.get("name"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
  
    let duration = obj
         .and_then(|m| m.get("duration"))
         .and_then(Value::as_f64)
-        .map(Duration::from_secs_f64);
+        .map(Duration::from_secs_f64)
+        .clone();
 
-    let source_url = obj
+   let source_url = obj
         .and_then(|m| m.get("link"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
 
-    Metadata {
-        track,
-        artist,
-        channels: Some(2),
-        duration,
-        source_url,
-        sample_rate: Some(SAMPLE_RATE_RAW as u32),
-        ..Default::default()
+    let isrc = obj
+        .and_then(|m| m.get("isrc"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .clone();
+
+    DeemixMetadata {
+        isrc,
+        metadata: Metadata {
+            track,
+            artist,
+            channels: Some(2),
+            duration,
+            source_url,
+            sample_rate: Some(SAMPLE_RATE_RAW as u32),
+            ..Default::default()
+        }
     }
 }

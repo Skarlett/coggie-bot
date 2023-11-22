@@ -71,7 +71,9 @@ let
           { name = "mockingbird-debug";
             dependencies = [];
           }
-
+          { name = "mockingbird-radio";
+            dependencies = ["mockingbird-deemix" "mockingbird-core" "mockingbird-ctrl"];
+          }
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];
@@ -238,8 +240,8 @@ rec {
               pkg-override = (prev: {
                   postInstall = prev.postInstall + ''
                     wrapProgram $out/bin/${prev.name} \
-                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}
-                  '';
+                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}:$out/bin
+                     '';
                   nativeBuildInputs = prev.nativeBuildInputs ++ [ pkgs.makeWrapper ];
               });
             }
