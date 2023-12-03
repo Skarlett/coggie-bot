@@ -198,7 +198,7 @@ pub async fn check_arl(arl: &str) -> Result<ExtractChecks, ARLError> {
 #[cfg(feature = "arl-cmd")]
 struct ARL;
 
-fn santitize_arl(arl: &str) -> Result<(), ()> {
+pub fn santitize_arl(arl: &str) -> Result<(), ()> {
     if arl.trim().len() == 192 && arl.chars().all(|c| c.is_ascii_hexdigit())
     { return Ok(()) }
     Err(())
@@ -234,7 +234,7 @@ async fn arl_raw(
 
 #[command("arl")]
 #[cfg(feature = "arl-cmd")]
-async fn arl_check(
+pub async fn arl_check(
     ctx: &Context,
     msg: &Message,
     mut args: Args

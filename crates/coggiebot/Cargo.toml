@@ -43,6 +43,11 @@ mockingbird-deemix = ["mockingbird?/deemix"]
 mockingbird-deemix-check = ["mockingbird?/check"]
 
 ################
+# NOTE: enabling this is dangerous
+# only use for per-guild instances
+mockingbird-set-arl-cmd = ["mockingbird?/set-arl-cmd"]
+
+################
 # mockingbird compatiable with spotify
 # mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "dep:serde_json"]
 
