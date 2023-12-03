@@ -68,6 +68,10 @@ let
             dependencies = [ "mockingbird-deemix-check" ];
           }
 
+          { name = "mockingbird-set-arl-cmd";
+            dependencies = [ "mockingbird-core" ];
+          }
+
           { name = "mockingbird-debug";
             dependencies = [];
           }
