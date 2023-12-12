@@ -540,7 +540,7 @@ async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
         "[{}::{}] asked what track is playing in [{}::{:?}]",
         msg.author.id, msg.author.name,
         msg.channel_id, msg.channel_id.name(&ctx).await
-    );
+   );
 
 
     let qctx = {
