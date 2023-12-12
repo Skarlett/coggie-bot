@@ -353,30 +353,6 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     Ok(())
 }
 
-
-pub async fn remote_store(msg: Message, uri: &str) -> std::io::Result<Metadata> {
-    let ssh_uri = std::env::var("MKBIRD_REMOTE_STORE");
-    let ssh_key_path = std::env::var("MKBIRD_REMOTE_STORE_KEY");
-
-    // rsync -Pav -e "ssh -i $HOME/.ssh/somekey" username@hostname:/from/dir/ /to/dir/
-
-    let deemix = tokio::process::Command::new("remote-store")
-        .env("USERNAME", format!("{}", msg.author.id))
-
-        .arg(format!("'ssh -i {}'", ssh_key_path))
-
-
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-
-    let output = deemix.wait_with_output().await?;
-
-    Ok(metadata_from_deemix_output(&serde_json::from_slice(&output.stdout[..])?))
-}
-
 struct TrackEndLoader(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for TrackEndLoader {
