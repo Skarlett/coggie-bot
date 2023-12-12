@@ -275,11 +275,6 @@ impl VoiceEventHandler for AbandonedChannel {
             return None;
         }
 
-        tracing::info!(
-            "[{}::()] coggie leaving abandoned vc",
-            channel.id, channel.name
-        );
-
         leave_routine(
             self.0.data.clone(),
             self.0.guild_id.clone(),
@@ -423,8 +418,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     let connect_to = match channel_id {
         Some(channel) => {
             tracing::info!(
-                "[{}::()] requested coggie in vc [{}::{}]",
-                msg.author.id, msg.author.name, channel.id, channel.name
+                "[{}::{}] requested coggie in vc [{}::{}]",
+                msg.author.id, msg.author.name, msg.channel.id, msg.channel.name
             );
             channel
         },
@@ -453,8 +448,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
        Some(x) if x > 90_000 => {}
        None => {
            tracing::info!(
-               "[{}::()] coggie detected low quality vc",
-               channel.id, channel.name
+               "[{}::{}] coggie detected low quality vc",
+               msg.channel.id, msg.channel.name
            );
            let _ = msg.reply(
                &ctx.http,
@@ -465,7 +460,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
 
        Some(x) => {
             tracing::info!(
-                "[{}::()] coggie detected low quality vc",
+                "[{}::{}] coggie detected low quality vc",
                 channel.id, channel.name
             );
 
