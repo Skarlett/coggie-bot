@@ -275,6 +275,11 @@ impl VoiceEventHandler for AbandonedChannel {
             return None;
         }
 
+        tracing::info!(
+            "[{}::()] coggie leaving abandoned vc",
+            channel.id, channel.name
+        );
+
         leave_routine(
             self.0.data.clone(),
             self.0.guild_id.clone(),
@@ -397,6 +402,12 @@ async fn leave_routine (
             .expect("Expected LazyQueueKey in TypeMap");
         queue.remove(&guild_id);
     }
+
+    tracing::info!(
+        "[{}::()] coggie left vc",
+        channel.id, channel.name
+    );
+
     Ok(())
 }
 
@@ -410,7 +421,13 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         .and_then(|voice_state| voice_state.channel_id);
 
     let connect_to = match channel_id {
-        Some(channel) => channel,
+        Some(channel) => {
+            tracing::info!(
+                "[{}::()] requested coggie in vc [{}::{}]",
+                msg.author.id, msg.author.name, channel.id, channel.name
+            );
+            channel
+        },
         None => {
             msg.reply(&ctx.http, "Not in a voice channel").await.unwrap();
             return Err(JoinError::NoCall);
@@ -435,13 +452,23 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     match gchan.bitrate {
        Some(x) if x > 90_000 => {}
        None => {
+           tracing::info!(
+               "[{}::()] coggie detected low quality vc",
+               channel.id, channel.name
+           );
            let _ = msg.reply(
                &ctx.http,
                r#"**Couldn't detect bitrate.** For the best experience,
                   check that the voice room is using 128kbps."#
            ).await;
        }
+
        Some(x) => {
+            tracing::info!(
+                "[{}::()] coggie detected low quality vc",
+                channel.id, channel.name
+            );
+
             #[cfg(feature = "deemix")]
             let _ = msg.reply(
                 &ctx,
@@ -518,6 +545,13 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
 async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
+
+    tracing::info!(
+        "[{}::{}] asked what track is playing in [{}::{}]",
+        msg.author.id, msg.author.name,
+        msg.channel.id, msg.channel.name
+    );
+
 
     let qctx = {
         let mut glob = ctx.data.write().await;
@@ -630,6 +664,13 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 #[aliases("play")]
 #[only_in(guilds)]
 async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+
+    tracing::info!(
+        "[{}::{}] queued track in [{}::{}]",
+        msg.author.id, msg.author.name,
+        msg.channel.id, msg.channel.name
+    );
+
     let url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
@@ -737,7 +778,13 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
-    
+
+    tracing::info!(
+        "[{}::{}] skipped track in [{}::{}]",
+        msg.author.id, msg.author.name,
+        msg.channel.id, msg.channel.name
+    );
+
     let qctx = ctx.data.write().await
         .get_mut::<LazyQueueKey>().unwrap()
         .get_mut(&guild_id).unwrap().clone();
@@ -803,6 +850,8 @@ struct Dangerous;
 #[command]
 #[only_in(guilds)]
 async fn setarl(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    tracing::info!("[{}::{}] set a new arl", msg.author.id, msg.author.name);
+
     let arl = args.single::<String>()?;
 
     if !(arl.trim().len() == 192 && arl.chars().all(|c| c.is_ascii_hexdigit())) {
@@ -819,6 +868,8 @@ async fn setarl(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 #[command]
 #[only_in(guilds)]
 async fn getarl(ctx: &Context, msg: &Message) -> CommandResult {
+    tracing::info!("[{}::{}] requested arl", msg.author.id, msg.author.name);
+
     let arl = std::env::var("DEEMIX_ARL");
     tracing::info!("getarl: {:?}", arl);
     match arl {
