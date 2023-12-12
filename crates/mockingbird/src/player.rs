@@ -400,7 +400,7 @@ async fn leave_routine (
 
     tracing::info!(
         "[{}::()] coggie left vc",
-        channel.id, channel.name
+        msg.channel_id, msg.channel_id.name(ctx wq)
     );
 
     Ok(())
@@ -419,7 +419,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         Some(channel) => {
             tracing::info!(
                 "[{}::{}] requested coggie in vc [{}::{}]",
-                msg.author.id, msg.author.name, msg.channel.id, msg.channel.name
+                msg.author.id, msg.author.name, msg.channel_id, msg.channel_id.name(&ctx)
             );
             channel
         },
@@ -544,7 +544,7 @@ async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
     tracing::info!(
         "[{}::{}] asked what track is playing in [{}::{}]",
         msg.author.id, msg.author.name,
-        msg.channel.id, msg.channel.name
+        msg.channel_id, msg.channel_id.name(&ctx)
     );
 
 
@@ -663,7 +663,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     tracing::info!(
         "[{}::{}] queued track in [{}::{}]",
         msg.author.id, msg.author.name,
-        msg.channel.id, msg.channel.name
+        msg.channel_id, msg.channel_id.name(&ctx)
     );
 
     let url = match args.single::<String>() {
@@ -777,7 +777,7 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     tracing::info!(
         "[{}::{}] skipped track in [{}::{}]",
         msg.author.id, msg.author.name,
-        msg.channel.id, msg.channel.name
+        msg.channel_id, msg.channel_id.name(&ctx)
     );
 
     let qctx = ctx.data.write().await
