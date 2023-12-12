@@ -893,6 +893,7 @@ async fn setarl(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 #[only_in(guilds)]
 async fn getarl(ctx: &Context, msg: &Message) -> CommandResult {
     tracing::info!("[{}::{}] requested arl", msg.author.id, msg.author.name);
+
     let arl = std::env::var("DEEMIX_ARL");
     tracing::info!("getarl: {:?}", arl);
     match arl {
