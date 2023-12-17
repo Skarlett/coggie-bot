@@ -275,11 +275,6 @@ impl VoiceEventHandler for AbandonedChannel {
             return None;
         }
 
-        tracing::info!(
-            "[{}::()] coggie leaving abandoned vc",
-            channel.id, channel.name
-        );
-
         leave_routine(
             self.0.data.clone(),
             self.0.guild_id.clone(),
@@ -403,11 +398,6 @@ async fn leave_routine (
         queue.remove(&guild_id);
     }
 
-    tracing::info!(
-        "[{}::()] coggie left vc",
-        channel.id, channel.name
-    );
-
     Ok(())
 }
 
@@ -423,8 +413,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     let connect_to = match channel_id {
         Some(channel) => {
             tracing::info!(
-                "[{}::()] requested coggie in vc [{}::{}]",
-                msg.author.id, msg.author.name, channel.id, channel.name
+                "[{}::{}] requested coggie in vc [{}::{:?}]",
+                msg.author.id, msg.author.name, msg.channel_id, msg.channel_id.name(&ctx).await
             );
             channel
         },
@@ -453,8 +443,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
        Some(x) if x > 90_000 => {}
        None => {
            tracing::info!(
-               "[{}::()] coggie detected low quality vc",
-               channel.id, channel.name
+               "[{}::{:?}] coggie detected low quality vc",
+               msg.channel_id, msg.channel_id.name(&ctx).await
            );
            let _ = msg.reply(
                &ctx.http,
@@ -465,8 +455,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
 
        Some(x) => {
             tracing::info!(
-                "[{}::()] coggie detected low quality vc",
-                channel.id, channel.name
+                "[{}::{:?}] coggie detected low quality vc",
+                msg.channel_id, msg.channel_id.name(&ctx).await
             );
 
             #[cfg(feature = "deemix")]
@@ -547,10 +537,10 @@ async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
     let guild_id = guild.id;
 
     tracing::info!(
-        "[{}::{}] asked what track is playing in [{}::{}]",
+        "[{}::{}] asked what track is playing in [{}::{:?}]",
         msg.author.id, msg.author.name,
-        msg.channel.id, msg.channel.name
-    );
+        msg.channel_id, msg.channel_id.name(&ctx).await
+   );
 
 
     let qctx = {
@@ -666,9 +656,9 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     tracing::info!(
-        "[{}::{}] queued track in [{}::{}]",
+        "[{}::{}] queued track in [{}::{:?}]",
         msg.author.id, msg.author.name,
-        msg.channel.id, msg.channel.name
+        msg.channel_id, msg.channel_id.name(&ctx).await
     );
 
     let url = match args.single::<String>() {
@@ -780,9 +770,9 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let guild_id = guild.id;
 
     tracing::info!(
-        "[{}::{}] skipped track in [{}::{}]",
+        "[{}::{}] skipped track in [{}::{:?}]",
         msg.author.id, msg.author.name,
-        msg.channel.id, msg.channel.name
+        msg.channel_id, msg.channel_id.name(&ctx).await
     );
 
     let qctx = ctx.data.write().await
