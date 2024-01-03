@@ -14,7 +14,7 @@ tracing-subscriber = "0.3"
 mockingbird = { path = "../mockingbird", optional=true }
 
 [features]
-default = []
+default = ["mockingbird-core", "mockingbird-deemix", "basic-cmds", "mockingbird-ctrl"]
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
@@ -32,8 +32,8 @@ mockingbird-debug = ["mockingbird?/debug"]
 mockingbird-ytdl = ["mockingbird?/ytdl"]
 
 ################
-# mockingbird compatiable with raw MP3 http uris
-mockingbird-mp3 = ["mockingbird?/wget-mp3"]
+# mockingbird compatiable with raw MP3/FLAC http uris
+mockingbird-http = ["mockingbird?/http-get"]
 
 ################
 # mockingbird compatiable with deep-mixer

@@ -19,13 +19,13 @@ chrono = {version = "^0.4.26", optional = true }
 cutils = { path = "../cutils", features = ["tokio"], optional=true }
 
 [features]
-default = []
+default = ["ytdl", "check", "deemix", "controller", "arl-cmd" "http-get"]
 controller = []
 debug = []
 
 check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]
 ytdl = ["songbird/yt-dlp"]
 deemix = ["dep:serde", "dep:serde_json", "cutils"]
-wget-mp3 = ["dep:reqwest"]
+http-get = ["dep:reqwest"]
 arl-cmd = ["check"]
 set-arl-cmd = []

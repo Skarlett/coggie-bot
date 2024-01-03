@@ -172,6 +172,11 @@ async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, Handle
     return Err(HandlerError::NotImplemented)
 }
 
+#[cfg(feature = "http-get")]
+async fn ph_httpget_player(uri: &str) -> Result<Input, HandlerError> {
+    crate::httpget::get_file(uri).await.map_err(HandlerError::from);
+}
+
 #[cfg(feature = "deemix")]
 async fn ph_deemix_player(uri: &str) -> Result<Input, HandlerError> {
     crate::deemix::deemix(uri).await.map_err(HandlerError::from)
@@ -189,6 +194,11 @@ async fn ph_deemix_player(uri: &str) -> Result<Input, HandlerError> {
 
 #[cfg(not(feature = "ytdl"))]
 async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
+    return Err(HandlerError::NotImplemented)
+}
+
+#[cfg(not(feature = "http-get"))]
+async fn ph_httpget_player(uri: &str) -> Result<Input, HandlerError> {
     return Err(HandlerError::NotImplemented)
 }
 
@@ -213,6 +223,7 @@ async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> st
 enum Players {
     Ytdl,
     Deemix,
+    HttpGet,
 }
 
 impl Players {
@@ -220,9 +231,11 @@ impl Players {
     {
         const DEEMIX: [&'static str; 4] = ["deezer.page.link", "deezer.com", "open.spotify", "spotify.link"];
         const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
+        const HTTPGET: [&'static str; 1] = ["sesh.unallocatedspace.luni"];
 
         if DEEMIX.iter().any(|x|data.contains(x)) { return Some(Self::Deemix) }
         else if YTDL.iter().any(|x|data.contains(x)) {return Some(Self::Ytdl) }
+        else if HTTPGET.iter().any(|x|data.contains(x)) {return Some(Self::HttpGet) }
         else { return None }
     }
 
@@ -230,7 +243,8 @@ impl Players {
     {
         let input = match self {
             Self::Deemix => ph_deemix_player(uri).await,
-            Self::Ytdl => ph_ytdl_player(uri).await
+            Self::Ytdl => ph_ytdl_player(uri).await,
+            Self::HttpGet => ph_httpget_player(uri).await,
         }?;
 
         let (track, track_handle) = create_player(input);
@@ -242,9 +256,11 @@ impl Players {
     async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
         let mut buf = VecDeque::new();
         match self {
+            Self::HttpGet => buf.push_back(uri.to_owned()),
             Self::Deemix => fan_deezer(uri, &mut buf).await,
             Self::Ytdl => fan_ytdl(uri, &mut buf).await 
         }?;
+
         return Ok(buf)
     }
 }
@@ -654,7 +670,6 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 #[aliases("play")]
 #[only_in(guilds)]
 async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-
     tracing::info!(
         "[{}::{}] queued track in [{}::{:?}]",
         msg.author.id, msg.author.name,

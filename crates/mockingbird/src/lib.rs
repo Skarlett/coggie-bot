@@ -12,7 +12,6 @@ pub mod check;
 mod testsuite;
 
 use serenity::client::ClientBuilder;
-
 pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird initializing...");
     use songbird::SerenityInit;
