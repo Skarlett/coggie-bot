@@ -19,7 +19,7 @@ chrono = {version = "^0.4.26", optional = true }
 cutils = { path = "../cutils", features = ["tokio"], optional=true }
 
 [features]
-default = ["ytdl", "check", "deemix", "controller", "arl-cmd" "http-get"]
+default = []
 controller = []
 debug = []
 
