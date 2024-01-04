@@ -5,6 +5,10 @@ pub mod player;
 #[cfg(feature = "deemix")]
 mod deemix;
 
+
+// #[cfg(feature = "http-get")]
+// pub mod httpget;
+
 #[cfg(feature = "check")]
 pub mod check;
 
