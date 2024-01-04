@@ -5,6 +5,10 @@ pub mod player;
 #[cfg(feature = "deemix")]
 mod deemix;
 
+
+// #[cfg(feature = "http-get")]
+// pub mod httpget;
+
 #[cfg(feature = "check")]
 pub mod check;
 
@@ -12,7 +16,6 @@ pub mod check;
 mod testsuite;
 
 use serenity::client::ClientBuilder;
-
 pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     tracing::info!("Mockingbird initializing...");
     use songbird::SerenityInit;

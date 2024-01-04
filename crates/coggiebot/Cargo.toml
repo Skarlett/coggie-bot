@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.15"
+version = "1.4.17"
 edition = "2021"
 
 [dependencies]
@@ -32,8 +32,8 @@ mockingbird-debug = ["mockingbird?/debug"]
 mockingbird-ytdl = ["mockingbird?/ytdl"]
 
 ################
-# mockingbird compatiable with raw MP3 http uris
-mockingbird-mp3 = ["mockingbird?/wget-mp3"]
+# mockingbird compatiable with raw MP3/FLAC http uris
+mockingbird-http = ["mockingbird?/http-get"]
 
 ################
 # mockingbird compatiable with deep-mixer

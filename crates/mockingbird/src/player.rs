@@ -17,7 +17,7 @@ use songbird::{
     Songbird,
     Call, 
     create_player,
-    input::{Input, error::Error as SongbirdError},
+    input::{ffmpeg, Input, error::Error as SongbirdError},
     tracks::{TrackHandle, Track},
     TrackEvent
 };
@@ -27,6 +27,7 @@ use std::{
     time::Duration, collections::VecDeque,
     sync::Arc,
     collections::HashMap,
+    path::PathBuf,
 };
 
 use tokio::{
@@ -34,6 +35,8 @@ use tokio::{
     process::Command,
 };
 
+use tokio::io::AsyncWriteExt;
+use serenity::futures::StreamExt;
 use cutils::{availbytes, bigpipe, max_pipe_size};
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
@@ -45,23 +48,30 @@ const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 #[commands(join, leave, queue, now_playing, skip)]
 struct BetterPlayer;
 
-async fn next_track(call: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError> {
+async fn next_track(call: &mut Call, uri: &str, guild_id: u64) -> Result<TrackHandle, HandlerError> {
+    tracing::info!("Now playing: {}", uri);
     let player = Players::from_str(&uri)
         .ok_or_else(|| HandlerError::NotImplemented)?;
     
-    player.play(call, &uri).await
+    player.play(call, &uri, guild_id).await
 }
 
 #[allow(unused_variables)]
 #[derive(Debug)]
-enum HandlerError {
+pub enum HandlerError {
     Songbird(SongbirdError),
     IOError(std::io::Error),
     Serenity(serenity::Error),
-    
+
+    #[cfg(feature = "http-get")]
+    Reqwest(reqwest::Error),
+
+    #[cfg(feature = "http-get")]
+    UnsupportedMediaType(String),
+
     #[cfg(feature = "deemix")]
     DeemixError(crate::deemix::DeemixError),
-    
+
     NotImplemented,
     NoCall
 }
@@ -81,6 +91,13 @@ impl From<SongbirdError> for HandlerError {
 impl From<std::io::Error> for HandlerError {
     fn from(err: std::io::Error) -> Self {
         HandlerError::IOError(err)
+    }
+}
+
+#[cfg(feature = "http-get")]
+impl From<reqwest::Error> for HandlerError {
+    fn from(err: reqwest::Error) -> Self {
+        HandlerError::Reqwest(err)
     }
 }
 
@@ -106,7 +123,15 @@ impl std::fmt::Display for HandlerError {
             
             Self::NoCall
                 => write!(f, "Not in a voice channel to play in"),
-            
+
+            #[cfg(feature = "http-get")]
+            Self::UnsupportedMediaType(content_type)
+                => write!(f, "Content type is not supported [{}]", content_type),
+
+            #[cfg(feature = "http-get")]
+            Self::Reqwest(err)
+                => write!(f, "Reqwest error: {}", err),
+
             #[cfg(feature = "deemix")]
             Self::DeemixError(crate::deemix::DeemixError::BadJson(err))
                 => write!(f, "Deemix error: {}", err),
@@ -172,13 +197,37 @@ async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, Handle
     return Err(HandlerError::NotImplemented)
 }
 
+#[cfg(feature = "http-get")]
+async fn ph_httpget_player(
+    uri: &str,
+    guild_id: u64,
+) -> (PathBuf, Result<Input, HandlerError>) {
+    tracing::info!("[HTTP-GET] Downloading: {}", uri);
+    // let fp = tempfile::tempfile()?;
+    let fp = std::env::temp_dir()
+        .join("coggiebot")
+        .join(guild_id.to_string());
+
+    match tokio::fs::create_dir_all(&fp).await {
+        Ok(_) => {}
+        Err(e) => {
+            tracing::error!("Failed to create temp dir: {}", e);
+            return (fp, Err(HandlerError::IOError(e)));
+        }
+    }
+
+    (fp.clone(), get_file(uri, guild_id, &fp).await.map_err(HandlerError::from))
+}
+
 #[cfg(feature = "deemix")]
 async fn ph_deemix_player(uri: &str) -> Result<Input, HandlerError> {
+    tracing::info!("[Deemix] Streaming: {}", uri);
     crate::deemix::deemix(uri).await.map_err(HandlerError::from)
 }
 
 #[cfg(feature = "ytdl")]
 async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
+    tracing::info!("[YTDLP] Streaming: {}", uri);
     return songbird::ytdl(uri).await.map_err(HandlerError::from)
 }
 
@@ -190,6 +239,11 @@ async fn ph_deemix_player(uri: &str) -> Result<Input, HandlerError> {
 #[cfg(not(feature = "ytdl"))]
 async fn ph_ytdl_player(uri: &str) -> Result<Input, HandlerError> {
     return Err(HandlerError::NotImplemented)
+}
+
+#[cfg(not(feature = "http-get"))]
+async fn ph_httpget_player(uri: &str) -> (FilePath, Result<Input, HandlerError>) {
+    return (FilePath::new(), Err(HandlerError::NotImplemented))
 }
 
 async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> std::io::Result<()> {
@@ -209,10 +263,31 @@ async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> st
     Ok(())
 }
 
+// #[cfg(feature = "http-get")]
+// // exiftool -b -Duration "$file"
+// async fn get_duration_file(file: &str) -> std::io::Result<std::time::Duration> {
+//     let child = Command::new("exiftool")
+//         .args(&["-b", "-Duration", file])
+//         .stdout(Stdio::piped())
+//         .spawn()
+//         .unwrap();
+
+//     let stdout = child.wait_with_output().await.unwrap();
+//     let mut lines = stdout.stdout.lines();
+
+//     if let Some(line) = lines.next_line().await? {
+//         return std::time::Duration::from_secs_f32(line.parse::<f32>())
+//     }
+//     Ok(())
+// }
+
+
+
 #[derive(PartialEq, Eq)]
-enum Players {
+pub enum Players {
     Ytdl,
     Deemix,
+    HttpGet,
 }
 
 impl Players {
@@ -220,17 +295,44 @@ impl Players {
     {
         const DEEMIX: [&'static str; 4] = ["deezer.page.link", "deezer.com", "open.spotify", "spotify.link"];
         const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
+        const HTTPGET: [&'static str; 2] = ["tape.unallocatedspace.luni", "tape.cypress.local"];
 
         if DEEMIX.iter().any(|x|data.contains(x)) { return Some(Self::Deemix) }
         else if YTDL.iter().any(|x|data.contains(x)) {return Some(Self::Ytdl) }
+        else if HTTPGET.iter().any(|x|data.contains(x)) {return Some(Self::HttpGet) }
         else { return None }
     }
 
-    async fn play(&self, handler: &mut Call, uri: &str) -> Result<TrackHandle, HandlerError>
+    async fn play(&self, handler: &mut Call, uri: &str, guild_id: u64) -> Result<TrackHandle, HandlerError>
     {
+        let mut is_tempfile = false;
+
         let input = match self {
             Self::Deemix => ph_deemix_player(uri).await,
-            Self::Ytdl => ph_ytdl_player(uri).await
+            Self::Ytdl => ph_ytdl_player(uri).await,
+            Self::HttpGet => {
+                let (fp, result) = ph_httpget_player(
+                    uri,
+                    guild_id
+                ).await;
+
+                match result {
+                    Ok(input) => {
+                        let (track, track_handle) = create_player(input);
+                        track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
+                        handler.enqueue(track);
+                        return Ok(track_handle)
+                    }
+                    Err(e) => {
+
+                        if let Ok(true) = tokio::fs::try_exists(&fp).await {
+                            tokio::fs::remove_file(&fp).await;
+                        }
+
+                        return Err(e)
+                    }
+                }
+            }
         }?;
 
         let (track, track_handle) = create_player(input);
@@ -242,10 +344,73 @@ impl Players {
     async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
         let mut buf = VecDeque::new();
         match self {
+            Self::HttpGet => {buf.push_back(uri.to_owned()); Ok(1)},
             Self::Deemix => fan_deezer(uri, &mut buf).await,
             Self::Ytdl => fan_ytdl(uri, &mut buf).await 
         }?;
+
         return Ok(buf)
+    }
+}
+
+#[cfg(feature = "http-get")]
+pub fn human_filesize(n: u64) -> String {
+    let base: u64 = 1024;
+    let suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    let i = (n as f64).log(base as f64).floor() as u32;
+    let power = base.pow(i);
+    let size = n as f64 / power as f64;
+    return format!("{}{}", size, suffixes[i as usize]);
+}
+
+#[cfg(feature = "http-get")]
+pub async fn get_file(
+    uri: &str,
+    vcid: u64,
+    fp: &PathBuf,
+    // key: [u8; 16]
+) -> Result<Input, HandlerError> {
+    use songbird::input::Metadata;
+
+    let fp = fp.join("Playing");
+    let resp = reqwest::get(uri).await?;
+    let headers = resp.headers();
+    let content_type = headers.get("Content-Type").unwrap();
+    // let content_disposition = headers.get("Content-Disposition").unwrap();
+
+    let content_type = content_type.to_str().unwrap();
+    match content_type {
+        "audio/x-flac" | "audio/mp3" => {
+            // let content_disposition = headers.get("Content-Disposition").unwrap();
+
+            // Content-Disposition: attachment; filename*=UTF-8''Geostigma.mp3
+            // let filename = content_disposition.to_str().unwrap().split("filename*=UTF-8''").last().unwrap();
+            tracing::info!("writing: {}", fp.display());
+            let mut fd = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(&fp)
+                .await?;
+
+            let mut stream = resp.bytes_stream();
+            while let Some(item) = stream.next().await {
+                let chunk = item?;
+                fd.write_all(&chunk).await?;
+            }
+
+            fd.flush().await?;
+            fd.sync_all().await?;
+
+            tracing::info!("wrote: {} [{}]", fp.display(), human_filesize(fd.metadata().await?.len()));
+
+            let input = songbird::input::ffmpeg(&fp).await.map_err(HandlerError::from);
+            input
+        }
+
+        content_type => {
+            tracing::error!("{}: content type is not supported", uri);
+            return Err(HandlerError::UnsupportedMediaType(content_type.to_owned()))
+        }
     }
 }
 
@@ -264,6 +429,15 @@ pub struct QueueContext {
     http: Arc<Http>,
     manager: Arc<Songbird>,
     cold_queue: Arc<RwLock<VecDeque<String>>>,
+}
+
+struct RemoveTempFile(PathBuf);
+#[async_trait]
+impl VoiceEventHandler for RemoveTempFile {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        let _ = tokio::fs::remove_file(&self.0).await;
+        None
+    }
 }
 
 struct AbandonedChannel(Arc<QueueContext>);
@@ -293,12 +467,22 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     let mut call = handler.lock().await;
 
     while let Some(uri) = qctx.cold_queue.write().await.pop_front() {
-        match next_track(&mut call, &uri).await {
+        let uri = dbg!(uri);
+        match next_track(&mut call, &uri, qctx.guild_id.0).await {
             Ok(track) => {
-                track.add_event(
-                    Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                    PreemptLoader(qctx.clone())
-                ).unwrap();
+                let track = dbg!(track);
+                if let Some(duration) = track.metadata().duration {
+                    if duration < TS_PRELOAD_OFFSET {
+                        tracing::warn!("No duration provided, preloading disabled");
+                        break
+                    }
+
+                    tracing::info!("Preload Event Added from Duration");
+                    track.add_event(
+                        Event::Delayed(duration - TS_PRELOAD_OFFSET),
+                        PreemptLoader(qctx.clone())
+                    ).unwrap();
+                }
                 break
             },
             Err(e) => {
@@ -313,7 +497,16 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
                     
                     HandlerError::IOError(e) 
                         => format!("IO Error: {}", e.kind()),
-                    
+
+                    #[cfg(feature = "http-get")]
+                    HandlerError::UnsupportedMediaType(content_type)
+                        => format!("Content type is not supported [{}]", content_type),
+
+                    #[cfg(feature = "http-get")]
+                    HandlerError::Reqwest(err)
+                        => format!("Reqwest error: {}", err),
+
+
                     #[cfg(feature = "deemix")]
                     HandlerError::DeemixError(crate::deemix::DeemixError::BadJson(text))
                         => {
@@ -387,7 +580,7 @@ async fn leave_routine (
         let mut call = handler.lock().await;
         call.remove_all_global_events();
         call.stop();
-    }    
+    }
     
     manager.remove(guild_id).await?;
 
@@ -651,10 +844,9 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
-#[aliases("play")]
+#[aliases("play", "p", "q")]
 #[only_in(guilds)]
 async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-
     tracing::info!(
         "[{}::{}] queued track in [{}::{:?}]",
         msg.author.id, msg.author.name,
