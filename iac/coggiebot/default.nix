@@ -76,6 +76,13 @@ let
             dependencies = [];
           }
 
+          { name = "mockingbird-http";
+            dependencies = [];
+            pkg-override = (prev: {
+              buildInputs = prev.buildInputs ++ [ pkgs.exiftool ];
+            });
+          }
+
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];
