@@ -2,7 +2,7 @@
 { perlPackages }:
 with perlPackages;
 buildPerlPackage {
-  pname = "coggie-cleanup-deemix";
+  pname = "coggie-cleanup";
   version = "0.1.0";
   outputs = ["out"];
 
