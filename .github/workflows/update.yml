@@ -2,7 +2,7 @@ name: Automated-Update
 
 on:
   push:
-    branches: [ "master", "better-workflow" ]
+    branches: [ "master" ]
   schedule:
     - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
  
@@ -26,6 +26,7 @@ jobs:
     - name: Update flake.lock
       uses: DeterminateSystems/update-flake-lock@main
       with:
+        token: ${{ secrets.PAT_TOKEN }}
         pr-title: "Update flake.lock" # Title of PR to be created
         pr-labels: |                  # Labels to be set on the PR
           dependencies
