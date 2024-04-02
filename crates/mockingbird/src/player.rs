@@ -45,7 +45,7 @@ const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 // const MAX_ENQUEUED: u16 = 300;
 
 #[group]
-#[commands(join, leave, queue, now_playing, skip)]
+#[commands(join, leave, queue, now_playing, skip, shuffle)]
 struct BetterPlayer;
 
 async fn next_track(call: &mut Call, uri: &str, guild_id: u64) -> Result<TrackHandle, HandlerError> {
