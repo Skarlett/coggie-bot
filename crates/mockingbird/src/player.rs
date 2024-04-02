@@ -1025,6 +1025,64 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     Ok(())
 }
 
+
+#[command]
+#[only_in(guilds)]
+async fn shuffle(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    tracing::info!(
+        "[{}::{}] shuffled playlist in [{}::{:?}]",
+        msg.author.id, msg.author.name,
+        msg.channel_id, msg.channel_id.name(&ctx).await
+    );
+
+    let qctx = ctx.data.write().await
+        .get_mut::<LazyQueueKey>().unwrap()
+        .get_mut(&guild_id).unwrap().clone();
+
+    {
+        use rand::thread_rng;
+        use rand::seq::SliceRandom;
+
+        let mut write_lock = qctx.cold_queue.write().await;
+        let mut vec = write_lock.iter().cloned().collect::<Vec<_>>();
+
+        vec.shuffle(&mut thread_rng());
+        write_lock.clear();
+        write_lock.extend(vec);
+    }
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    let handler_lock = match manager.get(guild_id) {
+        Some(x) => x,
+        None => {
+            msg.channel_id
+               .say(&ctx.http, "Not in a voice channel to play in")
+               .await?;
+            return Ok(())
+        }
+    };
+
+    msg.channel_id
+       .say(
+            &ctx.http,
+            format!("shuffled."),
+       )
+       .await?;
+
+    let mut call = handler_lock.lock().await;
+    let queue = call.queue();
+    let _ = queue.skip();
+
+    Ok(())
+}
+
 #[group]
 #[commands(setarl, getarl)]
 struct Dangerous;
