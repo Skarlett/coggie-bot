@@ -295,7 +295,11 @@ impl Players {
     {
         const DEEMIX: [&'static str; 4] = ["deezer.page.link", "deezer.com", "open.spotify", "spotify.link"];
         const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
-        const HTTPGET: [&'static str; 2] = ["tape.unallocatedspace.luni", "tape.cypress.local"];
+        const HTTPGET: [&'static str; 3] = [
+            "tape.unallocatedspace.luni",
+            "tape.cypress.local",
+            "vxsesh.cypress.local"
+        ];
 
         if DEEMIX.iter().any(|x|data.contains(x)) { return Some(Self::Deemix) }
         else if YTDL.iter().any(|x|data.contains(x)) {return Some(Self::Ytdl) }
@@ -380,7 +384,7 @@ pub async fn get_file(
 
     let content_type = content_type.to_str().unwrap();
     match content_type {
-        "audio/x-flac" | "audio/mpeg" => {
+        "audio/x-flac" | "audio/mpeg" | "audio/wav" => {
             // let content_disposition = headers.get("Content-Disposition").unwrap();
 
             // Content-Disposition: attachment; filename*=UTF-8''Geostigma.mp3
