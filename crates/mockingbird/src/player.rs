@@ -203,7 +203,13 @@ async fn ph_httpget_player(
     guild_id: u64,
 ) -> (PathBuf, Result<Input, HandlerError>) {
     tracing::info!("[HTTP-GET] Downloading: {}", uri);
+
     // let fp = tempfile::tempfile()?;
+    use rand::Rng;
+    let id: String = (0..12)
+        .map(|_| char::from(rand::thread_rng().gen_range(97..123)))
+        .collect();
+
     let fp = std::env::temp_dir()
         .join("coggiebot")
         .join(guild_id.to_string());
@@ -215,6 +221,7 @@ async fn ph_httpget_player(
             return (fp, Err(HandlerError::IOError(e)));
         }
     }
+    let fp = fp.join(format!("{}", id));
 
     (fp.clone(), get_file(uri, guild_id, &fp).await.map_err(HandlerError::from))
 }
@@ -376,17 +383,20 @@ pub async fn get_file(
 ) -> Result<Input, HandlerError> {
     use songbird::input::Metadata;
 
-    let fp = fp.join("Playing");
-    let resp = reqwest::get(uri).await?;
+    let client = reqwest::ClientBuilder::new()
+        .https_only(false)
+        .tls_sni(false)
+        .build()?;
+
+    let resp = client.get(uri).send().await?;
     let headers = resp.headers();
     let content_type = headers.get("Content-Type").unwrap();
     // let content_disposition = headers.get("Content-Disposition").unwrap();
 
     let content_type = content_type.to_str().unwrap();
     match content_type {
-        "audio/x-flac" | "audio/mpeg" | "audio/wav" => {
+        "audio/x-flac" | "audio/mpeg" | "audio/wav" | "audio/x-wav" => {
             // let content_disposition = headers.get("Content-Disposition").unwrap();
-
             // Content-Disposition: attachment; filename*=UTF-8''Geostigma.mp3
             // let filename = content_disposition.to_str().unwrap().split("filename*=UTF-8''").last().unwrap();
             tracing::info!("writing: {}", fp.display());
@@ -398,8 +408,8 @@ pub async fn get_file(
 
             let mut stream = resp.bytes_stream();
             while let Some(item) = stream.next().await {
-                let chunk = item?;
-                fd.write_all(&chunk).await?;
+                let chunk = &item?;
+                fd.write_all(chunk).await?;
             }
 
             fd.flush().await?;
