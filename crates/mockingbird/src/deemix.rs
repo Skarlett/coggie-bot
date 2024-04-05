@@ -187,6 +187,7 @@ pub async fn _deemix(
     tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
     let mut deemix = std::process::Command::new("deemix-stream")
         .arg("-hq")
+        .arg("1")
         .arg(uri.trim())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
