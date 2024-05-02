@@ -110,7 +110,9 @@
               group = "coggiebot";
             };
             users.groups.coggiebot = {};
-
+            systemd.tmpfiles.rules = [
+              "d /var/lib/coggiebot 700 coggiebot coggiebot"
+            ];
             systemd.services.coggiebot = {
               wantedBy = [ "multi-user.target" ];
               after = [ "network.target" ];
