@@ -1005,7 +1005,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
             // --- START
             // WARNING: removing these curly braces will cause a deadlock.
-            // amount of hours spent on this: 3
+            // amount of hours spent on this: 5
             {
                 qctx.cold_queue.write().await.queue.extend(uris.drain(..));
 
