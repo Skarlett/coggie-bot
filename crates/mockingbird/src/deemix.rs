@@ -25,6 +25,11 @@ use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
 use tokio::runtime::Handle;
 use tracing::debug;
 
+// This causes zombie processes to appear
+// but are wiped out after being dropped
+// generally there is
+// N preloaded + Calls will equal the number of
+// current zombie procs
 #[derive(Debug)]
 pub struct PreloadChildContainer(pub Vec<Child>);
 
