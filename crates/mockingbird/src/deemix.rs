@@ -1,4 +1,10 @@
-use std::io::{BufReader, BufRead, Read};
+use std::{
+    io::{BufReader, BufRead, Read},
+    os::fd::RawFd,
+    mem,
+    process::{Child, Stdio},
+    time::Duration
+};
 use songbird::{
     constants::SAMPLE_RATE_RAW,
     input::{
@@ -8,17 +14,70 @@ use songbird::{
         Container,
         Metadata,
         Input,
-        restartable::Restart
+        restartable::Restart,
+        Reader,
     },
-};
-use std::{
-    process::Stdio,
-    time::Duration
 };
 use serde_json::Value;
 use std::os::fd::AsRawFd;
 use tokio::io::AsyncReadExt;
 use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
+use tokio::runtime::Handle;
+use tracing::debug;
+
+#[derive(Debug)]
+pub struct PreloadChildContainer(pub Vec<Child>);
+
+impl PreloadChildContainer {
+    /// Create a new [`ChildContainer`] from a child process
+    pub fn new(children: Vec<Child>) -> Self {
+        Self(children)
+    }
+
+    pub fn inner(mut self) -> Vec<Child> {
+        self.0.drain(..).collect()
+    }
+}
+
+impl Drop for PreloadChildContainer {
+    fn drop(&mut self) {
+        let children: Vec<_> = self.0.drain(..).collect();
+
+        if let Ok(handle) = Handle::try_current() {
+            handle.spawn_blocking(move || {
+                cleanup_child_processes(children);
+            });
+        } else {
+            cleanup_child_processes(children);
+        }
+    }
+}
+
+impl From<PreloadChildContainer> for Reader {
+    fn from(value: PreloadChildContainer) -> Self {
+        children_to_reader::<f32>(value.inner())
+    }
+}
+
+fn cleanup_child_processes(mut children: Vec<Child>) {
+    let attempt = if let Some(child) = children.pop() {
+        child.wait_with_output()
+    } else {
+        return;
+    };
+
+    let attempt = attempt.and_then(|_| {
+        children
+            .iter_mut()
+            .rev()
+            .try_for_each(|child| child.wait().map(|_| ()))
+    });
+
+    if let Err(e) = attempt {
+        debug!("Error awaiting child process: {:?}", e);
+    }
+}
+
 
 #[derive(Debug)]
 pub enum DeemixError {
@@ -272,18 +331,10 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
 }
 
 pub struct PreloadInput {
-    pub children: Vec<std::process::Child>,
+    ffmpeg_stdout: RawFd,
+    pub children: PreloadChildContainer,
     pub metadata: Option<DeemixMetadata>,
     balloon: bool,
-}
-
-impl Drop for PreloadInput {
-    fn drop(&mut self) {
-        for child in self.children.iter_mut() {
-            child.kill().unwrap();
-            child.wait().unwrap();
-        }
-    }
 }
 
 pub async fn _deemix_preload(
@@ -293,6 +344,8 @@ pub async fn _deemix_preload(
     pipesize: i32
 ) -> Result<PreloadInput, DeemixError>
 {
+    let mut children = Vec::with_capacity(3);
+
     tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
     let (mut deemix, metadata) =  _deemix_stream(uri, pipesize).await?;
 
@@ -306,16 +359,22 @@ pub async fn _deemix_preload(
     
     let ffmpeg = _ffmpeg(output, pre_args, pipesize)?;
  
-    let mut children = Vec::with_capacity(3);
     children.push(deemix);
+
     if let Some(balloon) = balloon_proc {
         children.push(balloon);
     }
+
     children.push(ffmpeg);
 
+    let stdout_fd = children.last().unwrap().stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+
     return Ok(PreloadInput {
-        children,
         balloon,
+        ffmpeg_stdout: stdout_fd,
+        children: PreloadChildContainer::new(children),
         metadata: Some(metadata),
     })
 }
@@ -330,20 +389,15 @@ pub async fn _deemix(
     let pipesize = max_pipe_size().await.unwrap();
     
     let mut preload_input = _deemix_preload(uri, pre_args, balloon, pipesize).await?;
-    let ffmpeg = preload_input.children.last().unwrap();
-
-    let ffmpeg_ptr = ffmpeg.stdout.as_ref()
-        .ok_or(SongbirdError::Stdout)?
-        .as_raw_fd();
-
     let now = std::time::Instant::now();
+
     let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
         .unwrap_or_else(|_| "0.8".to_string())
         .parse::<f32>()
         .unwrap_or(0.8);
 
     loop {
-        let avail = unsafe { availbytes(ffmpeg_ptr) };            
+        let avail = unsafe { availbytes(preload_input.ffmpeg_stdout) };
         let mut percentage = 0.0;
         if 0 > avail {
             break
@@ -368,7 +422,7 @@ pub async fn _deemix(
     Ok((
         Input::new(
         true,
-        children_to_reader::<f32>(preload_input.children.drain(..).collect()),
+        children_to_reader::<f32>(preload_input.children.inner()),
         Codec::FloatPcm,
         Container::Raw,
         preload_input.metadata.clone().map(|x| x.into()),
