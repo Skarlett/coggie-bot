@@ -200,16 +200,11 @@ async fn preload_radio_track(
 
 async fn play_preload_radio_track(
     call: &mut Call,
-    radio_preload: &mut PreloadInput,
+    radio_preload: PreloadInput,
     qctx: Arc<QueueContext>
 )
 {
-    let preload_result = Players::play_preload(call, &mut radio_preload.children,
-        radio_preload
-            .metadata
-            .clone()
-            .map(|x| x.into())
-    ).await;
+    let preload_result = Players::play_preload(call, radio_preload).await;
 
     match preload_result {
         Err(why) =>{
@@ -247,22 +242,15 @@ impl VoiceEventHandler for TrackEndLoader {
 
             else if cold_queue.use_radio {
                 // if the user queue is empty, try the preloaded radio track
-                if let Some(ref mut radio_preload) = cold_queue.radio_next {
+                if let Some(radio_preload) = cold_queue.radio_next.take() {
                     play_preload_radio_track(&mut call, radio_preload, self.0.clone()).await;
                     cold_queue.radio_next = None;
+                    let _ = preload_radio_track(&mut cold_queue).await;
+                    return None;
                 }
             }
 
-
-            cold_queue.radio_queue.clear();
-            if let Some(mut x) = cold_queue.radio_next.take() {
-                for mut c in x.children.drain(..) {
-                    let _ = c.kill();
-                    let _ = c.wait();
-                }
-            }
             cold_queue.radio_next = None;
-
             let _ = preload_radio_track(&mut cold_queue).await;
         }
         None
@@ -532,23 +520,23 @@ impl Players {
 
     async fn play_preload(
         handler: &mut Call,
-        children:&mut Vec<std::process::Child>,
-        metadata: Option<MetadataType>
+        preload: PreloadInput // &mut Vec<std::process::Child>,
+        // metadata: Option<MetadataType>
     )
     -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
     {
         let input = Input::new(
             true, 
-            children_to_reader::<f32>(children.drain(..).collect()),
+            children_to_reader::<f32>(preload.children.inner()),
             Codec::FloatPcm,
             Container::Raw,
-            metadata.clone().map(|x| x.into())
+            preload.metadata.clone().map(|x| x.into())
         );
 
         let (track, track_handle) = create_player(input);
         handler.enqueue(track);
 
-        Ok((track_handle, metadata))
+        Ok((track_handle, preload.metadata.map(|x| x.into())))
     }
 
     async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
@@ -567,12 +555,6 @@ async fn user_queue_routine(
     qctx_arc: Arc<QueueContext>
 ) -> Result<bool, HandlerError> {
     let mut tries = 4;
-    // let handler = qctx.manager.get(qctx.guild_id)
-    //     .ok_or_else(|| HandlerError::NoCall)?;
-
-    // let mut call = handler.lock().await;
-    // let mut cold_queue = qctx.cold_queue.write().await;
-
     while let Some(uri) = cold_queue.queue.pop_front() {
         let player = Players::from_str(&uri)
             .ok_or_else(|| HandlerError::NotImplemented)?;
