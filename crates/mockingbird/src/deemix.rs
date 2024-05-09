@@ -60,11 +60,15 @@ impl From<PreloadChildContainer> for Reader {
 }
 
 fn cleanup_child_processes(mut children: Vec<Child>) {
-    let attempt = if let Some(child) = children.pop() {
-        child.wait_with_output()
+    let attempt = if let Some(mut child) = children.pop() {
+        child.wait()
     } else {
         return;
     };
+
+    for x in children.iter_mut() {
+        x.wait();
+    }
 
     let attempt = attempt.and_then(|_| {
         children
