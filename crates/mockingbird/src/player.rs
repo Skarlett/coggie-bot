@@ -222,7 +222,6 @@ async fn play_preload_radio_track(
 )
 {
     let preload_result = Players::play_preload(call, radio_preload.new_handle().into(), metadata).await;
-
     match preload_result {
         Err(why) =>{
             tracing::error!("Failed to play radio track: {}", why);
