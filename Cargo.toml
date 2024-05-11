@@ -3,5 +3,4 @@ members = [
   "crates/coggiebot",
   "crates/mockingbird",
   "crates/cutils",
-  "crates/balloon"
 ]
