@@ -1,0 +1,65 @@
+[package]
+name = "coggiebot"
+version = "1.4.15"
+edition = "2021"
+
+[dependencies]
+serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework", "voice", "cache"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+structopt = { version = "0.3", default-features = false }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+mockingbird = { path = "../mockingbird", optional=true }
+
+[features]
+default = ["mockingbird-radio", "mockingbird-deemix"]
+list-feature-cmd = []
+basic-cmds = []
+bookmark = []
+
+################
+# mockingbird features
+mockingbird-core = ["dep:mockingbird"]
+
+mockingbird-arl-cmd = ["mockingbird?/arl-cmd"]
+mockingbird-ctrl = ["mockingbird?/controller"]
+mockingbird-debug = ["mockingbird?/debug"]
+mockingbird-radio = ["mockingbird?/radio"]
+
+################
+# mockingbird is compatiable with youtube & soundcloud
+mockingbird-ytdl = ["mockingbird?/ytdl"]
+
+################
+# mockingbird compatiable with raw MP3 http uris
+mockingbird-mp3 = ["mockingbird?/wget-mp3"]
+
+################
+# mockingbird compatiable with deep-mixer
+mockingbird-deemix = ["mockingbird?/deemix"]
+
+################
+mockingbird-deemix-check = ["mockingbird?/check"]
+
+################
+# mockingbird compatiable with spotify
+# mockingbird-spotify = ["mockingbird-deemix", "dep:serde", "dep:serde_derive", "dep:serde_json"]
+
+#########
+# enable meme commands
+memes = []
+
+[package.metadata.nix]
+app = true
+build = true
+library = true
+systems = [
+    "aarch64-linux",
+    "aarch64-darwin",
+    "i686-linux",
+    "x86_64-darwin",
+    "x86_64-linux",
+]
+

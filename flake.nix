@@ -1,18 +1,13 @@
 {
-
   description = "Open source discord utility bot";
   inputs = {
     nixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs =
-    { self, nixpkgs, flake-utils, naersk, crane }:
+    { self, nixpkgs, flake-utils, naersk}:
 
     rec {
       inherit (flake-utils.lib.eachDefaultSystem (system:
@@ -24,49 +19,77 @@
           stdenv = pkgs.stdenv;
           naerk-lib = pkgs.callPackage naersk { };
           recursiveMerge = pkgs.callPackage ./iac/lib.nix {};
-          cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; };
-
-          features = with cogpkgs.features; [
-            basic-cmds
-            bookmark
-            mockingbird
-          ];
+          
+          deemix-stream = pkgs.python3Packages.callPackage ./sbin/deemix-stream {};
+          cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
+          stable-features = (with cogpkgs.features; [
+              basic-cmds
+              bookmark
+              list-feature-cmd
+              mockingbird-core
+              mockingbird-ctrl
+              mockingbird-ytdl
+              mockingbird-deemix
+              mockingbird-deemix-check
+              mockingbird-arl-cmd
+              mockingbird-debug
+              mockingbird-radio
+          ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
+<<<<<<< HEAD
             features-list = features;
+=======
+            features-list = stable-features;
+>>>>>>> radio-station
           };
 
-          config = {
-            prefixes = [];
-            bookmark_emoji = "\u{1F516}";
-            dj_room = [ 123456789 ];
-            features = (cogpkgs.which-features coggiebot-stable);
-          };
+          non-nixos = (pkgs.callPackage ./iac/linux) { features=cogpkgs.features; };
 
-          vanilla-linux = (pkgs.callPackage ./iac/vanilla-linux/default.nix) {
+          vanilla-linux = non-nixos {
             inherit installDir;
             coggiebot = coggiebot-stable;
-          } ;
-
-          # Automatically adds a pre-release if able to
-          # beta-features is hard coded with the purpose of
-          # each branch specifying the exact features its developing
-          coggiebot-pre-release =
-            cogpkgs.mkCoggiebot {
-              features-list = with cogpkgs.features;
-                [ mockingbird ];
+            repo = {
+              name = "coggie-bot";
+              owner = "skarlett";
+              branch = "master";
+              deploy = "deploy";
             };
-        in
-          (if (lib.lists.elem cogpkgs.features.pre-release features)
-            then { packages.coggiebot-pre-release = coggiebot-pre-release; }
-           else {} //
+          };
 
+          cictl = pkgs.callPackage ./sbin/cachectl {
+            inherit installDir non-nixos;
+            flakeUri = "github:skarlett/coggie-bot";
+            caches = [
+              { cachix = true;
+                url = "https://coggiebot.cachix.org";
+                uid = "coggiebot";
+              }
+            ];
+            packages = [{
+              ns = "coggiebot-stable";
+              drv = coggiebot-stable;
+            }];
+          };
+        in
         rec {
-          # packages.systemd = vanilla-linux.systemd;
+          packages.check-cache = cictl.check;
+          packages.deemix-stream = deemix-stream; 
+          packages.coggiebot-softcleanup = pkgs.callPackage ./sbin/cleanup-dl {
+            perlPackages = pkgs.perl534Packages;
+          };
+
+          packages.coggiebot-deploy = vanilla-linux;
           packages.default = coggiebot-stable;
+          packages.coggiebot = coggiebot-stable;
+
           packages.coggiebot-stable = coggiebot-stable;
-          packages.deploy = vanilla-linux.deploy;
-        }))) packages;
+          packages.coggiebot-stable-docker = pkgs.callPackage ./iac/coggiebot/docker.nix {
+            coggiebot = coggiebot-stable;
+          };
+
+          packages.cache-target = coggiebot-stable;
+        })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
         with lib;
@@ -74,45 +97,56 @@
         in {
           options.services.coggiebot = {
             enable = mkEnableOption "coggiebot service";
-            api-key = mkOption {
-              type = types.str;
-              example = "<api key>";
+            environmentFile = mkOption {
+              type = types.path;
             };
+
           };
 
           config = mkIf cfg.enable {
+            nix.settings.trusted-public-keys = [
+              "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
+            ];
+
+            users.users.coggiebot = {
+              isSystemUser = true;
+              group = "coggiebot";
+            };
+            users.groups.coggiebot = {};
+
             systemd.services.coggiebot = {
               wantedBy = [ "multi-user.target" ];
               after = [ "network.target" ];
               wants = [ "network-online.target" ];
-              environment.DISCORD_TOKEN = "${cfg.api-key}";
-              serviceConfig.ExecStart = "${pkgs.coggiebot-stable}/bin/coggiebot";
+              serviceConfig.EnvironmentFile = cfg.environmentFile;
+              serviceConfig.ExecStart = "${self.outputs.packages."${pkgs.system}".coggiebot-stable}/bin/coggiebot";
               serviceConfig.Restart = "on-failure";
+              serviceConfig.User = "coggiebot";
             };
           };
         };
 
-      nixosModules.self-update = {pkgs, lib, config, ...}:
-        with lib;
-        let cfg = config.services.self-update;
-        in {
-          options.services.self-update = {
-            enable = mkEnableOption "self-update service";
-            flake = mkOption {
-              type = types.str;
-              example = "github:skarlett/coggiebot";
-            };
-          };
+      # nixosModules.self-update = {pkgs, lib, config, ...}:
+      #   with lib;
+      #   let cfg = config.services.self-update;
+      #   in {
+      #     options.services.self-update = {
+      #       enable = mkEnableOption "self-update service";
+      #       flake = mkOption {
+      #         type = types.str;
+      #         example = "github:skarlett/coggiebot";
+      #       };
+      #     };
 
-          config = mkIf cfg.enable {
-            systemd.services.self-update = {
-              wantedBy = [ "multi-user.target" ];
-              after = [ "network.target" ];
-              wants = [ "network-online.target" ];
-              serviceConfig.ExecStart = "nixos-rebuild --flake '${cfg.flake}' switch";
-              serviceConfig.Restart = "on-failure";
-            };
-          };
-        };
+      #     config = mkIf cfg.enable {
+      #       systemd.services.self-update = {
+      #         wantedBy = [ "multi-user.target" ];
+      #         after = [ "network.target" ];
+      #         wants = [ "network-online.target" ];
+      #         serviceConfig.ExecStart = "nixos-rebuild --flake '${cfg.flake}' switch";
+      #         serviceConfig.Restart = "on-failure";
+      #       };
+      #     };
+      #   };
     };
 }

@@ -25,6 +25,11 @@ DISCORD_TOKEN=XXX nix run github:skarlett/coggie-bot#coggiebot
 
 ## Build
 
+### Use public build cache [Nix] (Optional)
+``` sh
+cachix use coggiebot
+```
+
 #### native
 ```sh
 nix build github:skarlett/coggie-bot
@@ -60,7 +65,7 @@ git push origin your-update-branch
 {
   description = "NixOS configuration";
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-22.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
     coggiebot.url = "github:skarlett/coggie-bot";
   };
 
@@ -76,7 +81,7 @@ git push origin your-update-branch
         ];
         
         services.coggiebot.enable = true;
-        services.coggiebot.api-key = "XXXXXX";
+        services.coggiebot.environmentFile = "/etc/coggiebot/env_vars";
       };
   };
 }
@@ -84,7 +89,6 @@ git push origin your-update-branch
 
 #### continuous integration on debian
 the objective of using a custom package manager is to achieve the goal of self-updating.
-
 ``` sh
 # jump to root
 sudo su
@@ -93,16 +97,14 @@ sudo su
 sh <(curl -L https://nixos.org/nix/install) --daemon
 
 # activate PATH
-# This is automatically appended into ~/.bashrc 
+# This is automatically appended into ~/.bashrc
+# activate in current session
 . ~/.nix-profile/etc/profile.d/nix.sh
 
+# Add flakes to nix
 echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 
 adduser coggiebot
-
-# required 
-echo "DefaultTimeoutStartSec=9999s" >> /etc/systemd/system.conf
-
 mkdir -p /var/coggiebot
 chown coggiebot /var/coggiebot
 su coggiebot
