@@ -251,10 +251,13 @@ impl VoiceEventHandler for TrackEndLoader {
                 // do nothing
             }
 
+            // `PreemptLoader` has not placed anything,
+            // lets fire it's routine on our thread.
             else if let Ok(true) = user_queue_routine(&mut call, &mut cold_queue, self.0.clone()).await {
                 // do nothing.
             }
 
+            // If all else fails, play the preloaded track on radio
             else if cold_queue.use_radio {
                 // if the user queue is empty, try the preloaded radio track
                 if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
@@ -581,20 +584,7 @@ impl Players {
         else { return None }
     }
 
-    // async fn play(&self, handler: &mut Call, uri: &str) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
-    // {
-    //     let (input, metadata) = match self {
-    //         Self::Deemix => ph_deemix_player(uri, false).await,
-    //         Self::Ytdl => ph_ytdl_player(uri).await
-    //     }?;
-
-    //     let (track, track_handle) = create_player(input);
-    //     handler.enqueue(track);
-
-    //     Ok((track_handle, metadata))
-    // }
-
-    async fn play(&self, handler: &mut Call, uri: &str, guild_id: u64) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    async fn play(&self, handler: &mut Call, uri: &str) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
     {
         let (input, metadata) = match self {
             Self::Deemix => ph_deemix_player(uri).await,
@@ -604,15 +594,14 @@ impl Players {
 
                 match result {
                     Ok(input) => {
-                        let (track, track_handle) = create_player(input);
-                        track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
-
+                        let (_track, track_handle) = create_player(input);
+                        let _ = track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
                         // TODO FIXME ADD METADATA
                         return Ok((track_handle, None))
                     }
                     Err(e) => {
                         if let Ok(true) = tokio::fs::try_exists(&fp).await {
-                            tokio::fs::remove_file(&fp).await;
+                            let _ = tokio::fs::remove_file(&fp).await;
                         }
                         // TODO FIXME ADD METADATA
                         return Err(e)
@@ -739,7 +728,7 @@ async fn user_queue_routine(
         let player = Players::from_str(&uri)
             .ok_or_else(|| HandlerError::NotImplemented)?;
 
-        match player.play(call, &uri, qctx_arc.guild_id.0).await {
+        match player.play(call, &uri).await {
             Ok((track, metadata)) => {
                 let track = dbg!(track);
                 if let Some(duration) = track.metadata().duration {
