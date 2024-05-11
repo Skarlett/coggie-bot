@@ -25,6 +25,14 @@ use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
 use tokio::runtime::Handle;
 use tracing::debug;
 
+<<<<<<< HEAD
+=======
+// This causes zombie processes to appear
+// but are wiped out after being dropped
+// generally there is
+// N preloaded + Calls will equal the number of
+// current zombie procs
+>>>>>>> 50219b36fddb211e045330ef4b85c6fd9ecd2f8f
 #[derive(Debug)]
 pub struct PreloadChildContainer(pub Vec<Child>);
 
@@ -60,8 +68,8 @@ impl From<PreloadChildContainer> for Reader {
 }
 
 fn cleanup_child_processes(mut children: Vec<Child>) {
-    let attempt = if let Some(child) = children.pop() {
-        child.wait_with_output()
+    let attempt = if let Some(mut child) = children.pop() {
+        child.wait()
     } else {
         return;
     };
@@ -309,7 +317,6 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
     
     Ok(ffmpeg)
 }
-
 
 pub async fn _deemix(
     uri: &str,
