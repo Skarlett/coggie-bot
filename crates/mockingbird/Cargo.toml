@@ -20,7 +20,7 @@ chrono = {version = "^0.4.26", optional = true }
 cutils = { path = "../cutils", features = ["tokio"], optional=true }
 
 [features]
-default = ["controller", "deemix"]
+default = []
 controller = []
 debug = []
 radio = []
