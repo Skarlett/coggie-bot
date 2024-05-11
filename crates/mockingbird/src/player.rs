@@ -93,10 +93,11 @@ struct TrackRecord {
     end: Instant,
 }
 
+
+
 struct ColdQueue {
     pub queue: VecDeque<String>,
     pub has_played: VecDeque<TrackRecord>,
-
     pub use_radio: bool,
     // urls
     pub radio_queue: VecDeque<String>,
@@ -104,6 +105,7 @@ struct ColdQueue {
 }
 
 pub struct QueueContext {
+    crossfade: Duration,
     guild_id: GuildId,
     invited_from: ChannelId,
     voice_chan_id: GuildChannel,
@@ -584,13 +586,13 @@ impl Players {
         else { return None }
     }
 
-    async fn play(&self, handler: &mut Call, uri: &str) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    async fn play(&self, handler: &mut Call, uri: &str, guild_id: GuildId) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
     {
         let (input, metadata) = match self {
             Self::Deemix => ph_deemix_player(uri).await,
             Self::Ytdl => ph_ytdl_player(uri).await,
             Self::HttpGet => {
-                let (fp, result) = ph_httpget_player(uri).await;
+                let (fp, result) = ph_httpget_player(uri, guild_id.0).await;
 
                 match result {
                     Ok(input) => {
@@ -728,9 +730,8 @@ async fn user_queue_routine(
         let player = Players::from_str(&uri)
             .ok_or_else(|| HandlerError::NotImplemented)?;
 
-        match player.play(call, &uri).await {
+        match player.play(call, &uri, qctx_arc.guild_id).await {
             Ok((track, metadata)) => {
-                let track = dbg!(track);
                 if let Some(duration) = track.metadata().duration {
                     if duration < TS_PRELOAD_OFFSET {
                         tracing::warn!("No duration provided, preloading disabled");
@@ -952,6 +953,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
             QueueContext {
                 guild_id,
                 voice_chan_id,
+                crossfade: Duration::from_secs(0),
                 invited_from: msg.channel_id,
                 cache: ctx.cache.clone(),
                 data: ctx.data.clone(),
