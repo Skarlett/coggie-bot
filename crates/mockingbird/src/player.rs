@@ -45,10 +45,14 @@ use tokio::{
 
 };
 
+use songbird::input::cached::Compressed;
+use std::sync::{Mutex};
+
+
 use cutils::{availbytes, bigpipe, max_pipe_size};
 
 #[cfg(feature = "deemix")]
-use crate::deemix::{DeemixMetadata, PreloadInput, _deemix_preload};
+use crate::deemix::{DeemixMetadata, _deemix};
 
 #[group]
 #[commands(join, leave, queue, now_playing, skip, list)]
@@ -63,6 +67,12 @@ pub struct Radio;
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
+
+struct DeemixPreloadCache;
+
+impl TypeMapKey for DeemixPreloadCache {
+    type Value = Arc<Mutex<HashMap<String, Compressed>>>;
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum EventEnd {
@@ -93,7 +103,7 @@ struct ColdQueue {
     pub use_radio: bool,
     // urls
     pub radio_queue: VecDeque<String>,
-    pub radio_next: Option<PreloadInput>,
+    pub radio_next: Option<(Compressed, Option<MetadataType>)>,
 }
 
 pub struct QueueContext {
@@ -106,6 +116,7 @@ pub struct QueueContext {
     manager: Arc<Songbird>,
     cold_queue: Arc<RwLock<ColdQueue>>,
 }
+
 #[derive(Debug, Clone)]
 enum MetadataType {
     #[cfg(feature = "deemix")]
@@ -177,10 +188,15 @@ async fn preload_radio_track(
         };
 
         if let Some(uri) = uri {
-            let pipesize = max_pipe_size().await.unwrap();
-            match _deemix_preload(&uri, &[], true, pipesize).await {
-                Ok(preload_input) => {
-                    cold_queue.radio_next = Some(preload_input);
+            match _deemix(&uri, &[], false).await {
+                Ok((preload_input, metadata)) => {
+                        cold_queue.radio_next = Some((Compressed::new(
+                            preload_input,
+                            songbird::driver::Bitrate::BitsPerSecond(128_000)
+                        ).unwrap(),
+
+                        metadata.map(|x| x.into())
+                    ));
                     return Ok(())
                 }
 
@@ -200,11 +216,12 @@ async fn preload_radio_track(
 
 async fn play_preload_radio_track(
     call: &mut Call,
-    radio_preload: PreloadInput,
+    radio_preload: Compressed,
+    metadata: Option<MetadataType>,
     qctx: Arc<QueueContext>
 )
 {
-    let preload_result = Players::play_preload(call, radio_preload).await;
+    let preload_result = Players::play_preload(call, radio_preload.new_handle().into(), metadata).await;
 
     match preload_result {
         Err(why) =>{
@@ -221,7 +238,9 @@ async fn play_preload_radio_track(
         ).unwrap()
     }
 }
+
 struct TrackEndLoader(Arc<QueueContext>);
+
 #[async_trait]
 impl VoiceEventHandler for TrackEndLoader {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
@@ -242,9 +261,8 @@ impl VoiceEventHandler for TrackEndLoader {
 
             else if cold_queue.use_radio {
                 // if the user queue is empty, try the preloaded radio track
-                if let Some(radio_preload) = cold_queue.radio_next.take() {
-                    play_preload_radio_track(&mut call, radio_preload, self.0.clone()).await;
-                    cold_queue.radio_next = None;
+                if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
+                    play_preload_radio_track(&mut call, radio_preload, metadata, self.0.clone()).await;
                     let _ = preload_radio_track(&mut cold_queue).await;
                     return None;
                 }
@@ -520,23 +538,16 @@ impl Players {
 
     async fn play_preload(
         handler: &mut Call,
-        preload: PreloadInput // &mut Vec<std::process::Child>,
-        // metadata: Option<MetadataType>
+        preload: Input, // &mut Vec<std::process::Child>,
+        metadata: Option<MetadataType>
     )
     -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
     {
-        let input = Input::new(
-            true, 
-            children_to_reader::<f32>(preload.children.inner()),
-            Codec::FloatPcm,
-            Container::Raw,
-            preload.metadata.clone().map(|x| x.into())
-        );
-
-        let (track, track_handle) = create_player(input);
+        let (track, track_handle) = create_player(preload);
         handler.enqueue(track);
-
-        Ok((track_handle, preload.metadata.map(|x| x.into())))
+        Ok((track_handle, metadata
+            //TODO: FIXME!: preload.metadata.map(|x| x.into())
+        ))
     }
 
     async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
@@ -1139,18 +1150,18 @@ async fn list(ctx: &Context, msg: &Message) -> CommandResult {
                     .queue.clone()
                     .drain(..)
                     .chain(cold_queue.radio_queue.clone().drain(..))
-                    .chain(
-                        cold_queue.radio_next
-                        .iter()
-                        .filter_map(
-                            |next|
-                            next.metadata
-                                .clone()
-                                .unwrap()
-                                .metadata
-                                .source_url
-                                .map(|x| x.to_string())
-                    ))
+                    // .chain(
+                    //     cold_queue.radio_next
+                    //     .iter()
+                    //     .filter_map(
+                    //         |next|
+                    //         next.metadata
+                    //             .clone()
+                    //             .unwrap()
+                    //             .metadata
+                    //             .source_url
+                    //             .map(|x| x.to_string())
+                    // ))
                     .collect::<Vec<_>>()
                     .join("\n"),
 
