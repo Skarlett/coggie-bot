@@ -23,6 +23,9 @@ from deezer.errors import WrongLicense, WrongGeolocation
 from deemix.utils import USER_AGENT_HEADER
 from deemix.utils.crypto import generateBlowfishKey, decryptChunk
 
+import os
+import io
+
 dz = Deezer()
 settings = DEFAULT_SETTINGS
 plugins = {}
@@ -44,9 +47,9 @@ def streamTrack(outputStream, track, trackAPI=None, start=0, downloadObject=None
             trackAPI["filesize"] = complete;
             json.dump(trackAPI, sys.stderr)
             print("", file=sys.stderr)
-        
+
         if complete == 0: raise DownloadEmpty
-        
+
         isStart = True
         for chunk in request.iter_content(2048 * 3):
             if isCryptedStream:
@@ -62,7 +65,7 @@ def streamTrack(outputStream, track, trackAPI=None, start=0, downloadObject=None
             outputStream.write(chunk)
             chunkLength += len(chunk)
 
-def stream_stdout(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
+def stream_stdout(fd, downloadObject, extraData, bitrate=TrackFormats.MP3_320):
     trackAPI = extraData.get('trackAPI')
     albumAPI = extraData.get('albumAPI')
     playlistAPI = extraData.get('playlistAPI')
@@ -108,11 +111,11 @@ def stream_stdout(downloadObject, extraData, bitrate=TrackFormats.MP3_320):
     track.album.bitrate = selectedFormat
     # Apply settings
     track.applySettings(DEFAULT_SETTINGS)
-    track.downloadURL = track.urls[formatsName[track.bitrate]]    
+    track.downloadURL = track.urls[formatsName[track.bitrate]]
     if not track.downloadURL: raise DownloadFailed('notAvailable', track)
 
     try:
-        streamTrack(stdout, track, downloadObject=downloadObject, trackAPI=trackAPI)
+        streamTrack(fd, track, downloadObject=downloadObject, trackAPI=trackAPI)
     except requests.exceptions.HTTPError as e:
         raise DownloadFailed('notAvailable', track) from e
 
@@ -128,7 +131,7 @@ def stream(url, arl, spt_id, spt_secret, spt_cache, hq):
     assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
 
     settings = DEFAULT_SETTINGS
-    
+
     plugins = {"spotify": SpotifyStreamer(spt_id, spt_secret, spt_cache)}
     plugins["spotify"].setup()
 
@@ -142,9 +145,10 @@ def stream(url, arl, spt_id, spt_secret, spt_cache, hq):
         'albumAPI': downloadObject.single.get('albumAPI'),
     }
 
-    stream_stdout(downloadObject, extras)
-
+    backing = io.BytesIO()
+    stream_stdout(backing, downloadObject, extras)
+    stdout.write(backing.getvalue())
     stdout.close()
-    
+
 if __name__ == '__main__':
     stream(auto_envvar_prefix='DEEMIX')

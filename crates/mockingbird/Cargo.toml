@@ -23,6 +23,7 @@ cutils = { path = "../cutils", features = ["tokio"], optional=true }
 default = []
 controller = []
 debug = []
+radio = []
 
 check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]
 ytdl = ["songbird/yt-dlp"]
