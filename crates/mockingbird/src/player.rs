@@ -18,16 +18,11 @@ use songbird::{
     Call, 
     create_player,
     input::{
-        ffmpeg,
         Input,
         error::Error as SongbirdError,
         Metadata,
-        Codec,
-        Container,
-        children_to_reader
     },
-    tracks::{TrackHandle, Track},
-
+    tracks::TrackHandle,
     TrackEvent
 };
 
@@ -41,7 +36,6 @@ use std::{
 };
 
 use tokio::{
-    sync::watch::{Receiver},
     io::AsyncBufReadExt,
     process::Command,
 
@@ -1383,22 +1377,24 @@ async fn list(ctx: &Context, msg: &Message) -> CommandResult {
                     .queue.clone()
                     .drain(..)
                     .chain(cold_queue.radio_queue.clone().drain(..))
-                    // .chain(
-                    //     cold_queue.radio_next
-                    //     .iter()
-                    //     .filter_map(
-                    //         |next|
-                    //         next.metadata
-                    //             .clone()
-                    //             .unwrap()
-                    //             .metadata
-                    //             .source_url
-                    //             .map(|x| x.to_string())
-                    // ))
-                    .collect::<Vec<_>>()
+                    .chain(
+                        cold_queue.radio_next
+                        .iter()
+                        .filter_map(
+                            |(_next, metadata)|
+                            metadata
+                                .clone()
+                                .map(|x| {
+                                    let metadata: Metadata = x.into();
+                                    metadata.source_url.unwrap_or("Unknown".to_string())
+                                })
+                        )
+                    )
+                    .collect::<Vec<String>>()
                     .join("\n"),
 
-                cold_queue.queue.len())
+                cold_queue.queue.len()
+            )
        ).await?;
 
     return Ok(());
