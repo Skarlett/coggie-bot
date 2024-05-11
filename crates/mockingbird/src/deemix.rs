@@ -273,27 +273,7 @@ async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child
     Ok((deemix, metadata_from_deemix_output(&metadata_raw)))
 }
 
-fn _balloon_loader(proc: &mut std::process::Child, pipesize: i32) -> Result<std::process::Child, DeemixError> {
-    let balloon = std::process::Command::new("balloon")
-        .stdin(
-            proc.stdout.take()
-                .ok_or(SongbirdError::Stdout)?       
-        )
-        .stderr(Stdio::null())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to start child process");
-
-    let balloon_ptr = balloon.stdout.as_ref()
-        .ok_or(SongbirdError::Stdout)?
-        .as_raw_fd();
-    
-    unsafe { bigpipe(balloon_ptr, pipesize); }
-    
-    Ok(balloon)
-}
-
-fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> { 
+fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> {
     let ffmpeg_args = [
         "-f",
         "s16le",
@@ -330,104 +310,64 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
     Ok(ffmpeg)
 }
 
-pub struct PreloadInput {
-    ffmpeg_stdout: RawFd,
-    pub children: PreloadChildContainer,
-    pub metadata: Option<DeemixMetadata>,
-    balloon: bool,
-}
-
-pub async fn _deemix_preload(
-    uri: &str,
-    pre_args: &[&str],
-    balloon: bool,
-    pipesize: i32
-) -> Result<PreloadInput, DeemixError>
-{
-    let mut children = Vec::with_capacity(3);
-
-    tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
-    let (mut deemix, metadata) =  _deemix_stream(uri, pipesize).await?;
-
-    let mut balloon_proc = if balloon {
-        tracing::info!("running balloon");
-        Some(_balloon_loader(&mut deemix, pipesize)?)
-    } else { None };
-    
-    let output = balloon_proc.as_mut()
-        .unwrap_or(&mut deemix);
-    
-    let ffmpeg = _ffmpeg(output, pre_args, pipesize)?;
- 
-    children.push(deemix);
-
-    if let Some(balloon) = balloon_proc {
-        children.push(balloon);
-    }
-
-    children.push(ffmpeg);
-
-    let stdout_fd = children.last().unwrap().stdout.as_ref()
-        .ok_or(SongbirdError::Stdout)?
-        .as_raw_fd();
-
-    return Ok(PreloadInput {
-        balloon,
-        ffmpeg_stdout: stdout_fd,
-        children: PreloadChildContainer::new(children),
-        metadata: Some(metadata),
-    })
-}
-
 
 pub async fn _deemix(
     uri: &str,
     pre_args: &[&str],
-    balloon: bool,
+    wait: bool,
 ) -> Result<(Input, Option<DeemixMetadata>), DeemixError>
 {
-    let pipesize = max_pipe_size().await.unwrap();
-    
-    let mut preload_input = _deemix_preload(uri, pre_args, balloon, pipesize).await?;
-    let now = std::time::Instant::now();
-
     let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
         .unwrap_or_else(|_| "0.8".to_string())
         .parse::<f32>()
         .unwrap_or(0.8);
 
-    loop {
-        let avail = unsafe { availbytes(preload_input.ffmpeg_stdout) };
-        let mut percentage = 0.0;
-        if 0 > avail {
-            break
-        }
-        if avail > 0 {
-            percentage = pipesize as f32 / avail as f32;
-        }
+    let pipesize = max_pipe_size().await.unwrap();
 
-        if pipe_threshold > percentage {
-            tokio::time::sleep(std::time::Duration::from_micros(200)).await;
-            tracing::debug!("availbytes: {}", avail);
-            tracing::debug!("pipesize: {}", pipesize);
-        }
-        else {
-            tracing::info!("load time: {}", now.elapsed().as_secs_f64());
-            tracing::debug!("availbytes: {}", avail);
-            tracing::debug!("pipesize: {}", pipesize);
-            break
+    tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
+    let (mut deemix, metadata) =  _deemix_stream(uri, pipesize).await?;
+
+    let ffmpeg = _ffmpeg(&mut deemix, pre_args, pipesize)?;
+    let stdout_fd = ffmpeg.stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+
+    if wait {
+        let now = std::time::Instant::now();
+        loop {
+            let avail = unsafe { availbytes(stdout_fd) };
+            let mut percentage = 0.0;
+            if 0 > avail {
+                break
+            }
+            if avail > 0 {
+                percentage = pipesize as f32 / avail as f32;
+            }
+
+            if pipe_threshold > percentage {
+                tokio::time::sleep(std::time::Duration::from_micros(200)).await;
+                tracing::debug!("availbytes: {}", avail);
+                tracing::debug!("pipesize: {}", pipesize);
+            }
+            else {
+                tracing::info!("load time: {}", now.elapsed().as_secs_f64());
+                tracing::debug!("availbytes: {}", avail);
+                tracing::debug!("pipesize: {}", pipesize);
+                break
+            }
         }
     }
 
     Ok((
         Input::new(
-        true,
-        children_to_reader::<f32>(preload_input.children.inner()),
-        Codec::FloatPcm,
-        Container::Raw,
-        preload_input.metadata.clone().map(|x| x.into()),
-    ), 
-    preload_input.metadata.clone()))
+            true,
+            children_to_reader::<f32>(vec![deemix, ffmpeg]),
+            Codec::FloatPcm,
+            Container::Raw,
+            Some(metadata.clone().into()),
+        ),
+        Some(metadata.clone())
+    ))
 }
 
 #[derive(Debug, Clone)]
