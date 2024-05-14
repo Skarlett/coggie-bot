@@ -297,9 +297,9 @@ async fn play_preload_radio_track(
 // }
 
 
-struct TrackEndLoader(Arc<QueueContext>);
+struct RadioInvoker(Arc<QueueContext>);
 #[async_trait]
-impl VoiceEventHandler for TrackEndLoader {
+impl VoiceEventHandler for RadioInvoker {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         if let Some(call) = self.0.manager.get(self.0.guild_id) {
             let mut call = call.lock().await;
@@ -667,39 +667,39 @@ impl Players {
             Self::HttpGet => {
                 let mut pathbuf = PathBuf::new();
                 let result = ph_httpget_player(uri, guild_id.0, &mut pathbuf).await;
-                // match result {
-                //     Ok((input, metadata)) => {
-                //         // let (_track, track_handle) = create_player(input);
+                match result {
+                    Ok((input, metadata)) => {
+                        // let (_track, track_handle) = create_player(input);
 
-                //         // let fp = match metadata {
-                //         //     Some(MetadataType::Disk(fp)) => fp,
-                //         //     _ => { return Err(HandlerError::WrongMetadataType) }
-                //         // };
+                        // let fp = match metadata {
+                        //     Some(MetadataType::Disk(fp)) => fp,
+                        //     _ => { return Err(HandlerError::WrongMetadataType) }
+                        // };
 
-                //         // let _ = track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
+                        // let _ = track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
 
-                //         // // TODO FIXME ADD METADATA
-                //         // return Ok((track_handle, None))
-                //     }
+                        // // TODO FIXME ADD METADATA
+                        // return Ok((track_handle, None))
+                    }
 
-                //     Err(e) => {
-                //         // cleanup(fp)
-                //         // TODO FIXME
-                //         return Err(e)
-                //     }
-                // }
+                    Err(e) => {
+                        // cleanup(fp)
+                        // TODO FIXME
+                        return Err(e)
+                    }
+                }
                 result
             }
         }
     }
 
-    async fn play(&self, handler: &mut Call, uri: &str, guild_id: GuildId) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
-    {
-        let (input, metadata) = self.into_input(uri, guild_id).await?;
-        let (track, track_handle) = create_player(input);
-        handler.enqueue(track);
-        Ok((track_handle, metadata))
-    }
+    // async fn play(&self, handler: &mut Call, uri: &str, guild_id: GuildId) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    // {
+    //     let (input, metadata) = self.into_input(uri, guild_id).await?;
+    //     let (track, track_handle) = create_player(input);
+    //     handler.enqueue(track);
+    //     Ok((track_handle, metadata))
+    // }
 
     async fn play_preload(
         handler: &mut Call,
@@ -812,8 +812,18 @@ async fn user_queue_routine(
         let player = Players::from_str(&uri)
             .ok_or_else(|| HandlerError::NotImplemented)?;
 
-        match player.play(call, &uri, qctx_arc.guild_id).await {
-            Ok((track, metadata)) => {
+        // turn realization to live
+        match player.into_input().await
+        {
+            Ok((input, metadata)) => {
+                let (track, track_handle) = create_player(input);
+
+                if qctx_arc.crossfade == Duration::new() {
+                    call.enqueue(track);
+                } else {
+
+                }
+
                 if let Some(duration) = track.metadata().duration {
                     if duration < TS_PRELOAD_OFFSET {
                         tracing::warn!("No duration provided, preloading disabled");
@@ -1068,7 +1078,7 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     
     call.add_global_event(
         Event::Track(TrackEvent::End),
-        TrackEndLoader(queuectx.clone())
+        RadioInvoker(queuectx.clone())
     );
     
     call.add_global_event(
@@ -1697,7 +1707,6 @@ async fn play_source(ctx: &Context, msg: &Message, mut args: Args) -> CommandRes
             return Ok(());
         },
     };
-
 
     let player = Players::from_str(&url).unwrap();
     let mut call = handler.lock().await;
