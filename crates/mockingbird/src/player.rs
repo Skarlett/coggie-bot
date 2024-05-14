@@ -22,6 +22,7 @@ use songbird::{
         error::Error as SongbirdError,
         Metadata,
     },
+    // queue::TrackQueue,
     tracks::TrackHandle,
     TrackEvent
 };
@@ -53,7 +54,7 @@ use cutils::{availbytes, bigpipe, max_pipe_size};
 use crate::deemix::{DeemixMetadata, _deemix};
 
 #[group]
-#[commands(join, leave, queue, now_playing, skip, list)]
+#[commands(join, leave, queue, now_playing, skip, list, play_source)]
 pub struct BetterPlayer;
 
 #[group]
@@ -65,11 +66,6 @@ const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
 
-struct DeemixPreloadCache;
-
-impl TypeMapKey for DeemixPreloadCache {
-    type Value = Arc<Mutex<HashMap<String, Compressed>>>;
-}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum EventEnd {
@@ -112,13 +108,16 @@ pub struct QueueContext {
     http: Arc<Http>,
     manager: Arc<Songbird>,
     cold_queue: Arc<RwLock<ColdQueue>>,
+
+    // hot_queue: TrackQueue,
 }
+
 
 #[derive(Debug, Clone)]
 enum MetadataType {
     #[cfg(feature = "deemix")]
     Deemix(crate::deemix::DeemixMetadata),
-    
+    Disk(PathBuf),
     Standard(Metadata),
 }
 
@@ -134,7 +133,11 @@ impl Into<Metadata> for MetadataType {
             Self::Standard(meta) => meta,
  
             #[cfg(feature = "deemix")]
-            Self::Deemix(meta) => meta.into()
+            Self::Deemix(meta) => meta.into(),
+
+
+            #[cfg(feature = "http-get")]
+            Self::Disk(fp) => Metadata { source_url: fp.into_os_string().into_string().ok(), ..Default::default() },
         }
     }
 }
@@ -235,8 +238,66 @@ async fn play_preload_radio_track(
     }
 }
 
-struct TrackEndLoader(Arc<QueueContext>);
+// struct CrossFadeVolume {
+//     step_by: f32,
+//     sum: f32,
+//     start: f32,
+//     limit: f32
+// }
 
+// impl Iterator for CrossFadeVolume {
+//     type Item = f32;
+//     fn next(&mut self) -> Option<f32> {
+//         if self.sum > self.limit {
+//             return None
+//         }
+//         self.sum += self.step_by;
+//         Some(self.sum)
+//     }
+// }
+
+// struct TrackCrossFade {
+//     ctx: Arc<QueueContext>,
+//     iter: CrossFadeVolum
+// }
+
+// impl TrackCrossFade {
+//     fn new(ctx: Arc<QueueContext>) -> Self {
+//         Self {
+//             ctx,
+//             iter: CrossFadeVolume {
+//                 step_by: 0.01,
+//                 sum: 0,
+//                 start: 0,
+//                 limit: 100
+//             }
+//         }
+//     }
+// }
+
+
+// #[async_trait]
+// impl VoiceEventHandler for TrackCrossFade {
+//     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+//         if let None = self.0.manager.get(self.0.guild_id) {
+//             return None
+//         }
+
+//         let mut call = call.lock().await;
+//         let mut cold_queue = self.0.cold_queue.write().await;
+
+//         let volume = self.iter.next();
+
+
+
+//         call.queue().current();
+
+
+//     }
+// }
+
+
+struct TrackEndLoader(Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for TrackEndLoader {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
@@ -322,6 +383,8 @@ pub enum HandlerError {
     #[cfg(feature = "deemix")]
     DeemixError(crate::deemix::DeemixError),
 
+    WrongMetadataType,
+
     NotImplemented,
     NoCall
 }
@@ -372,6 +435,9 @@ impl std::fmt::Display for HandlerError {
             
             Self::NoCall
                 => write!(f, "Not in a voice channel to play in"),
+
+            Self::WrongMetadataType
+                => write!(f, "Programming bug, got a different MetadataType than expected"),
 
             #[cfg(feature = "http-get")]
             Self::UnsupportedMediaType(content_type)
@@ -450,7 +516,8 @@ async fn fan_ytdl(_uri: &str, _buf: &mut VecDeque<String>) -> Result<usize, Hand
 async fn ph_httpget_player(
     uri: &str,
     guild_id: u64,
-) -> (PathBuf, Result<Input, HandlerError>) {
+    ref_fp: &mut PathBuf,
+) -> (Result<(Input, Option<MetadataType>), HandlerError>) {
     tracing::info!("[HTTP-GET] Downloading: {}", uri);
 
     // let fp = tempfile::tempfile()?;
@@ -467,12 +534,20 @@ async fn ph_httpget_player(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("Failed to create temp dir: {}", e);
-            return (fp, Err(HandlerError::IOError(e)));
+            return (Err(HandlerError::IOError(e)));
         }
     }
     let fp = fp.join(format!("{}", id));
 
-    (fp.clone(), get_file(uri, guild_id, &fp).await.map_err(HandlerError::from))
+    match get_file(uri, guild_id, &fp).await.map_err(HandlerError::from) {
+        Ok(input) => Ok((input, Some(MetadataType::Disk(fp.clone())))),
+        Err(e) => {
+            if let Ok(true) = tokio::fs::try_exists(&fp).await {
+                tokio::fs::remove_file(&fp).await;
+            }
+            Err(e)
+        }
+    }
 }
 
 #[cfg(feature = "deemix")]
@@ -584,36 +659,45 @@ impl Players {
         else { return None }
     }
 
-    async fn play(&self, handler: &mut Call, uri: &str, guild_id: GuildId) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    async fn into_input(&self, uri: &str, guild_id: GuildId) -> Result<(Input, Option<MetadataType>), HandlerError>
     {
-        let (input, metadata) = match self {
+        match self {
             Self::Deemix => ph_deemix_player(uri).await,
             Self::Ytdl => ph_ytdl_player(uri).await,
             Self::HttpGet => {
-                let (fp, result) = ph_httpget_player(uri, guild_id.0).await;
+                let mut pathbuf = PathBuf::new();
+                let result = ph_httpget_player(uri, guild_id.0, &mut pathbuf).await;
+                // match result {
+                //     Ok((input, metadata)) => {
+                //         // let (_track, track_handle) = create_player(input);
 
-                match result {
-                    Ok(input) => {
-                        let (_track, track_handle) = create_player(input);
-                        let _ = track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
-                        // TODO FIXME ADD METADATA
-                        return Ok((track_handle, None))
-                    }
-                    Err(e) => {
-                        if let Ok(true) = tokio::fs::try_exists(&fp).await {
-                            let _ = tokio::fs::remove_file(&fp).await;
-                        }
-                        // TODO FIXME ADD METADATA
-                        return Err(e)
-                    }
-                }
+                //         // let fp = match metadata {
+                //         //     Some(MetadataType::Disk(fp)) => fp,
+                //         //     _ => { return Err(HandlerError::WrongMetadataType) }
+                //         // };
+
+                //         // let _ = track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
+
+                //         // // TODO FIXME ADD METADATA
+                //         // return Ok((track_handle, None))
+                //     }
+
+                //     Err(e) => {
+                //         // cleanup(fp)
+                //         // TODO FIXME
+                //         return Err(e)
+                //     }
+                // }
+                result
             }
-        }?;
+        }
+    }
 
-
+    async fn play(&self, handler: &mut Call, uri: &str, guild_id: GuildId) -> Result<(TrackHandle, Option<MetadataType>), HandlerError>
+    {
+        let (input, metadata) = self.into_input(uri, guild_id).await?;
         let (track, track_handle) = create_player(input);
         handler.enqueue(track);
-
         Ok((track_handle, metadata))
     }
 
@@ -1579,5 +1663,49 @@ async fn radio(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         }
         _ => {}
     }
+    Ok(())
+}
+
+
+#[command]
+#[only_in(guilds)]
+/// @bot radio [on/off/(default: status)]
+async fn play_source(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("songbird voice client placed in at initialisation.")
+        .clone();
+
+    let handler = manager.get(guild_id);
+
+    if handler.is_none() {
+        msg.reply(ctx, "Not in a voice channel").await?;
+        return Ok(())
+    }
+    let handler = handler.unwrap();
+
+    let url = match args.single::<String>() {
+        Ok(url) => url,
+        Err(_) => {
+            msg.channel_id
+               .say(&ctx.http, "Must provide a URL to a video or audio")
+               .await
+               .unwrap();
+            return Ok(());
+        },
+    };
+
+
+    let player = Players::from_str(&url).unwrap();
+    let mut call = handler.lock().await;
+    let guild = msg.guild(&ctx.cache).unwrap();
+
+    let (input, metadata) = player.into_input(&url, guild.id).await?;
+    call.play_source(input);
+    // handler.enqueue(track);
+    // Ok((track_handle, metadata))
     Ok(())
 }
