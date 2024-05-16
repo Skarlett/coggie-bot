@@ -11,6 +11,7 @@ serenity = { version = "0.11", default-features=false, features = ["standard_fra
 tracing = { version = "0.1"}
 tokio = {version = "1.0", default-features=false, features = ["time", "rt"]}
 rand = { version = "0.8" }
+parking_lot = "*"
 
 ####
 serde = { version = "1.0", optional=true }

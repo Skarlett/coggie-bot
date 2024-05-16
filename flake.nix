@@ -88,6 +88,7 @@
           };
 
           packages.cache-target = coggiebot-stable;
+          packages.arange = pkgs.python3.withPackages(ps: with ps; [ numpy ]);
         })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:

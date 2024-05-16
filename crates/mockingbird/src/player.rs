@@ -1,3 +1,6 @@
+// this is the rat nest
+// be prepared
+// to see how lazy i can be.
 use serenity::{
     async_trait,
     model::channel::Message,
@@ -41,11 +44,11 @@ use tokio::{
     process::Command,
 
 };
+use parking_lot::Mutex;
 
 use tokio::io::AsyncWriteExt;
 use serenity::futures::StreamExt;
 use songbird::input::cached::Compressed;
-use std::sync::{Mutex};
 
 
 use cutils::{availbytes, bigpipe, max_pipe_size};
@@ -63,6 +66,7 @@ pub struct Radio;
 
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
+const TS_CROSSFADE_OFFSET: Duration = Duration::from_secs(10);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
 
@@ -108,10 +112,8 @@ pub struct QueueContext {
     http: Arc<Http>,
     manager: Arc<Songbird>,
     cold_queue: Arc<RwLock<ColdQueue>>,
-
-    // hot_queue: TrackQueue,
+    hot: Arc<Mutex<VecDeque<TrackHandle>>>
 }
-
 
 #[derive(Debug, Clone)]
 enum MetadataType {
@@ -233,69 +235,10 @@ async fn play_preload_radio_track(
                       .unwrap()
                     - TS_PRELOAD_OFFSET
             ),
-            PreemptLoader(qctx.clone()),
+            PreloadInvoker(qctx.clone()),
         ).unwrap()
     }
 }
-
-// struct CrossFadeVolume {
-//     step_by: f32,
-//     sum: f32,
-//     start: f32,
-//     limit: f32
-// }
-
-// impl Iterator for CrossFadeVolume {
-//     type Item = f32;
-//     fn next(&mut self) -> Option<f32> {
-//         if self.sum > self.limit {
-//             return None
-//         }
-//         self.sum += self.step_by;
-//         Some(self.sum)
-//     }
-// }
-
-// struct TrackCrossFade {
-//     ctx: Arc<QueueContext>,
-//     iter: CrossFadeVolum
-// }
-
-// impl TrackCrossFade {
-//     fn new(ctx: Arc<QueueContext>) -> Self {
-//         Self {
-//             ctx,
-//             iter: CrossFadeVolume {
-//                 step_by: 0.01,
-//                 sum: 0,
-//                 start: 0,
-//                 limit: 100
-//             }
-//         }
-//     }
-// }
-
-
-// #[async_trait]
-// impl VoiceEventHandler for TrackCrossFade {
-//     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-//         if let None = self.0.manager.get(self.0.guild_id) {
-//             return None
-//         }
-
-//         let mut call = call.lock().await;
-//         let mut cold_queue = self.0.cold_queue.write().await;
-
-//         let volume = self.iter.next();
-
-
-
-//         call.queue().current();
-
-
-//     }
-// }
-
 
 struct RadioInvoker(Arc<QueueContext>);
 #[async_trait]
@@ -305,16 +248,16 @@ impl VoiceEventHandler for RadioInvoker {
             let mut call = call.lock().await;
             let mut cold_queue = self.0.cold_queue.write().await;
 
-            // `PreemptLoader` may have placed a track (from the user queue)
+            // `PreloadInvoker` may have placed a track (from the user queue)
             // before this event was fired.
             // If true, we clear our trackers.
             if let Some(_current_track_handle) = call.queue().current() {
                 // do nothing
             }
 
-            // `PreemptLoader` has not placed anything,
+            // `PreloadInvoker` has not placed anything,
             // lets fire it's routine on our thread.
-            else if let Ok(true) = user_queue_routine(&mut call, &mut cold_queue, self.0.clone()).await {
+            else if let Ok(true) = invoke_cold_queue(&mut call, &mut cold_queue, self.0.clone()).await {
                 // do nothing.
             }
 
@@ -354,14 +297,14 @@ impl VoiceEventHandler for AbandonedChannel {
     }
 }
 
-struct PreemptLoader(Arc<QueueContext>);
+struct PreloadInvoker(Arc<QueueContext>);
 #[async_trait]
-impl VoiceEventHandler for PreemptLoader {
+impl VoiceEventHandler for PreloadInvoker {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {      
         if let Some(call) = self.0.manager.get(self.0.guild_id) {
             let mut call = call.lock().await;
             let mut cold_queue = self.0.cold_queue.write().await;
-            let _ = user_queue_routine(&mut call, &mut cold_queue, self.0.clone()).await;
+            let _ = invoke_cold_queue(&mut call, &mut cold_queue, self.0.clone()).await;
         }
         None
     }
@@ -670,7 +613,6 @@ impl Players {
                 match result {
                     Ok((input, metadata)) => {
                         // let (_track, track_handle) = create_player(input);
-
                         // let fp = match metadata {
                         //     Some(MetadataType::Disk(fp)) => fp,
                         //     _ => { return Err(HandlerError::WrongMetadataType) }
@@ -800,7 +742,7 @@ impl VoiceEventHandler for RemoveTempFile {
     }
 }
 
-async fn user_queue_routine(
+async fn invoke_cold_queue(
     call: &mut Call,
     cold_queue: &mut ColdQueue,
     qctx_arc: Arc<QueueContext>
@@ -816,13 +758,8 @@ async fn user_queue_routine(
         match player.into_input().await
         {
             Ok((input, metadata)) => {
-                let (track, track_handle) = create_player(input);
-
-                if qctx_arc.crossfade == Duration::new() {
-                    call.enqueue(track);
-                } else {
-
-                }
+                // let (track, track_handle) = create_player(input);
+                let track = enqueue(input).await?;
 
                 if let Some(duration) = track.metadata().duration {
                     if duration < TS_PRELOAD_OFFSET {
@@ -833,7 +770,7 @@ async fn user_queue_routine(
                     tracing::info!("Preload Event Added from Duration");
                     track.add_event(
                         Event::Delayed(duration - TS_PRELOAD_OFFSET),
-                        PreemptLoader(qctx_arc.clone())
+                        PreloadInvoker(qctx_arc.clone())
                     ).unwrap();
                 }
 
@@ -869,7 +806,7 @@ async fn user_queue_routine(
                 // ends.
                 track.add_event(
                     Event::Delayed(track.metadata().duration.unwrap() - TS_PRELOAD_OFFSET),
-                    PreemptLoader(qctx_arc)
+                    PreloadInvoker(qctx_arc)
                 ).unwrap();
 
                 return Ok(true);
@@ -1316,7 +1253,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 let mut call = call.lock().await;
                 let mut cold_queue = qctx.cold_queue.write().await;
                 if hot_loaded == false {
-                    user_queue_routine(&mut call, &mut cold_queue, qctx.clone()).await?;
+                    invoke_cold_queue(&mut call, &mut cold_queue, qctx.clone()).await?;
                 }
             }
             // --- END
@@ -1717,4 +1654,135 @@ async fn play_source(ctx: &Context, msg: &Message, mut args: Args) -> CommandRes
     // handler.enqueue(track);
     // Ok((track_handle, metadata))
     Ok(())
+}
+
+struct CrossFadeVolume {
+    step_by: f32,
+    sum: f32,
+    start: f32,
+    limit: f32
+}
+
+impl Iterator for CrossFadeVolume {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        if self.sum > self.limit {
+            return None
+        }
+        self.sum += self.step_by;
+        Some(self.sum)
+    }
+}
+
+struct CrossFadeInvoker {
+    qctx: Arc<QueueContext>,
+    iter: CrossFadeVolume,
+    next_on: bool
+}
+
+impl CrossFadeInvoker {
+    fn new(ctx: Arc<QueueContext>) -> Self {
+        Self {
+            ctx,
+            next_flip: false,
+            iter: CrossFadeVolume {
+                step_by: 0.01,
+                sum: 0,
+                start: 0,
+                limit: 100
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl VoiceEventHandler for CrossFadeInvoker {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        if let None = self.0.manager.get(self.0.guild_id) {
+            return None
+        }
+
+        let mut call = self.qctx.manager.get().lock().await;
+        let mut cold_queue = self.qctx.cold_queue.write().await;
+
+        let (current, next) = {
+            let lock = self.qctx.hot.lock();
+            let mut current = hot_lock.nth(1).clone();
+            let mut next = hot_lock.nth(2).clone();
+            (current, next)
+        };
+
+        match self.iter.next() {
+            Some(volume) => {
+                let volume = 100.0 - volume;
+                let next_volume = volume;
+
+                if let Some(next) = next {
+                    next.set_volume(volume);
+                    next.play();
+                }
+
+                if 1e-1 >= volume {
+                    current_track.stop();
+                }
+
+                Some(Duration::from_millis(100));
+            }
+
+            None => {
+                let _ = self.qctx.hot.pop_front();
+                None
+            }
+        }
+    }
+}
+
+async fn enqueue_source(
+    call: &mut Call,
+    input: Input,
+    crossfade: bool,
+    qctx: Arc<QueueContext>
+) -> Result<TrackHandle, HandlerError>  {
+
+    if ! crossfade {
+        let track_handle = driver.enqueue(input);
+        return
+    }
+
+    match manager.get(guild_id) {
+        Some(call) => {
+            let call = call.lock().await;
+            let queue = call.queue();
+            let _ = queue.skip();
+        }
+        None => {
+            msg.channel_id
+               .say(&ctx.http, "Not in a voice channel to play in")
+               .await?;
+            return Ok(())
+        }
+    };
+
+    let (track, handle) = create_player(input)
+        .map_err(HandlerError::from)?;
+
+    handle.add_event(
+        Event::Delayed(duration - TS_CROSSFADE_OFFSET),
+        CrossFadeInvoker(qctx_arc.clone())
+    ).unwrap();
+
+    {
+        let cold_queue = qctx.cold_queue.lock();
+        if cold_queue.is_empty() {
+            handle.play();
+
+            qctx
+                .hot
+                .lock()
+                .push_front(handle)
+        }
+        else {
+            cold_queue.queue.push()
+        }
+    }
 }
