@@ -1,10 +1,9 @@
 use std::{
     io::{BufReader, BufRead, Read},
-    os::fd::RawFd,
-    mem,
     process::{Child, Stdio},
     time::Duration
 };
+use serenity::futures::io::BufWriter;
 use songbird::{
     constants::SAMPLE_RATE_RAW,
     input::{
@@ -20,7 +19,7 @@ use songbird::{
 };
 use serde_json::Value;
 use std::os::fd::AsRawFd;
-use tokio::io::AsyncReadExt;
+use tokio::{fs::write, io::AsyncReadExt};
 use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
 use tokio::runtime::Handle;
 use tracing::debug;
@@ -34,6 +33,29 @@ pub enum DeemixError {
     ParseInt(core::num::ParseIntError),
     Songbird(SongbirdError),
     Tokio(tokio::task::JoinError),
+}
+
+#[derive(Debug)]
+pub enum DeemixLoadMethod {
+    Mem,
+    Child,
+}
+
+#[derive(Debug)]
+pub enum FFmpegInput {
+    Child(std::process::Child),
+    Mem(Option<Vec<u8>>),
+
+    //Disk(std::path::PathBuf),
+}
+
+impl FFmpegInput {
+    pub fn into_inner(self) -> Result<std::process::Child, DeemixError> {
+        match self {
+            FFmpegInput::Child(child) => Ok(child),
+            FFmpegInput::Mem(_) => panic!("cannot call into_inner on FFmpegInput::Mem"),
+        }
+    }
 }
 
 impl Into<SongbirdError> for DeemixError {
@@ -105,7 +127,7 @@ where
     async fn call_restart(&mut self, time: Option<Duration>) -> Result<Input, SongbirdError> {
         if let Some(time) = time {
             let ts = format!("{:.3}", time.as_secs_f64());
-            _deemix(self.uri.as_ref(), &["-ss", &ts], true)
+            _deemix(self.uri.as_ref(), &["-ss", &ts], true, DeemixLoadMethod::Mem)
                 .await
                 .map_err(DeemixError::into)
                 .map(|(i, _)| i)
@@ -179,11 +201,10 @@ fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixErro
 pub async fn deemix(
     uri: &str,
 ) -> Result<(Input, Option<DeemixMetadata>), DeemixError> {
-    _deemix(uri, &[], true)
-        .await
+    _deemix(uri, &[], true, DeemixLoadMethod::Mem).await
 }
 
-async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child, DeemixMetadata), DeemixError> 
+async fn _deemix_stream(uri: &str, pipesize: i32, method: DeemixLoadMethod) -> Result<(FFmpegInput, DeemixMetadata), DeemixError> 
 {  
     let mut deemix = std::process::Command::new("deemix-stream")
         .arg(uri.trim())
@@ -194,7 +215,7 @@ async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child
     
     let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
     unsafe { bigpipe(deemix_out, pipesize); }
-    
+
     let stderr = deemix.stderr.take();
     // Read first line of stderr
     // for metadata, but read entire buffer if error.
@@ -206,7 +227,6 @@ async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child
     .await?;
 
     let (returned_stderr, metadata_raw) = threadout;
-
     deemix.stderr = Some(returned_stderr);
     
     let metadata_raw = metadata_raw?;
@@ -214,12 +234,29 @@ async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child
         return Err(DeemixError::Metadata);
     }
 
+    let stdout = deemix.stdout.take();
     let _filesize = metadata_raw["filesize"].as_u64();
+    let (deemix_stdout, output) = match method {
+        DeemixLoadMethod::Mem => {
+            let (stdout, buf) = tokio::task::spawn_blocking(|| {
+                let mut buf = Vec::new();
+                let mut stdout = stdout.unwrap();
+                let mut reader = BufReader::new(&mut stdout);
+                reader.read_to_end(&mut buf).unwrap();
+                (stdout, buf) 
+            }).await?;
+            
+            (stdout, FFmpegInput::Mem(Some(buf)))
+        },
+        DeemixLoadMethod::Child => return Ok((FFmpegInput::Child(deemix), metadata_from_deemix_output(&metadata_raw))),
+    };
 
-    Ok((deemix, metadata_from_deemix_output(&metadata_raw)))
+    deemix.stdout = Some(deemix_stdout);
+
+    Ok((output, metadata_from_deemix_output(&metadata_raw)))
 }
 
-fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> {
+fn _ffmpeg(proc: &mut FFmpegInput, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> {
     let ffmpeg_args = [
         "-f",
         "s16le",
@@ -232,16 +269,21 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
         "-",
     ];
 
-    let ffmpeg = std::process::Command::new("ffmpeg")
+    let mut output: Stdio = Stdio::piped();
+
+    if let FFmpegInput::Child(child) = proc {
+        output = child.stdin
+            .take()
+            .ok_or(SongbirdError::Stdout)
+            .map(|x| x.into())?
+    }
+
+    let mut ffmpeg = std::process::Command::new("ffmpeg")
         .args(pre_args)
         .arg("-i")
         .arg("-")
         .args(&ffmpeg_args)
-        .stdin(
-            proc.stdout
-                .take()
-                .ok_or(SongbirdError::Stdout)?       
-        )
+        .stdin(output)
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
@@ -252,7 +294,19 @@ fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> 
         .as_raw_fd();
     
     unsafe { bigpipe(ffmpeg_ptr, pipesize); }
-    
+
+    let stdin = ffmpeg.stdin.take();
+
+    if let FFmpegInput::Mem(opt_buf) = proc {
+        let buf = Option::take(opt_buf);
+        tokio::task::spawn_blocking(move || {
+            use std::io::Write;
+            std::io::BufWriter::new(stdin.unwrap())
+            .write_all(&buf.unwrap()[..])
+            .unwrap();
+        });
+    }
+
     Ok(ffmpeg)
 }
 
@@ -260,6 +314,7 @@ pub async fn _deemix(
     uri: &str,
     pre_args: &[&str],
     wait: bool,
+    load_method: DeemixLoadMethod,
 ) -> Result<(Input, Option<DeemixMetadata>), DeemixError>
 {
     let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
@@ -270,7 +325,7 @@ pub async fn _deemix(
     let pipesize = max_pipe_size().await.unwrap();
 
     tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
-    let (mut deemix, metadata) =  _deemix_stream(uri, pipesize).await?;
+    let (mut deemix, metadata) =  _deemix_stream(uri, pipesize, load_method).await?;
 
     let ffmpeg = _ffmpeg(&mut deemix, pre_args, pipesize)?;
     let stdout_fd = ffmpeg.stdout.as_ref()
@@ -303,10 +358,18 @@ pub async fn _deemix(
         }
     }
 
+
+    let children = match deemix {
+        FFmpegInput::Child(child) =>
+            children_to_reader::<f32>(vec![child, ffmpeg]),
+        FFmpegInput::Mem(_) =>
+            children_to_reader::<f32>(vec![ffmpeg])
+    };
+    
     Ok((
         Input::new(
             true,
-            children_to_reader::<f32>(vec![deemix, ffmpeg]),
+            children,
             Codec::FloatPcm,
             Container::Raw,
             Some(metadata.clone().into()),
