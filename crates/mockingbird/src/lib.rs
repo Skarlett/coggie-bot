@@ -5,6 +5,11 @@ pub mod player;
 #[cfg(feature = "deemix")]
 pub mod deemix;
 
+pub mod events;
+pub mod models;
+pub mod controller;
+pub mod radio;
+pub mod compat;
 
 // #[cfg(feature = "http-get")]
 // pub mod httpget;
@@ -24,7 +29,7 @@ pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     #[cfg(feature = "controller")]
     {
         use std::collections::HashMap;
-        cfg = cfg.type_map_insert::<player::LazyQueueKey>(HashMap::new());
+        cfg = cfg.type_map_insert::<models::LazyQueueKey>(HashMap::new());
     }
 
     cfg.register_songbird()

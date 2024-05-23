@@ -1,6 +1,3 @@
-// this is the rat nest
-// be prepared
-// to see how lazy i can be.
 use serenity::{
     async_trait, client::Cache, framework::standard::{
         macros::{command, group}, Args, CommandResult
@@ -12,7 +9,6 @@ use songbird::{
         error::Error as SongbirdError, Input, Metadata
     }, tracks::{PlayMode, Track, TrackHandle}, Call, EventHandler as VoiceEventHandler, Songbird, TrackEvent
 };
-use tracing::field::Visit;
 
 use std::{
     process::Stdio,
@@ -25,646 +21,29 @@ use std::{
 
 use std::sync::atomic::AtomicBool;
 use tokio::{
-    io::AsyncBufReadExt, process::Command, sync::oneshot::Sender
-
+    io::AsyncBufReadExt,
+    process::Command,
+    sync::oneshot::Sender
 };
 use parking_lot::{Mutex, MutexGuard};
 
 use tokio::io::AsyncWriteExt;
 use serenity::futures::StreamExt;
 use songbird::input::cached::Compressed;
-
+use core::sync::atomic::Ordering;
 
 use cutils::{availbytes, bigpipe, max_pipe_size};
 
 #[cfg(feature = "deemix")]
 use crate::deemix::{DeemixMetadata, _deemix};
 
-#[group]
-#[commands(join, leave, queue, now_playing, skip, list, play_source)]
-pub struct BetterPlayer;
-
-#[group]
-#[commands(seed, radio)]
-pub struct Radio;
-
+use crate::models::*;
+use crate::compat::*;
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
 const TS_CROSSFADE_OFFSET: Duration = Duration::from_secs(10);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
-
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum EventEnd {
-    Skipped,
-    Finished,
-    UnMarked
-}
-
-type LazyQueue = HashMap<GuildId, Arc<QueueContext>>;
-pub struct LazyQueueKey;
-impl TypeMapKey for LazyQueueKey {
-    type Value = LazyQueue;
-}
-
-#[derive(Debug, Clone)]
-struct TrackRecord {
-    // keep this for spotify recommendations
-    metadata: MetadataType,
-    stop_event: EventEnd,
-    start: Instant,
-    end: Instant,
-}
-
-struct ColdQueue {
-    pub queue: VecDeque<String>,
-    pub has_played: VecDeque<TrackRecord>,
-    pub use_radio: bool,
-    pub queue_next: Option<(Compressed, Option<MetadataType>)>,
-    pub crossfade_lhs: Option<TrackHandle>,
-    pub crossfade_rhs: Option<TrackHandle>,
-    // urls
-    pub radio_queue: VecDeque<String>,
-    pub radio_next: Option<(Compressed, Option<MetadataType>)>,
-}
-
-
-
-struct GuildConfig {
-    pub crossfade: bool,
-    pub use_radio: bool,
-
-}
-
-pub struct QueueContext {
-    guild_id: GuildId,
-    invited_from: ChannelId,
-    voice_chan_id: GuildChannel,
-    cache: Arc<Cache>,
-    data: Arc<RwLock<TypeMap>>,
-    http: Arc<Http>,
-    manager: Arc<Songbird>,
-    cold_queue: Arc<RwLock<ColdQueue>>,
-    crossfade: AtomicBool,
-    crossfade_step: Mutex<i32>
-}
-
-use core::sync::atomic::Ordering; 
-
-struct CrossFadeInvoker(Arc<QueueContext>);
-
-#[async_trait]
-impl VoiceEventHandler for CrossFadeInvoker {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        // const total_duration: std::time::Duration = std::time::Duration::from_secs(10); 
-        let crossfading = self.0.crossfade.load(Ordering::Relaxed);
-
-        let mut cold_queue = self.0.cold_queue.write().await;
-        let peak = 10000;
-        let root : i32 = (peak as f32).sqrt() as i32;
-        let step = 1;
-
-        if let None = self.0.manager.get(self.0.guild_id) {
-            return Some(Event::Cancel)
-        }
-        
-        let manager = self.0.manager.get(self.0.guild_id).unwrap();
-        let mut call = manager.lock().await;
-
-
-        if let None = cold_queue.crossfade_rhs.as_ref() {
-            if let Ok(Some((track, handle, _metadata))) = next_track_handle(
-                &mut cold_queue,
-                self.0.clone(),
-                crossfading
-            ).await
-            {
-                let metadata = handle.metadata().clone();
-                let duration = metadata.duration.unwrap();               
-               
-                // let _ = handle.pause();
-                // play(&mut call, track, ).await;
-                
-                
-                let _ = handle.set_volume(0.001);
-                let _ = handle.play();
-                cold_queue.crossfade_rhs = Some(handle);
-            }
-        }
-
-        let x = {
-            let mut lock = self.0.crossfade_step.lock();
-            let x = *lock;
-            *lock += step;
-            if x > root as i32 {               
-                cold_queue.crossfade_lhs = cold_queue.crossfade_rhs.take();
-                return Some(Event::Cancel);
-            }
-            x
-        };
-
-        let fade_out = (peak - x.pow(2)) as f32 / 100.0;
-        let fade_in = (peak as f32 - fade_out) / 100.0;
-
-        match (cold_queue.crossfade_lhs.as_ref(), cold_queue.crossfade_rhs.as_ref()) {
-            (Some(lhs), Some(rhs)) => {
-                let _ = lhs.set_volume(fade_out);
-                let _ = rhs.set_volume(fade_in);
-            }
-            
-            (Some(lhs), None) => {
-                let _ = lhs.set_volume(fade_out);
-            },
-            
-            (None, Some(rhs)) => {
-                let _ = rhs.set_volume(fade_in);
-            },
-            
-            (None, None) => return Some(Event::Cancel)
-        }
-        return None
-    }
-}
-
-
-async fn play(
-    call: &mut Call,
-    mut track: Track,
-    crossfade: bool,
-)
-{
-    if ! crossfade {
-        call.enqueue(track);
-        return;
-    }
-    track.pause();
-    call.play(track);
-}
-
-#[derive(Debug, Clone)]
-enum MetadataType {
-    #[cfg(feature = "deemix")]
-    Deemix(crate::deemix::DeemixMetadata),
-    
-    Disk(PathBuf),
-    
-    Standard(Metadata),
-}
-
-impl From<Metadata> for MetadataType {
-    fn from(meta: Metadata) -> Self {
-        Self::Standard(meta)
-    }
-}
-
-impl Into<Metadata> for MetadataType {
-    fn into(self) -> Metadata {
-        match self {
-            Self::Standard(meta) => meta,
- 
-            #[cfg(feature = "deemix")]
-            Self::Deemix(meta) => meta.into(),
-
-            Self::Disk(fp) => Metadata { source_url: fp.into_os_string().into_string().ok(), ..Default::default() },
-        }
-    }
-}
-
-#[cfg(feature = "deemix")]
-impl From<crate::deemix::DeemixMetadata> for MetadataType {
-    fn from(meta: crate::deemix::DeemixMetadata) -> Self {
-        Self::Deemix(meta)
-    }
-}
-
-async fn seed_from_history(has_played: &VecDeque<TrackRecord>) -> std::io::Result<VecDeque<String>> {
-    let seeds =
-        has_played
-            .iter()
-            // Don't include skipped tracks
-            .filter(|x| x.stop_event != EventEnd::Skipped)
-            .filter_map(|x|
-                match &x.metadata {
-                    MetadataType::Deemix(meta) => meta.isrc.clone(),
-                    _ => None
-                })
-            .collect::<Vec<_>>();
-
-
-    if seeds.is_empty() {
-        return Ok(seeds.into());
-    }
-
-    return recommend(&seeds, 5).await;
-
-}
-
-async fn preload_radio_track(
-    cold_queue: &mut ColdQueue
-) -> Result<(), String> {
-    // pop seeds in radio
-    let mut tries = 5;
-    // attempts/tries loop
-    loop {
-        let uri = match cold_queue.radio_queue.pop_front() {
-            Some(x) => Some(x),
-            None => {
-                cold_queue.radio_queue.clear();
-                cold_queue.radio_queue.extend(seed_from_history(&cold_queue.has_played).await.unwrap_or_else(|_| VecDeque::new()));
-                cold_queue.radio_queue.pop_front()
-            }
-        };
-
-        if let Some(uri) = uri {
-            match _deemix(&uri, &[], false, crate::deemix::DeemixLoadMethod::Mem).await {
-                Ok((preload_input, metadata)) => {
-                        cold_queue.radio_next = Some((Compressed::new(
-                            preload_input,
-                            songbird::driver::Bitrate::BitsPerSecond(128_000)
-                        ).unwrap(),
-
-                        metadata.map(|x| x.into())
-                    ));
-                    return Ok(())
-                }
-
-                Err(why) =>  {
-                    tries -= 1;
-                    tracing::error!("Error preloading radio track: {}", why);
-                    if 0 >= tries {
-                        return Err("Exceeded max tries".to_string());
-                    }
-                    continue
-                }
-            }
-        }
-        return Err("Fall through".to_string());
-    }
-}
-
-struct RadioInvoker(Arc<QueueContext>);
-impl RadioInvoker {
-    fn new(qctx: Arc<QueueContext>) -> Self {
-        Self(qctx)
-    }
-}
-
-
-#[async_trait]
-impl VoiceEventHandler for RadioInvoker {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        if let Some(call) = self.0.manager.get(self.0.guild_id) {
-            let mut call = call.lock().await;
-            let mut cold_queue = self.0.cold_queue.write().await;
-            let crossfade = self.0.crossfade.load(Ordering::Relaxed);
-
-            // `PreloadInvoker` may have placed a track (from the user queue)
-            // before this event was fired.
-            // If true, we clear our trackers.
-            if let Some(_current_track_handle) = call.queue().current() {
-                // do nothing
-            }
-
-            else if let Ok(Some((track, handle, metadata))) = next_track_handle(&mut cold_queue, self.0.clone(), crossfade).await {
-                play(&mut call, track, crossfade).await;
-                // do nothing.
-            }
-
-
-            // `PreloadInvoker` has not placed anything,
-            // lets fire it's routine on our thread.
-            // else
-            // // If all else fails, play the preloaded track on radio
-            // else if cold_queue.use_radio {
-            //    // if the user queue is empty, try the preloaded radio track
-            //     if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
-
-            //         // play_preload_radio_track(&mut call, radio_preload, metadata, self.0.clone()).await;
-            //         // let _ = preload_radio_track(&mut cold_queue).await;
-            //         return None;
-            //     }
-            // }
-
-            // cold_queue.radio_next = None;
-            // let _ = preload_radio_track(&mut cold_queue).await;
-        }
-        None
-    }
-}
-
-struct AbandonedChannel(Arc<QueueContext>);
-#[async_trait]
-impl VoiceEventHandler for AbandonedChannel {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let members = self.0.voice_chan_id.members(&self.0.cache).await.unwrap();
-        if members.iter().filter(|x| !x.user.bot).count() > 0 {
-            return None;
-        }
-
-        leave_routine(
-            self.0.data.clone(),
-            self.0.guild_id.clone(),
-            self.0.manager.clone()
-        ).await.unwrap();
-
-        Some(Event::Cancel)
-    }
-}
-
-struct PreloadInvoker(Arc<QueueContext>);
-impl PreloadInvoker {
-    fn new(qctx: Arc<QueueContext>) -> Self {
-        Self(qctx)
-    }
-}
-
-#[async_trait]
-impl VoiceEventHandler for PreloadInvoker {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {      
-        if let Some(call) = self.0.manager.get(self.0.guild_id) {
-            let mut call = call.lock().await;
-            let mut cold_queue = self.0.cold_queue.write().await;
-            if let Ok(Some((track, _handle, _metadata))) = invoke_cold_queue(&mut cold_queue, self.0.clone()).await {
-                play(&mut call, track, self.0.crossfade.load(Ordering::Relaxed)).await;
-            }
-            
-        }
-        None
-    }
-}
-
-#[allow(unused_variables)]
-#[derive(Debug)]
-pub enum HandlerError {
-    Songbird(SongbirdError),
-    IOError(std::io::Error),
-    Serenity(serenity::Error),
-
-    #[cfg(feature = "http-get")]
-    Reqwest(reqwest::Error),
-
-    #[cfg(feature = "http-get")]
-    UnsupportedMediaType(String),
-
-    #[cfg(feature = "deemix")]
-    DeemixError(crate::deemix::DeemixError),
-
-    WrongMetadataType,
-
-    NotImplemented,
-    NoCall
-}
-
-impl From<serenity::Error> for HandlerError {
-    fn from(err: serenity::Error) -> Self {
-        HandlerError::Serenity(err)
-    }
-}
-
-impl From<SongbirdError> for HandlerError {
-    fn from(err: SongbirdError) -> Self {
-        HandlerError::Songbird(err)
-    }
-}
-
-impl From<std::io::Error> for HandlerError {
-    fn from(err: std::io::Error) -> Self {
-        HandlerError::IOError(err)
-    }
-}
-
-#[cfg(feature = "http-get")]
-impl From<reqwest::Error> for HandlerError {
-    fn from(err: reqwest::Error) -> Self {
-        HandlerError::Reqwest(err)
-    }
-}
-
-#[cfg(feature = "deemix")]
-impl From<crate::deemix::DeemixError> for HandlerError {
-    fn from(err: crate::deemix::DeemixError) -> Self {
-        HandlerError::DeemixError(err)
-    }
-}
-
-impl std::fmt::Display for HandlerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Songbird(err) => write!(f, "Songbird error: {}", err),
-            Self::NotImplemented => write!(f, "This feature is not implemented."),
-            
-            Self::IOError(err)
-                => write!(f, "IO error: (most likely deemix-metadata failed) {}", err),
-            
-            Self::Serenity(err)
-                => write!(f, "Serenity error: {}", err),
-            
-            Self::NoCall
-                => write!(f, "Not in a voice channel to play in"),
-
-            Self::WrongMetadataType
-                => write!(f, "Programming bug, got a different MetadataType than expected"),
-
-            #[cfg(feature = "http-get")]
-            Self::UnsupportedMediaType(content_type)
-                => write!(f, "Content type is not supported [{}]", content_type),
-
-            #[cfg(feature = "http-get")]
-            Self::Reqwest(err)
-                => write!(f, "Reqwest error: {}", err),
-
-            #[cfg(feature = "deemix")]
-            Self::DeemixError(crate::deemix::DeemixError::BadJson(err))
-                => write!(f, "Deemix error: {}", err),
-
-            _ => write!(f, "Unknown error")
-        }
-    }
-}
-impl std::error::Error for HandlerError {}
-
-fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Value>, err_cnt: &mut usize, key: &str){
-    for x in json_buf {
-        if let Some(jmap) = x.as_object() {
-            if !jmap.contains_key(key) {
-                tracing::error!("{} not found in json", key);
-                *err_cnt += 1;
-                continue
-            }
-        
-            buf.push_back(jmap[key].as_str().unwrap().to_owned());
-        }
-        else {
-            tracing::error!("{} not found in json", key);
-            *err_cnt += 1;
-            continue
-        }
-    }
-    tracing::info!("{} tracks found", buf.len());
-}
-
-/*
- * Some ugly place holders for
- * feature generated code.
-*/
-#[cfg(feature="deemix")]
-async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
-    let mut json_buf = Vec::new();
-    let mut err_cnt = 0;
-    _urls("deemix-metadata", &[uri], &mut json_buf).await?;
-
-    process_fan_output(buf, json_buf, &mut err_cnt, "link");
-    Ok(err_cnt)
-}
-
-#[cfg(feature="ytdl")]
-async fn fan_ytdl(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
-    let mut json_buf = Vec::new();
-    let mut err_cnt = 0;
-    _urls("yt-dlp", &["--flat-playlist", "-j", uri], &mut json_buf).await?;
-    
-    process_fan_output(buf, json_buf, &mut err_cnt, "url");
-    Ok(err_cnt)
-}
-
-#[cfg(not(feature="deemix"))]
-async fn fan_deezer(uri: &str, buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
-    return Err(HandlerError::NotImplemented)
-}
-
-#[cfg(not(feature="ytdl"))]
-async fn fan_ytdl(_uri: &str, _buf: &mut VecDeque<String>) -> Result<usize, HandlerError> {
-    return Err(HandlerError::NotImplemented)
-}
-
-#[cfg(feature = "http-get")]
-async fn ph_httpget_player(
-    uri: &str,
-    guild_id: u64,
-    ref_fp: &mut PathBuf,
-) -> (Result<(Input, Option<MetadataType>), HandlerError>) {
-    tracing::info!("[HTTP-GET] Downloading: {}", uri);
-
-    // let fp = tempfile::tempfile()?;
-    use rand::Rng;
-    let id: String = (0..12)
-        .map(|_| char::from(rand::thread_rng().gen_range(97..123)))
-        .collect();
-
-    let fp = std::env::temp_dir()
-        .join("coggiebot")
-        .join(guild_id.to_string());
-
-    match tokio::fs::create_dir_all(&fp).await {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!("Failed to create temp dir: {}", e);
-            return (Err(HandlerError::IOError(e)));
-        }
-    }
-    let fp = fp.join(format!("{}", id));
-
-    match get_file(uri, guild_id, &fp).await.map_err(HandlerError::from) {
-        Ok(input) => Ok((input, Some(MetadataType::Disk(fp.clone())))),
-        Err(e) => {
-            if let Ok(true) = tokio::fs::try_exists(&fp).await {
-                tokio::fs::remove_file(&fp).await;
-            }
-            Err(e)
-        }
-    }
-}
-
-#[cfg(feature = "deemix")]
-async fn ph_deemix_player(uri: &str) -> Result<(Input, Option<MetadataType>), HandlerError> {
-    crate::deemix::deemix(uri).await
-        .map_err(HandlerError::from)
-        .map(|(input, meta)| (input, meta.map(|x| x.into())))   
-    }
-
-#[cfg(feature = "ytdl")]
-async fn ph_ytdl_player(uri: &str) -> Result<(Input, Option<MetadataType>), HandlerError> {
-    return songbird::ytdl(uri).await.map_err(HandlerError::from)
-        .map(|input| (input, None))
-}
-
-#[cfg(not(feature = "deemix"))]
-struct FakeMeta(Metadata);
-
-#[cfg(not(feature = "deemix"))]
-impl Into<Metadata> for FakeMeta {
-    fn into(self) -> Metadata {
-        self.0
-    }
-}
-
-#[cfg(not(feature = "deemix"))]
-async fn ph_deemix_player(uri: &str) -> Result<(Input, Option<FakeMeta>), HandlerError> {
-    return Err(HandlerError::NotImplemented)
-}
-
-#[cfg(not(feature = "ytdl"))]
-async fn ph_ytdl_player(_uri: &str) -> Result<(Input, Option<MetadataType>), HandlerError> {
-    return Err(HandlerError::NotImplemented)
-}
-
-#[cfg(not(feature = "http-get"))]
-async fn ph_httpget_player(
-    _uri: &str,
-    _guild_id: u64,
-    _ref_fp: &mut PathBuf,
-) -> Result<(Input, Option<MetadataType>), HandlerError>
-{
-    return Err(HandlerError::NotImplemented)
-}
-
-async fn _urls(cmd: &str, args: &[&str], buf: &mut Vec<serde_json::Value>) -> std::io::Result<()> {
-    let child = Command::new(cmd)
-        .args(args)
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-
-    let stdout = child.wait_with_output().await.unwrap();
-    let mut lines = stdout.stdout.lines();
-   
-    while let Some(line) = lines.next_line().await? {
-        let json =
-            serde_json::from_str(&line).unwrap();
-        buf.push(json);
-    } 
-    Ok(())
-}
-
-async fn recommend(isrcs: &Vec<String>, limit: u8) -> std::io::Result<VecDeque<String>> {
-    let mut buffer = std::collections::HashSet::new();
-
-    tracing::info!("running spotify-recommend -l {} {}", limit, isrcs.join(" "));
-    let recommend = tokio::process::Command::new("spotify-recommend")
-        .arg("-l")
-        .arg(format!("{}", limit))
-        .args(isrcs.iter())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    
-    let output = recommend.wait_with_output()
-        .await?;
-    
-    let mut lines = output.stdout.lines();
-    
-    while let Some(x) = lines.next_line().await? {
-        buffer.insert(x);
-    }
-    tracing::info!("spotify-stream finished [{}]", buffer.len());
-    let mut ret = VecDeque::new();
-    for x in buffer {
-        ret.push_back(x);   
-    }
-    Ok(ret)
-}
 
 #[derive(PartialEq, Eq)]
 pub enum Players {
@@ -674,7 +53,7 @@ pub enum Players {
 }
 
 impl Players {
-    fn from_str(data : &str) -> Option<Self>
+    pub fn from_str(data : &str) -> Option<Self>
     {
         const DEEMIX: [&'static str; 4] = ["deezer.page.link", "deezer.com", "open.spotify", "spotify.link"];
         const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
@@ -690,7 +69,7 @@ impl Players {
         else { return None }
     }
 
-    async fn into_input(&self, uri: &str, guild_id: GuildId) -> Result<(Input, Option<MetadataType>), HandlerError>
+    pub async fn into_input(&self, uri: &str, guild_id: GuildId) -> Result<(Input, Option<MetadataType>), HandlerError>
     {
         match self {
             Self::Deemix => ph_deemix_player(uri).await,
@@ -723,7 +102,7 @@ impl Players {
     }
 
     /// turn a uri into a loaded process
-    async fn create_player(&self, uri: &str, guild_id: GuildId) -> Result<(Track, TrackHandle, Option<MetadataType>), HandlerError>
+    pub async fn create_player(&self, uri: &str, guild_id: GuildId) -> Result<(Track, TrackHandle, Option<MetadataType>), HandlerError>
     {
         let input = self.into_input(uri, guild_id).await;
         match input {
@@ -745,7 +124,7 @@ impl Players {
         };
     }
 
-    async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
+    pub async fn fan_collection(&self, uri: &str) -> Result<VecDeque<String>, HandlerError> {
         let mut buf = VecDeque::new();
         match self {
             Self::HttpGet => {buf.push_back(uri.to_owned()); Ok(1)},
@@ -755,6 +134,20 @@ impl Players {
 
         return Ok(buf)
     }
+}
+
+pub async fn play(
+    call: &mut Call,
+    mut track: Track,
+    crossfade: bool,
+)
+{
+    if ! crossfade {
+        call.enqueue(track);
+        return;
+    }
+    track.pause();
+    call.play(track);
 }
 
 #[cfg(feature = "http-get")]
@@ -821,17 +214,8 @@ pub async fn get_file(
     }
 }
 
-struct RemoveTempFile(PathBuf);
-#[async_trait]
-impl VoiceEventHandler for RemoveTempFile {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let _ = tokio::fs::remove_file(&self.0).await;
-        None
-    }
-}
-
-
-async fn add_events(handle: &TrackHandle, qctx_arc: Arc<QueueContext>, crossfading: bool) {
+async fn add_events(handle: &TrackHandle, qctx_arc: Arc<QueueContext>, crossfading: bool)
+{
     if let Some(duration) = handle.metadata().duration {
         if duration < TS_PRELOAD_OFFSET {
             tracing::warn!("No duration provided, preloading disabled");
@@ -840,7 +224,7 @@ async fn add_events(handle: &TrackHandle, qctx_arc: Arc<QueueContext>, crossfadi
         
         handle.add_event(
             Event::Delayed(duration - TS_PRELOAD_OFFSET),
-            PreloadInvoker::new(qctx_arc.clone())
+            crate::events::PreloadInvoker::new(qctx_arc.clone())
         ).unwrap();
 
         if crossfading {
@@ -848,7 +232,7 @@ async fn add_events(handle: &TrackHandle, qctx_arc: Arc<QueueContext>, crossfadi
             
             handle.add_event(
                 Event::Periodic(duration - TS_CROSSFADE_OFFSET, Some(Duration::from_millis(100))),
-                CrossFadeInvoker(qctx_arc.clone())
+                crate::events::CrossFadeInvoker(qctx_arc.clone())
             ).unwrap();
         }
     }
@@ -888,8 +272,7 @@ async fn history_completed_track(has_played: &mut VecDeque<TrackRecord>, metadat
     has_played.push_front(data);
 }
 
-
-async fn next_track_handle(
+pub async fn next_track_handle(
     cold_queue: &mut ColdQueue,
     qctx: Arc<QueueContext>,
     crossfade: bool
@@ -913,12 +296,10 @@ async fn next_track_handle(
         }
     }
 
-
     return Ok(None)
 }
 
-
-async fn invoke_cold_queue(
+pub async fn invoke_cold_queue(
     cold_queue: &mut ColdQueue,
     qctx_arc: Arc<QueueContext>
 ) -> Result<Option<(Track, TrackHandle, Option<MetadataType>)>, HandlerError> {
@@ -999,7 +380,7 @@ async fn invoke_cold_queue(
     Ok(None)
 }
 
-async fn leave_routine (
+pub async fn leave_routine (
     data: Arc<RwLock<TypeMap>>,
     guild_id: GuildId,
     manager: Arc<Songbird>
@@ -1025,7 +406,7 @@ async fn leave_routine (
     Ok(())
 }
 
-async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
+pub async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>, JoinError> {
     let guild = msg.guild(&ctx.cache).unwrap();
     let guild_id = guild.id;
 
@@ -1063,7 +444,8 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
         }
     };
 
-    match gchan.bitrate {
+    match gchan.bitrate
+    {
        Some(x) if x > 90_000 => {}
        None => {
            tracing::info!(
@@ -1153,701 +535,13 @@ async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueContext>,
     
     call.add_global_event(
         Event::Track(TrackEvent::End),
-        RadioInvoker::new(queuectx.clone())
+        crate::radio::RadioInvoker::new(queuectx.clone())
     );
     
     call.add_global_event(
         Event::Periodic(TS_ABANDONED_HB, None),
-        AbandonedChannel(queuectx.clone())
+        crate::events::AbandonedChannel(queuectx.clone())
     );
 
     Ok(queuectx)
 }
-
-#[command]
-#[aliases("np", "playing", "now-playing", "playing-now", "nowplaying")]
-#[only_in(guilds)]
-async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    tracing::info!(
-        "[{}::{}] asked what track is playing in [{}::{:?}]",
-        msg.author.id, msg.author.name,
-        msg.channel_id, msg.channel_id.name(&ctx).await
-   );
-
-
-    let qctx = {
-        let mut glob = ctx.data.write().await;
-        let queue = glob.get_mut::<LazyQueueKey>()
-            .expect("Expected LazyQueueKey in TypeMap");
-        queue.get(&guild_id).cloned()
-    };
-
-    let qctx = match qctx {
-        Some(qctx) => qctx,
-        None => {
-            msg.channel_id
-               .say(&ctx.http, "Not in a voice channel")
-               .await?;
-            return Ok(());
-        }
-    };
-
-    let call_lock = qctx.manager
-        .get(qctx.guild_id)
-        .unwrap();
-
-    let call = call_lock.lock().await;
-
-    match call.queue().current() {
-        Some(ref x) => {
-            msg.channel_id
-               .say(&ctx.http,
-                    format!(
-                        "{}: {}", qctx.voice_chan_id.mention(),
-                        x.metadata()
-                            .clone()
-                            .source_url
-                            .unwrap_or("Unknown".to_string())
-                    )
-               ).await?;
-        }
-        None => {
-            msg.channel_id
-               .say(&ctx.http, "Nothing is currently playing")
-               .await?;
-        }
-    }
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    let connect_to = join_routine(&ctx, msg).await;
-    
-    if let Err(ref e) = connect_to {
-        msg.channel_id
-           .say(&ctx.http, format!("Failed to join voice channel: {:?}", e))
-           .await?;        
-    }
-
-    msg.channel_id
-       .say(&ctx.http, format!("Joined {}", connect_to.unwrap().voice_chan_id.mention()))
-       .await?;
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("songbird voice client placed in at initialisation.")
-        .clone();
-
-    let handler = manager.get(guild_id);
-    
-    if handler.is_none() {
-        msg.reply(ctx, "Not in a voice channel").await?;
-        return Ok(())
-    }
-    
-    let handler = handler.unwrap();
-
-    {
-        let mut call = handler.lock().await;
-        call.remove_all_global_events();
-        call.stop();
-        let _ = call.deafen(false).await;
-    }
-
-    if let Err(e) = manager.remove(guild_id).await {
-        msg.channel_id
-           .say(&ctx.http, format!("Failed: {:?}", e))
-           .await?;
-    }
-    
-    {
-        let mut glob = ctx.data.write().await; 
-        let queue = glob.get_mut::<LazyQueueKey>().expect("Expected LazyQueueKey in TypeMap");
-        queue.remove(&guild_id);
-    }
-
-    msg.channel_id.say(&ctx.http, "Left voice channel").await?;
-    Ok(())
-}
-
-#[command]
-#[aliases("play", "p", "q")]
-#[only_in(guilds)]
-async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    tracing::info!(
-        "[{}::{}] queued track in [{}::{:?}]",
-        msg.author.id, msg.author.name,
-        msg.channel_id, msg.channel_id.name(&ctx).await
-    );
-
-    let url = match args.single::<String>() {
-        Ok(url) => url,
-        Err(_) => {
-            msg.channel_id
-               .say(&ctx.http, "Must provide a URL to a video or audio")
-               .await
-               .unwrap();
-            return Ok(());
-        },
-    };
-
-    if !url.starts_with("http") {
-        msg.channel_id
-           .say(&ctx.http, "Must provide a valid URL")
-           .await
-           .unwrap();
-        return Ok(());
-    };
-
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    let qctx: Arc<QueueContext>;
-
-    // grab the call object from guild ID.
-    let call = match manager.get(guild_id) {
-        Some(call_lock) => {
-            qctx = ctx.data.write()
-                .await
-                .get_mut::<LazyQueueKey>()
-                .unwrap()
-                .get_mut(&guild_id)
-                .unwrap()
-                .clone();
-
-            call_lock
-        },
-        
-        None => {
-            // Join the VC the user is in,
-            // then try again.
-            let tmp = join_routine(ctx, msg).await;            
-
-            if let Err(ref e) = tmp {
-                msg.channel_id
-                   .say(&ctx.http, format!("Failed to join voice channel: {:?}", e))
-                   .await
-                   .unwrap();        
-                return Ok(());
-            };
-            qctx = tmp.unwrap();
-            msg.channel_id
-                   .say(&ctx.http, format!("Joined: {}", qctx.voice_chan_id.mention()))
-                   .await
-                   .unwrap();
-
-            let call = manager.get(guild_id).ok_or_else(|| JoinError::NoCall);
-            call?
-        }
-    };
-
-    match Players::from_str(&url)
-        .ok_or_else(|| String::from("Failed to select extractor for URL"))
-    {
-        Ok(player) => {
-            let mut uris = player.fan_collection(url.as_str()).await?;
-            let added = uris.len();
-            
-            // YTDLP singles don't work.
-            // so instead, use the original URI.
-            if uris.len() == 1 && player == Players::Ytdl {
-                uris.clear();
-                uris.push_back(url.clone());
-            }
-
-            // --- START
-            // WARNING: removing these curly braces will cause a deadlock.
-            // amount of hours spent on this: 5
-            {
-                qctx.cold_queue.write().await.queue.extend(uris.drain(..));
-
-                // check for hot loaded track
-                // let hot_loaded = {
-                //     let call = call.lock().await;
-                //     call.queue().len() > 0
-                // };
-
-
-                let mut call = call.lock().await;
-                let mut cold_queue = qctx.cold_queue.write().await;
-                // if hot_loaded == false {
-
-                    let crossfading = qctx.crossfade.load(Ordering::Relaxed);
-                    let track = next_track_handle(&mut cold_queue, qctx.clone(), crossfading).await;
-
-                    // invoke_cold_queue(&mut cold_queue, qctx.clone()).await?;
-                // }
-            }
-            // --- END
-
-
-            let content = format!(
-                "Added {} Song(s) [{}] queued",
-                added,
-                qctx.cold_queue.read().await.queue.len()
-            );
-            
-            msg.channel_id            
-               .say(&ctx.http, &content)
-               .await?;            
-        },
-
-        Err(_) => {
-            msg.channel_id
-               .say(&ctx.http, format!("Failed to select extractor for URL: {}", url))
-               .await?;
-        }
-    }
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    tracing::info!(
-        "[{}::{}] skipped track in [{}::{:?}]",
-        msg.author.id, msg.author.name,
-        msg.channel_id, msg.channel_id.name(&ctx).await
-    );
-
-    let qctx = ctx.data.write().await
-        .get_mut::<LazyQueueKey>().unwrap()
-        .get_mut(&guild_id).unwrap().clone();
-
-    let cold_queue_len = qctx.cold_queue.read().await.queue.len();
-     
-    let skipn = args.remains()
-        .unwrap_or("1")
-        .parse::<isize>()
-        .unwrap_or(1);
-
-    // stop_event: EventEnd::UnMarked,
-
-    if 1 > skipn  {
-        msg.channel_id
-           .say(&ctx.http, "Must skip at least 1 song")
-           .await?;
-        return Ok(())
-    }
-
-    else if skipn >= cold_queue_len as isize + 1 {
-        qctx.cold_queue.write().await.queue.clear();
-    }
-
-    else {
-        let mut cold_queue = qctx.cold_queue.write().await;
-        let bottom = cold_queue.queue.split_off(skipn as usize - 1);
-        cold_queue.queue.clear();
-        cold_queue.queue.extend(bottom);
-    }
-
-    // --- START
-    // stand alone section, writes historical actions.
-    {
-        let mut cold_queue = qctx.cold_queue.write().await;
-        if let Some(x) = cold_queue.has_played.front_mut()
-        {
-            if let EventEnd::UnMarked = x.stop_event 
-            {
-                x.stop_event = EventEnd::Skipped;
-                x.end = Instant::now();
-            }
-        }
-    }
-    // -- END
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    match manager.get(guild_id) {
-        Some(call) => {
-            let call = call.lock().await;
-            let queue = call.queue();
-            let _ = queue.skip();
-        }
-        None => {
-            msg.channel_id
-               .say(&ctx.http, "Not in a voice channel to play in")
-               .await?;
-            return Ok(())
-        }
-    };
-
-    msg.channel_id
-       .say(
-            &ctx.http,
-            format!("Song skipped [{}]: {} in queue.", skipn, skipn-cold_queue_len as isize),
-       )
-       .await?;
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-#[aliases("ls", "l")]
-/// @bot list
-async fn list(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let mut _qctx_lock = ctx.data.write().await;
-    let mut _qctx = _qctx_lock
-        .get_mut::<LazyQueueKey>()
-        .expect("Expected LazyQueueKey in TypeMap");
-
-    if let None = _qctx.get(&guild_id) {
-        msg.channel_id
-           .say(&ctx.http, "Not in a voice channel")
-           .await?;
-        return Ok(())
-    }
-    let qctx = _qctx.get_mut(&guild_id).unwrap();
-    let cold_queue = qctx.cold_queue.read().await;
-
-    msg.channel_id
-       .say(&ctx.http,
-            format!(
-                "{}\n[{}] songs in queue",
-                cold_queue
-                    .queue.clone()
-                    .drain(..)
-                    .chain(cold_queue.radio_queue.clone().drain(..))
-                    .chain(
-                        cold_queue.radio_next
-                        .iter()
-                        .filter_map(
-                            |(_next, metadata)|
-                            metadata
-                                .clone()
-                                .map(|x| {
-                                    let metadata: Metadata = x.into();
-                                    metadata.source_url.unwrap_or("Unknown".to_string())
-                                })
-                        )
-                    )
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-
-                cold_queue.queue.len()
-            )
-       ).await?;
-
-    return Ok(());
-}
-
-#[command]
-#[only_in(guilds)]
-/// @bot seed [on/off/(default: status)/uri]
-async fn seed(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let mut _qctx_lock = ctx.data.write().await;
-    let mut _qctx = _qctx_lock
-        .get_mut::<LazyQueueKey>()
-        .expect("Expected LazyQueueKey in TypeMap");
-
-    if let None = _qctx.get(&guild_id) {
-        msg.channel_id
-           .say(&ctx.http, "Not in a voice channel")
-           .await?;
-        return Ok(())
-    }
-
-    let qctx = _qctx.get_mut(&guild_id).unwrap();
-    let act = args.remains()
-        .unwrap_or("status");
-
-    match act {
-        "status" =>
-            { msg.channel_id
-                .say(
-                    &ctx.http,
-                    qctx.cold_queue.read().await.radio_queue.clone().into_iter().collect::<Vec<_>>().join("\n")
-                ).await?; },
-
-        _ => {}
-    }
-
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn shuffle(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    tracing::info!(
-        "[{}::{}] shuffled playlist in [{}::{:?}]",
-        msg.author.id, msg.author.name,
-        msg.channel_id, msg.channel_id.name(&ctx).await
-    );
-
-    let qctx = ctx.data.write().await
-        .get_mut::<LazyQueueKey>().unwrap()
-        .get_mut(&guild_id).unwrap().clone();
-
-    {
-        use rand::thread_rng;
-        use rand::seq::SliceRandom;
-
-        let mut write_lock = qctx.cold_queue.write().await;
-
-        let mut vec = write_lock.queue.iter().cloned().collect::<Vec<_>>();
-
-        vec.shuffle(&mut thread_rng());
-        write_lock.queue.clear();
-        write_lock.queue.extend(vec);
-    }
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    let handler_lock = match manager.get(guild_id) {
-        Some(x) => x,
-        None => {
-            msg.channel_id
-               .say(&ctx.http, "Not in a voice channel to play in")
-               .await?;
-            return Ok(())
-        }
-    };
-
-    msg.channel_id
-       .say(
-            &ctx.http,
-            format!("shuffled."),
-       )
-       .await?;
-
-    let mut call = handler_lock.lock().await;
-    let queue = call.queue();
-    let _ = queue.skip();
-
-    Ok(())
-}
-
-#[group]
-#[commands(setarl, getarl)]
-struct Dangerous;
-
-#[command]
-#[only_in(guilds)]
-async fn setarl(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    tracing::info!("[{}::{}] set a new arl", msg.author.id, msg.author.name);
-
-    let arl = args.single::<String>()?;
-
-    if !(arl.trim().len() == 192 && arl.chars().all(|c| c.is_ascii_hexdigit())) {
-        msg.channel_id.say(&ctx.http, "Invalid ARL").await?;
-        return Ok(())
-    }
-
-    std::env::set_var("DEEMIX_ARL", arl);
-    msg.channel_id.say(&ctx.http, "**ARL has been set**").await?;
-
-    return Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-async fn getarl(ctx: &Context, msg: &Message) -> CommandResult {
-    tracing::info!("[{}::{}] requested arl", msg.author.id, msg.author.name);
-
-    let arl = std::env::var("DEEMIX_ARL");
-    tracing::info!("getarl: {:?}", arl);
-    match arl {
-        Err(e) => { msg.channel_id.say(&ctx.http, format!("Error: {}", e)).await?; }
-        Ok(arl) if arl.is_empty() => { msg.channel_id.say(&ctx.http, "ARL not set").await?; }
-        Ok(arl) => {
-            #[cfg(feature = "check")]
-            {
-                msg.channel_id.say(&ctx.http, format!("getting arl data...")).await?;
-                use serenity::framework::standard::{Args, Delimiter};
-                let mut args = Args::new(arl.as_str(), &[Delimiter::Single(' ')]);
-                crate::check::arl_check(ctx, msg, args).await?;
-            }
-            #[cfg(not(feature = "check"))]
-            msg.channel_id.say(&ctx.http, format!("ARL: {}", &arl)).await?;
-        }
-    }
-    return Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-/// @bot radio [on/off/(default: status)]
-async fn radio(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let mut _qctx_lock = ctx.data.write().await;
-    let mut _qctx = _qctx_lock
-        .get_mut::<LazyQueueKey>()
-        .expect("Expected LazyQueueKey in TypeMap");
-
-    if let None = _qctx.get(&guild_id) {
-        msg.channel_id
-           .say(&ctx.http, "Not in a voice channel")
-           .await?;
-        return Ok(())
-    }
-    let qctx = _qctx.get_mut(&guild_id).unwrap();
-    let act = args.remains()
-        .unwrap_or("status");
-
-    match act {
-        "status" =>
-            { msg.channel_id
-                .say(
-                    &ctx.http,
-                    if qctx.cold_queue.read().await.use_radio
-                    { "on" } else { "off" },
-                ).await?; },
-
-        "on" => {
-            qctx.cold_queue.write().await.use_radio = true;
-            msg.channel_id
-               .say(&ctx.http, "Radio enabled")
-               .await?;
-        }
-        "off" => {
-            let mut lock = qctx.cold_queue.write().await;
-            lock.radio_queue.clear();
-            lock.use_radio = false;
-
-            msg.channel_id
-               .say(&ctx.http, "Radio disabled")
-               .await?;
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-
-#[command]
-#[only_in(guilds)]
-/// @bot radio [on/off/(default: status)]
-async fn play_source(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("songbird voice client placed in at initialisation.")
-        .clone();
-
-    let handler = manager.get(guild_id);
-
-    if handler.is_none() {
-        msg.reply(ctx, "Not in a voice channel").await?;
-        return Ok(())
-    }
-
-    let handler = handler.unwrap();
-
-    let url = match args.single::<String>() {
-        Ok(url) => url.to_owned(),
-        Err(_) => {
-            msg.channel_id
-               .say(&ctx.http, "Must provide a URL to a video or audio")
-               .await
-               .unwrap();
-            return Ok(());
-        },
-    };
-
-    let player = Players::from_str(&url).unwrap();
-    let mut call = handler.lock().await;
-    let guild = msg.guild(&ctx.cache).unwrap();
-
-    let (input, metadata) = player.into_input(&url, guild.id).await?;
-    call.play_source(input);
-    // call.enqueue(track);
-    // Ok((track_handle, metadata))
-    Ok(())
-}
-
-#[command]
-#[only_in(guilds)]
-/// @bot radio [on/off/(default: status)]
-async fn crossfade(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
-
-    let mut _qctx_lock = ctx.data.write().await;
-    let mut _qctx = _qctx_lock
-        .get_mut::<LazyQueueKey>()
-        .expect("Expected LazyQueueKey in TypeMap");
-
-    if let None = _qctx.get(&guild_id) {
-        msg.channel_id
-           .say(&ctx.http, "Not in a voice channel")
-           .await?;
-        return Ok(())
-    }
-
-    let qctx = _qctx.get_mut(&guild_id).unwrap();
-    let act = args.remains()
-        .unwrap_or("status");
-
-    match act {
-        "status" =>
-            { msg.channel_id
-                .say(
-                    &ctx.http,
-                    if qctx.crossfade.load(Ordering::Relaxed)
-                    { "on" } else { "off" },
-                ).await?; },
-
-        "on" => {
-            qctx.crossfade.swap(true, Ordering::Relaxed);
-            msg.channel_id
-               .say(&ctx.http, "Radio enabled")
-               .await?;
-        }
-        "off" => {
-            let mut lock = qctx.cold_queue.write().await;
-            lock.radio_queue.clear();
-            lock.use_radio = false;
-
-            msg.channel_id
-               .say(&ctx.http, "Radio disabled")
-               .await?;
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
