@@ -10,6 +10,7 @@ pub mod models;
 pub mod controller;
 pub mod radio;
 pub mod compat;
+pub mod usersettoken;
 
 // #[cfg(feature = "http-get")]
 // pub mod httpget;

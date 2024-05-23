@@ -37,7 +37,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
-            ["mockingbird-set-arl-cmd"] => [mockingbird::player::DANGEROUS_GROUP],
+            ["mockingbird-set-arl-cmd"] => [mockingbird::usersettoken::DANGEROUS_GROUP],
             ["mockingbird-ctrl"] => [mockingbird::controller::BETTERPLAYER_GROUP],
             ["mockingbird-ctrl", "mockingbird-radio"] => [mockingbird::radio::RADIO_GROUP]
         }
