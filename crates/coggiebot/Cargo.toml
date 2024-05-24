@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.17"
+version = "1.5.0"
 edition = "2021"
 
 [dependencies]
@@ -14,7 +14,13 @@ tracing-subscriber = "0.3"
 mockingbird = { path = "../mockingbird", optional=true }
 
 [features]
-default = ["mockingbird-radio", "mockingbird-deemix"]
+default = [
+    "mockingbird-radio",
+    "mockingbird-deemix",
+    "mockingbird-ctrl",
+    "mockingbird-core",
+    "mockingbird-http"
+]
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
@@ -42,6 +48,8 @@ mockingbird-deemix = ["mockingbird?/deemix"]
 
 ################
 mockingbird-deemix-check = ["mockingbird?/check"]
+
+mockingbird-crossfade = ["mockingbird?/crossfade"]
 
 ################
 # NOTE: enabling this is dangerous
