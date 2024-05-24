@@ -152,9 +152,10 @@ pub async fn play(
             cold_queue.crossfade_rhs = Some(handle.clone());
         }
 
-        (None, None) =>
-            cold_queue.crossfade_lhs = Some(handle.clone()),
-
+        (None, None) => {
+            let _ = handle.play();
+            cold_queue.crossfade_lhs = Some(handle.clone());
+        }
         (None, Some(rhs)) => {
             cold_queue.crossfade_lhs = Some(rhs);
             cold_queue.crossfade_rhs = Some(handle.clone());
