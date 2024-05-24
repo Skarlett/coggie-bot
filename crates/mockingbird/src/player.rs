@@ -1,41 +1,30 @@
 use serenity::{
-    async_trait, client::Cache, framework::standard::{
-        macros::{command, group}, Args, CommandResult
-    }, http::Http, json, model::{channel::Message, prelude::*}, prelude::*, FutureExt
+    model::{channel::Message, prelude::*}, 
+    prelude::*, 
 };
 
 use songbird::{
-    create_player, error::{JoinError, JoinResult}, events::{Event, EventContext, EventData}, input::{
-        error::Error as SongbirdError, Input, Metadata
-    }, tracks::{PlayMode, Track, TrackHandle}, Call, EventHandler as VoiceEventHandler, Songbird, TrackEvent
+    create_player,
+     error::{JoinError, JoinResult},
+      events::Event, 
+input::Input, 
+    tracks::{Track, TrackHandle}, Call, 
+   Songbird, TrackEvent
 };
 
 use std::{
-    process::Stdio,
     time::{Duration, Instant},
     collections::VecDeque,
     sync::Arc,
-    collections::HashMap,
     path::PathBuf,
 };
 
 use std::sync::atomic::AtomicBool;
-use tokio::{
-    io::AsyncBufReadExt,
-    process::Command,
-    sync::oneshot::Sender
-};
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::{lock_api::GuardNoSend, Mutex};
 
 use tokio::io::AsyncWriteExt;
 use serenity::futures::StreamExt;
-use songbird::input::cached::Compressed;
 use core::sync::atomic::Ordering;
-
-use cutils::{availbytes, bigpipe, max_pipe_size};
-
-#[cfg(feature = "deemix")]
-use crate::deemix::{DeemixMetadata, _deemix};
 
 use crate::models::*;
 use crate::compat::*;
@@ -112,7 +101,7 @@ impl Players {
                 match (self, metadata.as_ref()) {
                     #[cfg(feature = "http-get")]
                     (Self::HttpGet, Some(MetadataType::Disk(fp))) => {
-                        track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
+                        let _ = track_handle.add_event(Event::Track(TrackEvent::End), crate::events::RemoveTempFile(fp.clone()));
                     }
                     (Self::HttpGet, _) => return Err(HandlerError::WrongMetadataType),
                     _ => {}
@@ -139,15 +128,41 @@ impl Players {
 pub async fn play(
     call: &mut Call,
     mut track: Track,
+    handle: &TrackHandle,
+    cold_queue: &mut ColdQueue,
     crossfade: bool,
-)
+) -> Result<(), HandlerError>
 {
     if ! crossfade {
         call.enqueue(track);
-        return;
+        return Ok(());
     }
+    
     track.pause();
+
+    match (cold_queue.crossfade_lhs.take(), cold_queue.crossfade_rhs.take()) {    
+        (Some(lhs), Some(rhs)) => { 
+            cold_queue.crossfade_lhs = Some(lhs);
+            cold_queue.crossfade_rhs = Some(rhs);
+            return Err(HandlerError::CrossFadeHandleExhaust);
+        }
+
+        (Some(lhs), None) => {
+            cold_queue.crossfade_lhs = Some(lhs);
+            cold_queue.crossfade_rhs = Some(handle.clone());
+        }
+
+        (None, None) =>
+            cold_queue.crossfade_lhs = Some(handle.clone()),
+
+        (None, Some(rhs)) => {
+            cold_queue.crossfade_lhs = Some(rhs);
+            cold_queue.crossfade_rhs = Some(handle.clone());
+        }        
+    }
+
     call.play(track);
+    Ok(())
 }
 
 #[cfg(feature = "http-get")]
@@ -167,7 +182,6 @@ pub async fn get_file(
     fp: &PathBuf,
     // key: [u8; 16]
 ) -> Result<Input, HandlerError> {
-    use songbird::input::Metadata;
 
     let client = reqwest::ClientBuilder::new()
         .https_only(false)
@@ -232,7 +246,7 @@ async fn add_events(handle: &TrackHandle, qctx_arc: Arc<QueueContext>, crossfadi
             
             handle.add_event(
                 Event::Periodic(duration - TS_CROSSFADE_OFFSET, Some(Duration::from_millis(100))),
-                crate::events::CrossFadeInvoker(qctx_arc.clone())
+                crate::crossfade::CrossFadeInvoker(qctx_arc.clone())
             ).unwrap();
         }
     }
@@ -277,26 +291,26 @@ pub async fn next_track_handle(
     qctx: Arc<QueueContext>,
     crossfade: bool
 ) -> Result<Option<(Track, TrackHandle, Option<MetadataType>)>, HandlerError>
-{
+{   
     if let Some((preload, metadata)) = cold_queue.queue_next.take() {
         let (track, handle) = create_player(preload.into());
         add_events(&handle, qctx.clone(), crossfade).await;
-        return Ok(Some((track, handle, metadata)))
+        Ok(Some((track, handle, metadata)))
     }
 
     else if let Ok(Some((track, handle, metadata))) = invoke_cold_queue(cold_queue, qctx.clone()).await {
         add_events(&handle, qctx.clone(), crossfade).await;      
-        return Ok(Some((track, handle, metadata)))
+        Ok(Some((track, handle, metadata)))
     }
 
     else if cold_queue.use_radio {
         if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
             let (track, handle) = create_player(radio_preload.into());
-            return Ok(Some((track, handle, metadata)))
+            Ok(Some((track, handle, metadata)))
         }
+        else { Ok(None) }
     }
-
-    return Ok(None)
+    else { Ok(None) }
 }
 
 pub async fn invoke_cold_queue(
@@ -313,19 +327,8 @@ pub async fn invoke_cold_queue(
         // turn realization to live
         match player.create_player(&uri, qctx_arc.guild_id).await
         {
-            Ok((track, handle, metadata)) =>
-            {   
-                let crossfading = qctx_arc.crossfade.load(Ordering::Relaxed);
-
-               // --- END
-
-                // Preemptively load the next audio track
-                // `TS_PRELOAD_OFFSET` seconds before this `track`
-                // ends.
-                
-                // play(call, track, crossfading).await;
-                return Ok(Some((track, handle, metadata)))
-            },
+            Ok((track, handle, metadata)) => 
+                return Ok(Some((track, handle, metadata))),
 
             Err(e) => {
                 tracing::error!("Failed to play next track: {}", e);

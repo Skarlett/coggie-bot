@@ -1,41 +1,15 @@
-use serenity::{
-    async_trait, client::Cache, framework::standard::{
-        macros::{command, group}, Args, CommandResult
-    }, http::Http, json, model::{channel::Message, prelude::*}, prelude::*, FutureExt
-};
-
-use songbird::{
-    create_player, error::{JoinError, JoinResult}, events::{Event, EventContext, EventData}, input::{
-        error::Error as SongbirdError, Input, Metadata
-    }, tracks::{PlayMode, Track, TrackHandle}, Call, EventHandler as VoiceEventHandler, Songbird, TrackEvent
-};
+use songbird::input::Input;
 
 use std::{
     process::Stdio,
-    time::{Duration, Instant},
     collections::VecDeque,
-    sync::Arc,
-    collections::HashMap,
     path::PathBuf,
 };
 
-use std::sync::atomic::AtomicBool;
 use tokio::{
     io::AsyncBufReadExt,
     process::Command,
-    sync::oneshot::Sender
 };
-use parking_lot::{Mutex, MutexGuard};
-
-use tokio::io::AsyncWriteExt;
-use serenity::futures::StreamExt;
-use songbird::input::cached::Compressed;
-use core::sync::atomic::Ordering;
-
-use cutils::{availbytes, bigpipe, max_pipe_size};
-
-#[cfg(feature = "deemix")]
-use crate::deemix::{DeemixMetadata, _deemix};
 
 use crate::models::*;
 
@@ -48,8 +22,6 @@ impl Into<Metadata> for FakeMeta {
         self.0
     }
 }
-
-
 
 fn process_fan_output(buf: &mut VecDeque<String>, json_buf: Vec<serde_json::Value>, err_cnt: &mut usize, key: &str){
     for x in json_buf {
@@ -150,11 +122,11 @@ pub async fn ph_httpget_player(
     }
     let fp = fp.join(format!("{}", id));
 
-    match get_file(uri, guild_id, &fp).await.map_err(HandlerError::from) {
+    match crate::player::get_file(uri, guild_id, &fp).await.map_err(HandlerError::from) {
         Ok(input) => Ok((input, Some(MetadataType::Disk(fp.clone())))),
         Err(e) => {
             if let Ok(true) = tokio::fs::try_exists(&fp).await {
-                tokio::fs::remove_file(&fp).await;
+                let _ = tokio::fs::remove_file(&fp).await;
             }
             Err(e)
         }

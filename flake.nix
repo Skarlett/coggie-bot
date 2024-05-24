@@ -37,6 +37,7 @@
               mockingbird-set-arl-cmd
               mockingbird-http
               mockingbird-radio
+              mockingbird-crossfade
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {

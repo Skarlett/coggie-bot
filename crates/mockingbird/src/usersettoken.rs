@@ -1,49 +1,15 @@
-use crate::models::*;
-
-// this is the rat nest
-// be prepared
-// to see how lazy i can be.
 use serenity::{
-    async_trait, client::Cache, framework::standard::{
+    framework::standard::{
         macros::{command, group}, Args, CommandResult
-    }, http::Http, json, model::{channel::Message, prelude::*}, prelude::*, FutureExt
+    }, 
+    model::{channel::Message, prelude::*}, 
+    prelude::*,
 };
-
-use songbird::{
-    create_player, error::{JoinError, JoinResult}, events::{Event, EventContext, EventData}, input::{
-        error::Error as SongbirdError, Input, Metadata
-    }, tracks::{PlayMode, Track, TrackHandle}, Call, EventHandler as VoiceEventHandler, Songbird, TrackEvent
-};
-
-use std::{
-    time::{Duration, Instant},
-    collections::VecDeque,
-    sync::Arc,
-    collections::HashMap,
-    path::PathBuf,
-};
-
-use std::sync::atomic::AtomicBool;
-use tokio::{
-    io::AsyncBufReadExt,
-    process::Command,
-    sync::oneshot::Sender
-};
-use parking_lot::{Mutex, MutexGuard};
-
-use tokio::io::AsyncWriteExt;
-use serenity::futures::StreamExt;
-use songbird::input::cached::Compressed;
-use core::sync::atomic::Ordering;
-
-use cutils::{availbytes, bigpipe, max_pipe_size};
 
 #[cfg(feature = "deemix")]
 use crate::deemix::{DeemixMetadata, _deemix};
 
 use crate::models::*;
-
-
 
 
 #[group]

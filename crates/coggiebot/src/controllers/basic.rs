@@ -39,12 +39,12 @@ async fn rev_cmd(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-#[command]
-async fn dmsg(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
-    let x = args.single::<i32>();
-    msg.channel.delete_messages(&ctx.http, x).await?;
-    Ok(())
-}
+// #[command]
+// async fn dmsg(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+//     let x = args.single::<i32>();
+//     msg.channel.delete_messages(&ctx.http, x).await?;
+//     Ok(())
+// }
 
 #[command]
 async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {

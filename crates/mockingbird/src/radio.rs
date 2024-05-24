@@ -9,8 +9,9 @@ use serenity::{
 
 use songbird::{
     create_player, error::{JoinError, JoinResult}, events::{Event, EventContext, EventData}, input::{
-        error::Error as SongbirdError, Input, Metadata
-    }, tracks::{PlayMode, Track, TrackHandle}, Call, EventHandler as VoiceEventHandler, Songbird, TrackEvent
+    }, 
+    tracks::{PlayMode, Track, TrackHandle},
+    EventHandler as VoiceEventHandler, Songbird, TrackEvent
 };
 
 use std::{
@@ -18,8 +19,6 @@ use std::{
     time::{Duration, Instant},
     collections::VecDeque,
     sync::Arc,
-    collections::HashMap,
-    path::PathBuf,
 };
 
 use tokio::io::AsyncBufReadExt;
@@ -242,15 +241,20 @@ impl VoiceEventHandler for RadioInvoker {
             if ! crossfade {
                 if let Some(_current_track_handle) = call.queue().current() {
                     // do nothing
+                    return None;
                 }
             }
 
+            let next_track = crate::player::next_track_handle(
+                &mut cold_queue,
+                self.0.clone(),
+                crossfade
+            ).await;
 
             // `PreloadInvoker` has not placed anything,
             // lets fire it's routine on our thread.
-            //
-            else if let Ok(Some((track, handle, metadata))) = crate::player::next_track_handle(&mut cold_queue, self.0.clone(), crossfade).await {
-                crate::player::play(&mut call, track, crossfade).await;
+            if let Ok(Some((track, handle, metadata))) = next_track {
+                let _ = crate::player::play(&mut call, track, &handle, &mut cold_queue, crossfade).await;
                 // do nothing.
             }
 

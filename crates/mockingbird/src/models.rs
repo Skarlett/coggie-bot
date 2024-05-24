@@ -2,19 +2,17 @@
 // be prepared
 // to see how lazy i can be.
 use serenity::{
-    async_trait, client::Cache, framework::standard::{
-        macros::{command, group}, Args, CommandResult
-    }, http::Http, json, model::{channel::Message, prelude::*}, prelude::*, FutureExt
+    client::Cache, 
+    http::Http, model::prelude::*, prelude::*, 
 };
 
 use songbird::{
-    create_player, error::{JoinError, JoinResult}, events::{Event, EventContext, EventData}, input::{
-        error::Error as SongbirdError, Input, Metadata
-    }, tracks::{PlayMode, Track, TrackHandle}, Call, EventHandler as VoiceEventHandler, Songbird, TrackEvent
+    input::{
+        error::Error as SongbirdError, Metadata
+    }, tracks::TrackHandle,  Songbird, 
 };
 
 use std::{
-    process::Stdio,
     time::{Duration, Instant},
     collections::VecDeque,
     sync::Arc,
@@ -23,16 +21,8 @@ use std::{
 };
 
 use std::sync::atomic::AtomicBool;
-use tokio::{
-    io::AsyncBufReadExt,
-    process::Command,
-    sync::oneshot::Sender
+use parking_lot::Mutex;
 
-};
-use parking_lot::{Mutex, MutexGuard};
-
-use tokio::io::AsyncWriteExt;
-use serenity::futures::StreamExt;
 use songbird::input::cached::Compressed;
 
 
@@ -50,7 +40,7 @@ impl TypeMapKey for LazyQueueKey {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TrackRecord {
+pub struct TrackRecord {
     // keep this for spotify recommendations
     pub metadata: MetadataType,
     pub stop_event: EventEnd,
@@ -89,12 +79,10 @@ pub struct QueueContext {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum MetadataType {
+pub enum MetadataType {
     #[cfg(feature = "deemix")]
     Deemix(crate::deemix::DeemixMetadata),
-
     Disk(PathBuf),
-
     Standard(Metadata),
 }
 
@@ -142,6 +130,8 @@ pub enum HandlerError {
     DeemixError(crate::deemix::DeemixError),
 
     WrongMetadataType,
+
+    CrossFadeHandleExhaust,
 
     NotImplemented,
     NoCall
@@ -193,6 +183,8 @@ impl std::fmt::Display for HandlerError {
 
             Self::NoCall
                 => write!(f, "Not in a voice channel to play in"),
+
+            Self::CrossFadeHandleExhaust => write!(f, "Crossfade handle exhausted"),
 
             Self::WrongMetadataType
                 => write!(f, "Programming bug, got a different MetadataType than expected"),
