@@ -1,11 +1,11 @@
-use crate::models::*;
+use crate::{models::*, player::play};
 
 use serenity::{
     framework::standard::{
         macros::{command, group}, Args, CommandResult
     },
     model::{channel::Message, prelude::*},
-    prelude::*,
+    prelude::*
 };
 
 use songbird::{
@@ -240,24 +240,28 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             // WARNING: removing these curly braces will cause a deadlock.
             // amount of hours spent on this: 5
             {
+                let crossfading = qctx.crossfade.load(Ordering::Relaxed);
                 qctx.cold_queue.write().await.queue.extend(uris.drain(..));
 
                 // check for hot loaded track
-                // let hot_loaded = {
-                //     let call = call.lock().await;
-                //     call.queue().len() > 0
-                // };
+                let hot_loaded = {
+                    let call = call.lock().await;
+                    if crossfading { 
+                        let lock = qctx.cold_queue.write().await; 
+                        lock.crossfade_rhs.is_some() || lock.crossfade_lhs.is_some() 
+                    } 
+                    else { call.queue().len() > 0 }
+                };
 
+                if hot_loaded == false {
+                    let mut call = call.lock().await;
+                    let mut cold_queue = qctx.cold_queue.write().await;
+                    let next = crate::player::next_track_handle(&mut cold_queue, qctx.clone(), crossfading).await;
 
-                let mut call = call.lock().await;
-                let mut cold_queue = qctx.cold_queue.write().await;
-                // if hot_loaded == false {
-
-                    let crossfading = qctx.crossfade.load(Ordering::Relaxed);
-                    let track = crate::player::next_track_handle(&mut cold_queue, qctx.clone(), crossfading).await;
-
-                    // invoke_cold_queue(&mut cold_queue, qctx.clone()).await?;
-                // }
+                    if let Ok(Some((track, handle, _metadata))) = next {
+                        play(&mut call, track, &handle, &mut cold_queue, crossfading).await?;
+                    }
+                }
             }
             // --- END
 
