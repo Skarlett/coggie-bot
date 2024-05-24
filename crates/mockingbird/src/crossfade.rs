@@ -17,8 +17,12 @@ use std::sync::Arc;
 use core::sync::atomic::Ordering;
 
 use crate::models::*;
-pub struct CrossFadeInvoker(pub Arc<QueueContext>);
 
+#[group]
+#[commands(crossfade)]
+struct Crossfade;
+
+pub struct CrossFadeInvoker(pub Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for CrossFadeInvoker {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
@@ -92,9 +96,6 @@ impl VoiceEventHandler for CrossFadeInvoker {
     }
 }
 
-#[group]
-#[commands(crossfade)]
-struct Crossfade;
 
 #[command]
 #[only_in(guilds)]

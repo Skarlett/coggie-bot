@@ -39,7 +39,8 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
             ["mockingbird-set-arl-cmd"] => [mockingbird::usersettoken::DANGEROUS_GROUP],
             ["mockingbird-ctrl"] => [mockingbird::controller::BETTERPLAYER_GROUP],
-            ["mockingbird-ctrl", "mockingbird-radio"] => [mockingbird::radio::RADIO_GROUP]
+            ["mockingbird-ctrl", "mockingbird-radio"] => [mockingbird::radio::RADIO_GROUP],
+            ["mockingbird-ctrl", "mockingbird-crossfade"] => [mockingbird::crossfade::CROSSFADE_GROUP]
         }
     );
     cfg
