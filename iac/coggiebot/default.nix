@@ -71,7 +71,9 @@ let
           { name = "mockingbird-set-arl-cmd";
             dependencies = [ "mockingbird-core" ];
           }
-
+          { name = "mockingbird-crossfade";
+            dependencies = ["mockingbird-core"];
+          }
           { name = "mockingbird-debug";
             dependencies = [];
           }
@@ -129,7 +131,7 @@ let
   coggiebot-default-args = features-list: {
     name = "coggiebot";
     pname = "coggiebot";
-    version = "1.4.15";
+    version = "1.5.0";
     nativeBuildInputs = [];
     buildInputs = [
       pkgs.pkg-config
