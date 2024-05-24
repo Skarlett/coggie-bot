@@ -68,3 +68,21 @@ impl VoiceEventHandler for RemoveTempFile {
         None
     }
 }
+
+pub struct EndLog;
+#[async_trait]
+impl VoiceEventHandler for EndLog {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        tracing::info!("End of track");
+        None
+    }
+}
+pub struct StartLog;
+
+#[async_trait]
+impl VoiceEventHandler for StartLog {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        tracing::info!("Starting track");
+        None
+    }
+}

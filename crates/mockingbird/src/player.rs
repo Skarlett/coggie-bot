@@ -127,7 +127,7 @@ impl Players {
 
 pub async fn play(
     call: &mut Call,
-    mut track: Track,
+    track: Track,
     handle: &TrackHandle,
     cold_queue: &mut ColdQueue,
     crossfade: bool,
@@ -135,11 +135,14 @@ pub async fn play(
 {
     if ! crossfade {
         call.enqueue(track);
+        tracing::info!("playing track with builtin-queue");
         return Ok(());
     }
     
-    track.pause();
-
+    // track.pause();
+    call.play(track);
+    tracing::info!("playing track with crossfading");
+    
     match (cold_queue.crossfade_lhs.take(), cold_queue.crossfade_rhs.take()) {    
         (Some(lhs), Some(rhs)) => { 
             cold_queue.crossfade_lhs = Some(lhs);
@@ -149,20 +152,23 @@ pub async fn play(
 
         (Some(lhs), None) => {
             cold_queue.crossfade_lhs = Some(lhs);
+            let _ = handle.make_playable();
             cold_queue.crossfade_rhs = Some(handle.clone());
         }
 
         (None, None) => {
+            let _ = handle.make_playable();
             let _ = handle.play();
             cold_queue.crossfade_lhs = Some(handle.clone());
         }
         (None, Some(rhs)) => {
             cold_queue.crossfade_lhs = Some(rhs);
+            
+            let _ = handle.make_playable();
             cold_queue.crossfade_rhs = Some(handle.clone());
         }        
     }
 
-    call.play(track);
     Ok(())
 }
 
@@ -294,19 +300,24 @@ pub async fn next_track_handle(
 ) -> Result<Option<(Track, TrackHandle, Option<MetadataType>)>, HandlerError>
 {   
     if let Some((preload, metadata)) = cold_queue.queue_next.take() {
+        tracing::info!("Pulling track from user-preload");
         let (track, handle) = create_player(preload.into());
         add_events(&handle, qctx.clone(), crossfade).await;
         Ok(Some((track, handle, metadata)))
     }
 
     else if let Ok(Some((track, handle, metadata))) = invoke_cold_queue(cold_queue, qctx.clone()).await {
+        tracing::info!("Pulling track from user-queue");
         add_events(&handle, qctx.clone(), crossfade).await;      
+
         Ok(Some((track, handle, metadata)))
     }
 
     else if cold_queue.use_radio {
         if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
+            tracing::info!("Pulling track from radio");
             let (track, handle) = create_player(radio_preload.into());
+            add_events(&handle, qctx.clone(), crossfade).await;      
             Ok(Some((track, handle, metadata)))
         }
         else { Ok(None) }
@@ -328,7 +339,7 @@ pub async fn invoke_cold_queue(
         // turn realization to live
         match player.create_player(&uri, qctx_arc.guild_id).await
         {
-            Ok((track, handle, metadata)) => 
+            Ok((track, handle, metadata)) =>
                 return Ok(Some((track, handle, metadata))),
 
             Err(e) => {
@@ -542,6 +553,16 @@ pub async fn join_routine(ctx: &Context, msg: &Message) -> Result<Arc<QueueConte
         crate::radio::RadioInvoker::new(queuectx.clone())
     );
     
+    call.add_global_event(
+        Event::Track(TrackEvent::Play),
+        crate::events::StartLog,
+    );
+     
+    call.add_global_event(
+        Event::Track(TrackEvent::End),
+        crate::events::EndLog,
+    );
+
     call.add_global_event(
         Event::Periodic(TS_ABANDONED_HB, None),
         crate::events::AbandonedChannel(queuectx.clone())
