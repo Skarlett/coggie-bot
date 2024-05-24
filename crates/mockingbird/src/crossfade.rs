@@ -37,62 +37,68 @@ impl VoiceEventHandler for CrossFadeInvoker {
         if let None = self.0.manager.get(self.0.guild_id) {
             return Some(Event::Cancel)
         }
-
-        let manager = self.0.manager.get(self.0.guild_id).unwrap();
-        let mut call = manager.lock().await;
-
-
-        // if let None = cold_queue.crossfade_rhs.as_ref() {
-        //     if let Ok(Some((track, handle, _metadata))) = crate::player::next_track_handle(
-        //         &mut cold_queue,
-        //         self.0.clone(),
-        //         crossfading
-        //     ).await
-        //     {
-        //         let metadata = handle.metadata().clone();
-        //         let duration = metadata.duration.unwrap();
-
-        //         // let _ = handle.pause();
-        //         // play(&mut call, track, ).await;
-
-
-        //         let _ = handle.set_volume(0.001);
-        //         let _ = handle.play();
-        //         cold_queue.crossfade_rhs = Some(handle);
+        
+        // let x = {
+        //     let mut lock = self.0.crossfade_step.lock();
+        //     let x = *lock;
+        //     *lock += step;
+        //     if x > root as i32 {
+        //         cold_queue.crossfade_lhs = cold_queue.crossfade_rhs.take();
+        //         return Some(Event::Cancel);
         //     }
-        // }
+        //     x
+        // };
 
-        let x = {
-            let mut lock = self.0.crossfade_step.lock();
-            let x = *lock;
-            *lock += step;
-            if x > root as i32 {
-                cold_queue.crossfade_lhs = cold_queue.crossfade_rhs.take();
-                return Some(Event::Cancel);
-            }
-            x
+        let halt = |cold_queue: &mut ColdQueue| {
+                let rhs = cold_queue.crossfade_rhs.take();
+                let lhs = cold_queue.crossfade_lhs.take();
+                cold_queue.crossfade_rhs = rhs.map(|x| { let _ = x.set_volume(1.0); x} );
+                cold_queue.crossfade_lhs = lhs.map(|x| { let _ = x.set_volume(0.0); x} ); 
         };
 
-        let fade_out = (peak - x.pow(2)) as f32 / 100.0;
-        let fade_in = (peak as f32 - fade_out) / 100.0;
+        tokio::task::block_in_place(move || {
+            for x in 0 ..= root {
+                let fade_out = (peak - x.pow(2)) as f32 / 10000.0;
+                let fade_in = (peak as f32 - fade_out) / 10000.0;
 
-        match (cold_queue.crossfade_lhs.as_ref(), cold_queue.crossfade_rhs.as_ref()) {
-            (Some(lhs), Some(rhs)) => {
-                let _ = lhs.set_volume(fade_out);
-                let _ = rhs.set_volume(fade_in);
+                tracing::info!("crossfade: fade_out: {}, fade_in: {}", fade_out, fade_in);
+
+                // if ( 0.0 > fade_in ) {
+                //     halt(&mut cold_queue);                
+
+                //     tracing::info!("hitting upperbound");
+                //     return Some(Event::Cancel)
+                // }
+                
+                // else if (peak as f32) > fade_out {
+                //     halt(&mut cold_queue);
+                //     tracing::info!("hitting lowerbound");
+                //     return Some(Event::Cancel)
+                // }
+
+
+                match (cold_queue.crossfade_lhs.as_ref(), cold_queue.crossfade_rhs.as_ref()) {
+                    (Some(lhs), Some(rhs)) => {
+                        let _ = lhs.set_volume(fade_out);
+                        let _ = rhs.set_volume(fade_in);
+                    }
+
+                    (Some(_lhs), None) => {
+                        // let _ = lhs.set_volume(fade_out);
+                    },
+
+                    (None, Some(rhs)) => {
+                        let _ = rhs.set_volume(fade_in);
+                    },
+
+                    (None, None) => break
+                    // return Some(Event::Cancel)
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
-
-            (Some(lhs), None) => {
-                let _ = lhs.set_volume(fade_out);
-            },
-
-            (None, Some(rhs)) => {
-                let _ = rhs.set_volume(fade_in);
-            },
-
-            (None, None) => return Some(Event::Cancel)
-        }
-        return None
+        });        
+        return None 
     }
 }
 
@@ -132,7 +138,7 @@ async fn crossfade(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         "on" => {
             qctx.crossfade.swap(true, Ordering::Relaxed);
             msg.channel_id
-               .say(&ctx.http, "Radio enabled")
+               .say(&ctx.http, "crossfade enabled")
                .await?;
         }
         "off" => {
@@ -141,7 +147,7 @@ async fn crossfade(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             lock.use_radio = false;
 
             msg.channel_id
-               .say(&ctx.http, "Radio disabled")
+               .say(&ctx.http, "crossfade disabled")
                .await?;
         }
         _ => {}

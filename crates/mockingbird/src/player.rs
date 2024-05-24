@@ -133,6 +133,7 @@ pub async fn play(
     crossfade: bool,
 ) -> Result<(), HandlerError>
 {
+
     if ! crossfade {
         call.enqueue(track);
         tracing::info!("playing track with builtin-queue");
@@ -152,19 +153,19 @@ pub async fn play(
 
         (Some(lhs), None) => {
             cold_queue.crossfade_lhs = Some(lhs);
-            let _ = handle.make_playable();
+            // let _ = handle.make_playable();
             cold_queue.crossfade_rhs = Some(handle.clone());
         }
 
         (None, None) => {
-            let _ = handle.make_playable();
+            // let _ = handle.make_playable();
             let _ = handle.play();
             cold_queue.crossfade_lhs = Some(handle.clone());
         }
         (None, Some(rhs)) => {
             cold_queue.crossfade_lhs = Some(rhs);
             
-            let _ = handle.make_playable();
+            // let _ = handle.make_playable();
             cold_queue.crossfade_rhs = Some(handle.clone());
         }        
     }
@@ -252,7 +253,7 @@ async fn add_events(handle: &TrackHandle, qctx_arc: Arc<QueueContext>, crossfadi
             tracing::info!("CrossFade Event Added from Duration"); 
             
             handle.add_event(
-                Event::Periodic(duration - TS_CROSSFADE_OFFSET, Some(Duration::from_millis(100))),
+                Event::Delayed(duration - TS_CROSSFADE_OFFSET),
                 crate::crossfade::CrossFadeInvoker(qctx_arc.clone())
             ).unwrap();
         }

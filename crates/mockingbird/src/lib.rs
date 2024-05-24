@@ -11,7 +11,7 @@ pub mod controller;
 pub mod radio;
 pub mod compat;
 pub mod usersettoken;
-mod crossfade;
+pub mod crossfade;
 
 // #[cfg(feature = "http-get")]
 // pub mod httpget;
