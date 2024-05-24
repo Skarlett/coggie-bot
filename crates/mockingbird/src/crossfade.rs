@@ -7,16 +7,28 @@ use serenity::{
 };
 
 use songbird::{
-        events::{Event, EventContext}, 
-        EventHandler as VoiceEventHandler
+        events::{Event, EventContext}, input::Metadata, tracks::TrackHandle, EventHandler as VoiceEventHandler
 };
 
 use std::sync::Arc;
-
+use std::time::Duration;
 
 use core::sync::atomic::Ordering;
 
 use crate::models::*;
+
+trait CrossoverHandler {
+    fn handler(&self, current: &TrackHandle, upcoming: &TrackHandle) -> Result<(), HandlerError> {
+        Ok(())
+    }
+
+    fn start_at(&self, metadata: &Metadata) -> Duration {
+        metadata.duration
+            .map(|x| x - Duration::from_secs(10))
+            .unwrap_or(Duration::from_secs(0))
+    }
+}
+
 
 #[group]
 #[commands(crossfade)]
@@ -26,61 +38,27 @@ pub struct CrossFadeInvoker(pub Arc<QueueContext>);
 #[async_trait]
 impl VoiceEventHandler for CrossFadeInvoker {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        // const total_duration: std::time::Duration = std::time::Duration::from_secs(10);
-        let crossfading = self.0.crossfade.load(Ordering::Relaxed);
+        if let None = self.0.manager.get(self.0.guild_id) {
+            return Some(Event::Cancel)
+        }
 
         let mut cold_queue = self.0.cold_queue.write().await;
         let peak = 10000;
         let root : i32 = (peak as f32).sqrt() as i32;
-        let step = 1;
-
-        if let None = self.0.manager.get(self.0.guild_id) {
-            return Some(Event::Cancel)
-        }
-        
-        // let x = {
-        //     let mut lock = self.0.crossfade_step.lock();
-        //     let x = *lock;
-        //     *lock += step;
-        //     if x > root as i32 {
-        //         cold_queue.crossfade_lhs = cold_queue.crossfade_rhs.take();
-        //         return Some(Event::Cancel);
-        //     }
-        //     x
-        // };
-
-        let halt = |cold_queue: &mut ColdQueue| {
-                let rhs = cold_queue.crossfade_rhs.take();
-                let lhs = cold_queue.crossfade_lhs.take();
-                cold_queue.crossfade_rhs = rhs.map(|x| { let _ = x.set_volume(1.0); x} );
-                cold_queue.crossfade_lhs = lhs.map(|x| { let _ = x.set_volume(0.0); x} ); 
-        };
-
-        tokio::task::block_in_place(move || {
+        // let step = 1;
+        let mut cold_queue = tokio::task::block_in_place(move || {
             for x in 0 ..= root {
-                let fade_out = (peak - x.pow(2)) as f32 / 10000.0;
-                let fade_in = (peak as f32 - fade_out) / 10000.0;
+                let fade_out = peak - x.pow(2);
+                let fade_out_normal = fade_out as f32 / 10000.0;
+                let fade_in_normal = (peak - fade_out) as f32 / 10000.0;
 
-                tracing::info!("crossfade: fade_out: {}, fade_in: {}", fade_out, fade_in);
-
-                // if ( 0.0 > fade_in ) {
-                //     halt(&mut cold_queue);                
-
-                //     tracing::info!("hitting upperbound");
-                //     return Some(Event::Cancel)
-                // }
-                
-                // else if (peak as f32) > fade_out {
-                //     halt(&mut cold_queue);
-                //     tracing::info!("hitting lowerbound");
-                //     return Some(Event::Cancel)
-                // }
-
+                tracing::info!("crossfade: fade_out: {}, fade_in: {}", fade_out_normal, fade_in_normal);
 
                 match (cold_queue.crossfade_lhs.as_ref(), cold_queue.crossfade_rhs.as_ref()) {
                     (Some(lhs), Some(rhs)) => {
-                        let _ = lhs.set_volume(fade_out);
-                        let _ = rhs.set_volume(fade_in);
+                        let _ = rhs.play();
+                        let _ = lhs.set_volume(fade_out_normal);
+                        let _ = rhs.set_volume(fade_in_normal);
                     }
 
                     (Some(_lhs), None) => {
@@ -88,16 +66,28 @@ impl VoiceEventHandler for CrossFadeInvoker {
                     },
 
                     (None, Some(rhs)) => {
-                        let _ = rhs.set_volume(fade_in);
+                        let _ = rhs.set_volume(fade_in_normal);
                     },
 
-                    (None, None) => break
+                    (None, None) => {
+                        break
+                    }
                     // return Some(Event::Cancel)
                 }
 
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
-        });        
+            cold_queue
+        });
+
+        if let Some(rhs) = cold_queue.crossfade_rhs.take() {
+            // x.stop();
+            if let Some(lhs) = cold_queue.crossfade_lhs.take() {
+                let _ = lhs.stop();
+            }
+            cold_queue.crossfade_lhs.replace(rhs);
+        }
+        else { cold_queue.crossfade_lhs = None; }
         return None 
     }
 }

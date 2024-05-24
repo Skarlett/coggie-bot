@@ -20,7 +20,7 @@ use std::{
 };
 
 use std::sync::atomic::AtomicBool;
-use parking_lot::{lock_api::GuardNoSend, Mutex};
+use parking_lot::{Mutex};
 
 use tokio::io::AsyncWriteExt;
 use serenity::futures::StreamExt;
@@ -30,7 +30,7 @@ use crate::models::*;
 use crate::compat::*;
 
 const TS_PRELOAD_OFFSET: Duration = Duration::from_secs(20);
-const TS_CROSSFADE_OFFSET: Duration = Duration::from_secs(10);
+const TS_CROSSFADE_OFFSET: Duration = Duration::from_secs(11);
 const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 const HASPLAYED_MAX_LEN: usize = 10;
 
@@ -127,7 +127,7 @@ impl Players {
 
 pub async fn play(
     call: &mut Call,
-    track: Track,
+    mut track: Track,
     handle: &TrackHandle,
     cold_queue: &mut ColdQueue,
     crossfade: bool,
@@ -140,7 +140,7 @@ pub async fn play(
         return Ok(());
     }
     
-    // track.pause();
+    track.pause();
     call.play(track);
     tracing::info!("playing track with crossfading");
     
