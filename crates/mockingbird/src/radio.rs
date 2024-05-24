@@ -2,16 +2,14 @@
 // be prepared
 // to see how lazy i can be.
 use serenity::{
-    async_trait, client::Cache, framework::standard::{
+    async_trait, framework::standard::{
         macros::{command, group}, Args, CommandResult
-    }, http::Http, json, model::{channel::Message, prelude::*}, prelude::*, FutureExt
+    }, model::{channel::Message, prelude::*}, prelude::*
 };
 
 use songbird::{
-    create_player, error::{JoinError, JoinResult}, events::{Event, EventContext, EventData}, input::{
-    }, 
-    tracks::{PlayMode, Track, TrackHandle},
-    EventHandler as VoiceEventHandler, Songbird, TrackEvent
+    events::{Event, EventContext}, 
+    EventHandler as VoiceEventHandler
 };
 
 use std::{
@@ -26,10 +24,9 @@ use tokio::io::AsyncBufReadExt;
 use songbird::input::cached::Compressed;
 use core::sync::atomic::Ordering;
 
-use cutils::{availbytes, bigpipe, max_pipe_size};
 
 #[cfg(feature = "deemix")]
-use crate::deemix::{DeemixMetadata, _deemix};
+use crate::deemix::_deemix;
 
 use crate::models::*;
 #[group]
@@ -234,17 +231,21 @@ impl VoiceEventHandler for RadioInvoker {
             let mut cold_queue = self.0.cold_queue.write().await;
             let crossfade = self.0.crossfade.load(Ordering::Relaxed);
 
+            tracing::info!("Invoking radio queue check");
             // `PreloadInvoker` may have placed a track (from the user queue)
             // before this event was fired.
             // If true, we clear our trackers.
 
             if ! crossfade {
-                if let Some(_current_track_handle) = call.queue().current() {
-                    // do nothing
+                if let Some(current_track_handle) = call.queue().current() {
+                    tracing::info!("Invoking radio queue check: got {:?}", current_track_handle);
+                    tracing::info!("skipping radio");
                     return None;
                 }
             }
 
+
+            tracing::info!("radio queue check: invoke next_track_handle");
             let next_track = crate::player::next_track_handle(
                 &mut cold_queue,
                 self.0.clone(),
@@ -254,6 +255,8 @@ impl VoiceEventHandler for RadioInvoker {
             // `PreloadInvoker` has not placed anything,
             // lets fire it's routine on our thread.
             if let Ok(Some((track, handle, metadata))) = next_track {
+
+                tracing::info!("radio queue check: invoke play on next_track_handle");
                 let _ = crate::player::play(&mut call, track, &handle, &mut cold_queue, crossfade).await;
                 // do nothing.
             }
