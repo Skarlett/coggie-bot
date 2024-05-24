@@ -7,7 +7,7 @@ use serenity::{
 };
 
 use songbird::{
-        events::{Event, EventContext}, input::Metadata, tracks::TrackHandle, EventHandler as VoiceEventHandler
+        events::{Event, EventContext}, input::Metadata, tracks::{TrackHandle, TrackState}, EventHandler as VoiceEventHandler
 };
 
 use std::sync::Arc;
@@ -17,8 +17,13 @@ use core::sync::atomic::Ordering;
 
 use crate::models::*;
 
-trait CrossoverHandler {
-    fn handler(&self, current: &TrackHandle, upcoming: &TrackHandle) -> Result<(), HandlerError> {
+trait CrossFadeHandler {
+    fn handler(
+        &self, 
+        current: (&TrackHandle, &TrackState), 
+        upcoming: (&TrackHandle, &TrackState), 
+        
+    ) -> Result<(), HandlerError> {
         Ok(())
     }
 
@@ -47,7 +52,7 @@ impl VoiceEventHandler for CrossFadeInvoker {
         let root : i32 = (peak as f32).sqrt() as i32;
         // let step = 1;
         let mut cold_queue = tokio::task::block_in_place(move || {
-            for x in 0 ..= root {
+            for x in 25 ..= root {
                 let fade_out = peak - x.pow(2);
                 let fade_out_normal = fade_out as f32 / 10000.0;
                 let fade_in_normal = (peak - fade_out) as f32 / 10000.0;
@@ -81,13 +86,19 @@ impl VoiceEventHandler for CrossFadeInvoker {
         });
 
         if let Some(rhs) = cold_queue.crossfade_rhs.take() {
-            // x.stop();
+            if let Some(lhs) = cold_queue.crossfade_lhs.take() {
+                cold_queue.crossfade_lhs.replace(rhs);
+                let _ = lhs.stop();
+                return None;
+            }
+            
+            cold_queue.crossfade_lhs.replace(rhs);
+        }
+        else { 
             if let Some(lhs) = cold_queue.crossfade_lhs.take() {
                 let _ = lhs.stop();
             }
-            cold_queue.crossfade_lhs.replace(rhs);
         }
-        else { cold_queue.crossfade_lhs = None; }
         return None 
     }
 }
