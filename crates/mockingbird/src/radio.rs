@@ -193,7 +193,7 @@ async fn preload_radio_track(
         };
 
         if let Some(uri) = uri {
-            match _deemix(&uri, &[], false, crate::deemix::DeemixLoadMethod::Mem).await {
+            match _deemix(&uri, &[], false).await {
                 Ok((preload_input, metadata)) => {
                         cold_queue.radio_next = Some((Compressed::new(
                             preload_input,
