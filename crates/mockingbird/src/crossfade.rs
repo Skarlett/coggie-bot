@@ -47,17 +47,16 @@ impl VoiceEventHandler for CrossFadeInvoker {
             return Some(Event::Cancel)
         }
 
-        let mut cold_queue = self.0.cold_queue.write().await;
+        let cold_queue = self.0.cold_queue.write().await;
         let peak = 10000;
         let root : i32 = (peak as f32).sqrt() as i32;
-        // let step = 1;
         let mut cold_queue = tokio::task::block_in_place(move || {
-            for x in 25 ..= root {
+            for x in 20 ..= root {
                 let fade_out = peak - x.pow(2);
                 let fade_out_normal = fade_out as f32 / 10000.0;
                 let fade_in_normal = (peak - fade_out) as f32 / 10000.0;
 
-                tracing::info!("crossfade: fade_out: {}, fade_in: {}", fade_out_normal, fade_in_normal);
+                tracing::debug!("crossfade: fade_out: {}, fade_in: {}", fade_out_normal, fade_in_normal);
 
                 match (cold_queue.crossfade_lhs.as_ref(), cold_queue.crossfade_rhs.as_ref()) {
                     (Some(lhs), Some(rhs)) => {
@@ -88,16 +87,13 @@ impl VoiceEventHandler for CrossFadeInvoker {
         if let Some(rhs) = cold_queue.crossfade_rhs.take() {
             if let Some(lhs) = cold_queue.crossfade_lhs.take() {
                 cold_queue.crossfade_lhs.replace(rhs);
-                let _ = lhs.stop();
                 return None;
             }
             
             cold_queue.crossfade_lhs.replace(rhs);
         }
         else { 
-            if let Some(lhs) = cold_queue.crossfade_lhs.take() {
-                let _ = lhs.stop();
-            }
+            let _ = cold_queue.crossfade_lhs.take();
         }
         return None 
     }
