@@ -68,15 +68,6 @@ impl Players {
                 let result = ph_httpget_player(uri, guild_id.0, &mut pathbuf).await;
                 match result {
                     Ok((input, metadata)) => {
-                        // let (_track, track_handle) = create_player(input);
-                        // let fp = match metadata {
-                        //     Some(MetadataType::Disk(fp)) => fp,
-                        //     _ => { return Err(HandlerError::WrongMetadataType) }
-                        // };
-
-                        // let _ = track_handle.add_event(Event::Track(TrackEvent::End), RemoveTempFile(fp));
-
-                        // // TODO FIXME ADD METADATA
                         return Ok((input, metadata))
                     }
 
@@ -300,6 +291,8 @@ pub async fn next_track_handle(
     crossfade: bool
 ) -> Result<Option<(Track, TrackHandle, Option<MetadataType>)>, HandlerError>
 {   
+
+
     if let Some((preload, metadata)) = cold_queue.queue_next.take() {
         tracing::info!("Pulling track from user-preload");
         let (track, handle) = create_player(preload.into());
