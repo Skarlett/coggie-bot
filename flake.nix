@@ -72,8 +72,8 @@
         rec {
           packages.check-cache = cictl.check;
           packages.deemix-stream = deemix-stream; 
-          packages.coggiebot-softcleanup = pkgs.callPackage ./sbin/cleanup-dl {
-            perlPackages = pkgs.perl534Packages;
+          packages.coggiebot-cleanup = pkgs.callPackage ./sbin/cleanup-dl {
+            # perlPackages = pkgs.perlPackages;
           };
 
           packages.coggiebot-deploy = vanilla-linux;
