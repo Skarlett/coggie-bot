@@ -128,13 +128,14 @@ def stream(url, arl, spt_id, spt_secret, spt_cache, hq):
     assert dz.login_via_arl(arl.strip()), 'Invalid ARL'
 
     settings = DEFAULT_SETTINGS
-    
+    settings["fallbackBitrate"] = True;
+
     plugins = {"spotify": SpotifyStreamer(spt_id, spt_secret, spt_cache)}
     plugins["spotify"].setup()
 
     bitrate = settings.get("maxBitrate", TrackFormats.MP3_320 if not hq else TrackFormats.FLAC)
-    (link, _link_type, _link_id) = parseLink(url[0])
 
+    (link, _link_type, _link_id) = parseLink(url[0])
     downloadObject = generateDownloadObject(dz, link, bitrate, plugins=plugins)
 
     extras = {

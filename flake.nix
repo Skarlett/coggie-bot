@@ -97,7 +97,6 @@
             environmentFile = mkOption {
               type = types.path;
             };
-
           };
 
           config = mkIf cfg.enable {
@@ -109,6 +108,7 @@
               isSystemUser = true;
               group = "coggiebot";
             };
+
             users.groups.coggiebot = {};
             systemd.tmpfiles.rules = [
               "d /var/lib/coggiebot 700 coggiebot coggiebot"
