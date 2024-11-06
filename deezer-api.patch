@@ -1,0 +1,13 @@
+diff --git a/deezer/utils.py b/deezer/utils.py
+index b0db0ef..336f020 100644
+--- a/deezer/utils.py
++++ b/deezer/utils.py
+@@ -370,7 +370,7 @@ def map_track(track):
+         result['explicit_lyrics'] = is_explicit(track['EXPLICIT_LYRICS'])
+         result['explicit_content_lyrics'] = track.get('EXPLICIT_TRACK_CONTENT', {}).get('EXPLICIT_LYRICS_STATUS')
+         result['explicit_content_cover'] = track.get('EXPLICIT_TRACK_CONTENT', {}).get('EXPLICIT_COVER_STATUS')
+-        result['preview'] = track['MEDIA'][0]['HREF']
++        result['preview'] = track["MEDIA"][0]['HREF'] if track['MEDIA'] else "none"
+         result['gain'] = track.get('GAIN')
+         if 'ARTISTS' in track:
+             for contributor in track['ARTISTS']:

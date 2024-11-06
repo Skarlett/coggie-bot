@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>
 
     println!("{}", LICENSE);
 
-    tracing_subscriber::fmt::init();   
+    tracing_subscriber::fmt::init();
 
     let http = Http::new(&cli.token);
     let bot_id = http.get_current_user().await?.id;
