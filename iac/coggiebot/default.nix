@@ -85,7 +85,7 @@ let
 
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
-              buildInputs = prev.buildInputs ++ [ pkgs.python39Packages.deemix deemix-stream ];
+              buildInputs = prev.buildInputs ++ [ deemix-stream ];
               nativeBuildInputs = prev.nativeBuildInputs ++ [pkgs.cmake pkgs.gcc];
             });
             dependencies = [ "mockingbird-core" ];
