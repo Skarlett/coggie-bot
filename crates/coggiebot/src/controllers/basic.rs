@@ -11,7 +11,7 @@ use serenity::model::channel::Message;
 use serenity::prelude::*;
 
 #[group]
-#[commands(version, rev_cmd, contribute, reboot)]
+#[commands(version, rev_cmd, contribute, reboot, invite)]
 pub struct Commands;
 
 #[command]
@@ -56,5 +56,17 @@ async fn contribute(ctx: &Context, msg: &Message) -> CommandResult {
                    ])
             )
        ).await?;
+    Ok(())
+}
+#[command("invite")]
+async fn invite(ctx: &Context, msg: &Message) -> CommandResult {
+    let mut builder = serenity::builder::CreateBotAuthParameters::default();
+
+    msg.channel_id.say(&ctx.http,
+        <serenity::builder::CreateBotAuthParameters as Clone>::clone(&builder
+          .auto_client_id(&ctx.http).await?
+          .scopes(&[serenity::model::prelude::Scope::Bot]))
+          .build()
+    ).await?;
     Ok(())
 }
