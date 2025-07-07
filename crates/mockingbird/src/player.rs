@@ -206,9 +206,11 @@ async fn ph_httpget_player(
 
     // let fp = tempfile::tempfile()?;
     use rand::Rng;
-    let id: String = (0..12)
+    let id_int: String = (0..12)
         .map(|_| char::from(rand::thread_rng().gen_range(97..123)))
         .collect();
+
+    let id = format!("{}.{}", id_int, uri.split(".").last().unwrap_or(""));
 
     let fp = std::env::temp_dir()
         .join("coggiebot")
@@ -316,8 +318,6 @@ impl Players {
 
     async fn play(&self, handler: &mut Call, uri: &str, guild_id: u64) -> Result<TrackHandle, HandlerError>
     {
-        let mut is_tempfile = false;
-
         let input = match self {
             Self::Deemix => ph_deemix_player(uri).await,
             Self::Ytdl => ph_ytdl_player(uri).await,
