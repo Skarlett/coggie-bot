@@ -395,7 +395,7 @@ pub async fn get_file(
 
     let content_type = content_type.to_str().unwrap();
     match content_type {
-        "audio/x-flac" | "audio/mpeg" | "audio/wav" | "audio/mp4" | "audio/m4a" | "audio/opus" | "audio/x-wav" => {
+        "audio/x-flac" | "audio/mpeg" | "audio/wav" | "audio/ogg" | "audio/mp4" | "audio/m4a" | "audio/opus" | "audio/x-wav" => {
             // let content_disposition = headers.get("Content-Disposition").unwrap();
             // Content-Disposition: attachment; filename*=UTF-8''Geostigma.mp3
             // let filename = content_disposition.to_str().unwrap().split("filename*=UTF-8''").last().unwrap();
