@@ -35,6 +35,7 @@
               mockingbird-debug
               mockingbird-set-arl-cmd
               mockingbird-http
+              llm
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
