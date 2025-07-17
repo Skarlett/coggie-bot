@@ -294,7 +294,7 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 
     // Check word count limit (200 words)
     let word_count = msg.content.split_whitespace().count();
-    if word_count > 200 {
+    if !QUOTA_WHITELIST.contains(&msg.author.id) && word_count >= 200 {
         let _ = msg.reply(&ctx.http, "Message exceeds the 200 word limit.").await;
         return None;
     }
@@ -329,6 +329,11 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
         "cugs",
         "cuggie",
         "terminator",
+        "sentient",
+        "jr",
+        "luni",
+        "lunarix",
+        "dad"
     ].iter().any(|x| msg.content.contains(x)) || msg.mentions_user_id(bot_id);
 
     if is_mentioned || random_trigger {
@@ -361,7 +366,9 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 #[hook]
 async fn unknown_command(ctx: &Context, msg: &Message, unknown_command_name: &str) {
     if let Some(response) = on_message(ctx.clone(), msg.clone()).await {
+        let typing = msg.channel_id.start_typing(&ctx.http).unwrap();
         let _ = msg.channel_id.say(&ctx, response).await;
+        typing.stop();
     };
 }
 
