@@ -13,7 +13,15 @@ use serenity::client::Context;
 use serenity::model::prelude::Message;
 use serenity::client::ClientBuilder;
 use serenity::framework::StandardFramework;
-use serenity::framework::standard::macros::hook;
+use serenity::framework::standard::{
+    Args, CommandResult,
+    macros::{command, group, hook},
+};
+
+
+#[group]
+#[commands(set_model, get_model)]
+pub struct LLMCommands;
 
 const CONTEXT_SZ: usize = 63;
 
@@ -181,10 +189,10 @@ impl TypeMapKey for LLMStateKey {
 }
 
 impl LLMState {
-    fn new(apikey: String) -> Self {
+    fn new(model: String, apikey: String) -> Self {
         Self {
             apikey,
-            model: "claude-3.7-sonnet".to_string(),
+            model: model.to_string(),
             system_prompt: include_str!("system-prompt.txt").to_string(),
         }
     }
@@ -261,13 +269,7 @@ impl LLMState {
                 }
                 else { "user".to_string() },
 
-              content: format!(
-                  "Message::Author::ID={}, Message::Author::Name={}, Message::Author::Nickname={} Message::Content: {}",
-                  message.id,
-                  message.author.name.clone(),
-                  nickname,
-                  message.content.clone()
-              )
+              content: message.content.clone()
             });
         }
         Ok(aictx)
@@ -287,6 +289,13 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 
     // Check if channel is whitelisted
     if !CHANNEL_WHITELIST.contains(&msg.channel_id) {
+        return None;
+    }
+
+    // Check word count limit (200 words)
+    let word_count = msg.content.split_whitespace().count();
+    if word_count > 200 {
+        let _ = msg.reply(&ctx.http, "Message exceeds the 200 word limit.").await;
         return None;
     }
 
@@ -351,14 +360,16 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 
 #[hook]
 async fn unknown_command(ctx: &Context, msg: &Message, unknown_command_name: &str) {
-    on_message(ctx.clone(), msg.clone()).await;
+    if let Some(response) = on_message(ctx.clone(), msg.clone()).await {
+        let _ = msg.channel_id.say(&ctx, response).await;
+    };
 }
 
 pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
-    match env::var("NANOGPT_API_KEY") {
-       Ok(data) => return cfg.unrecognised_command(unknown_command),
-       Err(e) => {
-           tracing::warn!("Skipping LLM due to missing NANOGPT_API_KEY env var");
+    match (env::var("NANOGPT_API_KEY"), env::var("NANOGPT_MODEL")) {
+       (Ok(_), Ok(_)) => return cfg.unrecognised_command(unknown_command),
+       _ => {
+           tracing::warn!("Skipping LLM due to missing NANOGPT_API_KEY or NANOGPT_MODEL env var");
            return cfg;
        }
     };
@@ -375,9 +386,17 @@ pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
        }
     };
 
+    let model = match env::var("NANOGPT_MODEL") {
+       Ok(data) => data.to_string(),
+       Err(e) => {
+           tracing::warn!("Skipping LLM due to missing NANOGPT_MODEL env var");
+           return cfg;
+       }
+    };
+
     cfg =
         cfg
-        .type_map_insert::<LLMStateKey>(Arc::new(Mutex::new(LLMState::new(key))))
+        .type_map_insert::<LLMStateKey>(Arc::new(Mutex::new(LLMState::new(model, key))))
         .type_map_insert::<QuotaManagerKey>(Arc::new(Mutex::new(QuotaManager::new(
             30, /* daily limit */
             2,  /* bucket limit */
@@ -386,4 +405,45 @@ pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
     ;
 
     cfg
+}
+
+#[command]
+async fn set_model(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    // Check if user is whitelisted
+    if !QUOTA_WHITELIST.contains(&msg.author.id) {
+        msg.reply(ctx, "You don't have permission to use this command.").await?;
+        return Ok(());
+    }
+
+    let model = args.rest().trim();
+    if model.is_empty() {
+        msg.reply(ctx, "Please provide a model name.").await?;
+        return Ok(());
+    }
+
+    // Get data lock and update model
+    let data = ctx.data.read().await;
+    let llm_manager = data.get::<LLMStateKey>().unwrap().clone();
+    {
+        let mut llm_state = llm_manager.lock().await;
+        llm_state.model = model.to_string();
+    }
+
+    msg.reply(ctx, &format!("Model set to: {}", model)).await?;
+    Ok(())
+}
+
+#[command]
+async fn get_model(ctx: &Context, msg: &Message) -> CommandResult {
+    // Get data lock and retrieve model
+    let data = ctx.data.read().await;
+    let llm_manager = data.get::<LLMStateKey>().unwrap().clone();
+    let model;
+    {
+        let llm_state = llm_manager.lock().await;
+        model = llm_state.model.clone();
+    }
+
+    msg.reply(ctx, &format!("Current model: {}", model)).await?;
+    Ok(())
 }

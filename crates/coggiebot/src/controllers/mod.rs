@@ -1,5 +1,3 @@
-use serenity::framework::standard::macros::hook;
-use serenity::model::prelude::Message;
 
 #[cfg(feature = "llm")]
 #[path = "llm.rs"]
@@ -43,7 +41,8 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
             ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
             ["mockingbird-set-arl-cmd"] => [mockingbird::player::DANGEROUS_GROUP],
-            ["mockingbird-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP]
+            ["mockingbird-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP],
+            ["llm"] => [ llm::LLMCOMMANDS_GROUP ]
             //TODO: ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
             //TODO: ["help-cmd"] => [features::HELP_GROUP],
         }
