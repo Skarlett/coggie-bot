@@ -19,7 +19,7 @@ use serenity::framework::standard::{
 };
 
 #[group]
-#[commands(set_model, get_model)]
+#[commands(set_model, get_model, cost, set_system_prompt)]
 pub struct LLMCommands;
 
 const CONTEXT_SZ: usize = 10;
@@ -45,6 +45,14 @@ struct Usage {
 }
 
 #[derive(Deserialize, Debug)]
+struct NanoGpt {
+    cost: f64,
+    input_tokens: u64,
+    output_tokens: u64,
+    payment_source: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct ChatResponse {
     id: String,
     object: String,
@@ -52,6 +60,7 @@ struct ChatResponse {
     model: String,
     choices: Vec<Choice>,
     usage: Usage,
+    nanoGPT: Option<NanoGpt>
 }
 
 struct UserQuota {
@@ -180,6 +189,7 @@ pub struct LLMState {
     model: String,
     system_prompt: String,
     apikey: String,
+    cost_meter: f64,
 }
 
 struct LLMStateKey;
@@ -193,10 +203,11 @@ impl LLMState {
             apikey,
             model: model.to_string(),
             system_prompt: include_str!("system-prompt.txt").to_string(),
+            cost_meter: 0.0,
         }
     }
 
-    async fn send(&self, aictx: &LLMRequest) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    async fn send(&self, aictx: &LLMRequest) -> Result<ChatResponse, Box<dyn std::error::Error>> {
         // Set up headers
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -219,15 +230,11 @@ impl LLMState {
         // let response_data: ChatResponse = response.json().await?;
         // Try adding this to debug
         let text = response.text().await?;
-        println!("Raw JSON: {}", text);
+        // println!("Raw JSON: {}", text);
 
         // Then parse separately
         let response_data: ChatResponse = serde_json::from_str(&text)?;
-        if !response_data.choices.is_empty() {
-            Ok(Some(response_data.choices[0].message.content.clone()))
-        }
-
-        else { Ok(None) }
+        return Ok(response_data)
     }
 
     async fn gather_context(
@@ -347,12 +354,20 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
         };
 
         {
-            let llm_manager = llm_manager.lock().await;
+            let mut llm_manager = llm_manager.lock().await;
 
             if let Ok(aictx) = llm_manager.gather_context(ctx.clone(), msg.channel_id, CONTEXT_SZ).await {
                 return match llm_manager.send(&aictx).await {
-                    Ok(Some(response)) => Some(response),
-                    Ok(None) => None,
+                    Ok(response) => {
+                        if let Some(cost) = &response.nanoGPT {
+                            llm_manager.cost_meter += cost.cost;
+                        }
+
+                        if !response.choices.is_empty() {
+                            Some(response.choices[0].message.content.clone())
+                        } else { None }
+                    },
+
                     Err(e) => None, //{ let _ = msg.channel_id.say(&ctx.http, format!("{:?}", e)).await; }
                 }
             }
@@ -450,5 +465,36 @@ async fn get_model(ctx: &Context, msg: &Message) -> CommandResult {
     }
 
     msg.reply(ctx, &format!("Current model: {}", model)).await?;
+    Ok(())
+}
+
+
+#[command]
+pub async fn cost(ctx: &Context, msg: &Message) -> CommandResult {
+    let data = ctx.data.read().await;
+    let llm_manager = data.get::<LLMStateKey>().unwrap().clone();
+    let cost;
+    {
+        let llm_state = llm_manager.lock().await;
+        cost = llm_state.cost_meter.clone();
+    }
+
+    msg.reply(ctx, format!("{}", cost)).await?;
+    Ok(())
+}
+
+#[command]
+pub async fn set_system_prompt(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    if !CHANNEL_WHITELIST.contains(&msg.channel_id) {
+        return Ok(());
+    }
+
+    let llm_manager = ctx.data.read().await.get::<LLMStateKey>().unwrap().clone();
+    let prompt = args.rest().trim();
+    {
+        let mut llm_state = llm_manager.lock().await;
+        llm_state.system_prompt = prompt.to_string();
+    }
+    msg.reply(ctx, "New System Prompt in place.");
     Ok(())
 }
