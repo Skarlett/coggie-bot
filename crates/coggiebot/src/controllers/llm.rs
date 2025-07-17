@@ -18,12 +18,11 @@ use serenity::framework::standard::{
     macros::{command, group, hook},
 };
 
-
 #[group]
 #[commands(set_model, get_model)]
 pub struct LLMCommands;
 
-const CONTEXT_SZ: usize = 63;
+const CONTEXT_SZ: usize = 10;
 
 #[derive(Deserialize, Debug)]
 struct ChatMessage {
@@ -307,7 +306,7 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
     let bot_id = ctx.cache.current_user().id;
 
     // Check if bot is mentioned or random chance (1/64)
-    let random_trigger = rand::thread_rng().gen_range(0..64) == 10;
+    let random_trigger = rand::thread_rng().gen_range(0..8) == 5;
     let is_link_only = msg.content.trim().starts_with("http")
         && !msg.content.trim().contains(" ");
 
@@ -343,7 +342,6 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
             let user_id = msg.author.id;
 
             if !quota_manager.check_quota(user_id.clone()) {
-                let _ = msg.reply(&ctx.http, "Sorry, you've reached your quota limit!").await;
                 return None;
             };
         };
@@ -364,9 +362,9 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 }
 
 #[hook]
-async fn unknown_command(ctx: &Context, msg: &Message, unknown_command_name: &str) {
+async fn normal_message(ctx: &Context, msg: &Message) {
+    let typing = msg.channel_id.start_typing(&ctx.http).unwrap();
     if let Some(response) = on_message(ctx.clone(), msg.clone()).await {
-        let typing = msg.channel_id.start_typing(&ctx.http).unwrap();
         let _ = msg.channel_id.say(&ctx, response).await;
         typing.stop();
     };
@@ -374,7 +372,7 @@ async fn unknown_command(ctx: &Context, msg: &Message, unknown_command_name: &st
 
 pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
     match (env::var("NANOGPT_API_KEY"), env::var("NANOGPT_MODEL")) {
-       (Ok(_), Ok(_)) => return cfg.unrecognised_command(unknown_command),
+       (Ok(_), Ok(_)) => return cfg.normal_message(normal_message),
        _ => {
            tracing::warn!("Skipping LLM due to missing NANOGPT_API_KEY or NANOGPT_MODEL env var");
            return cfg;
