@@ -53,7 +53,7 @@ let
               (prev: {
                 buildInputs = with pkgs; prev.buildInputs ++ [
                   ffmpeg
-	                libopus
+                  libopus
                   gcc
                   cmake
                   gnumake

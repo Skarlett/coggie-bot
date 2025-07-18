@@ -18,5 +18,3 @@ $old_set->insert(@old_arr);
 
 my $remove=$old_set - $inuse_set;
 print(@remove);
-
-

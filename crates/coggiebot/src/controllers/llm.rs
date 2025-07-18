@@ -17,9 +17,16 @@ use serenity::framework::standard::{
     Args, CommandResult,
     macros::{command, group, hook},
 };
+use serenity::builder::CreateEmbed;
+use serenity::model::Timestamp;
+use base64::prelude::*;
+
+
+use serenity::prelude::*;
+use serenity::model::prelude::*;
 
 #[group]
-#[commands(set_model, get_model, cost, set_system_prompt)]
+#[commands(set_model, get_model, cost, imagine, set_system_prompt)]
 pub struct LLMCommands;
 
 const CONTEXT_SZ: usize = 10;
@@ -46,10 +53,10 @@ struct Usage {
 
 #[derive(Deserialize, Debug)]
 struct NanoGpt {
-    cost: f64,
-    input_tokens: u64,
-    output_tokens: u64,
-    payment_source: String,
+    cost: Option<f64>,
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    payment_source: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -189,6 +196,7 @@ pub struct LLMState {
     model: String,
     system_prompt: String,
     apikey: String,
+    image_model: String,
     cost_meter: f64,
 }
 
@@ -201,13 +209,15 @@ impl LLMState {
     fn new(model: String, apikey: String) -> Self {
         Self {
             apikey,
+            image_model: "hidream".to_string(),
             model: model.to_string(),
             system_prompt: include_str!("system-prompt.txt").to_string(),
             cost_meter: 0.0,
         }
     }
 
-    async fn send(&self, aictx: &LLMRequest) -> Result<ChatResponse, Box<dyn std::error::Error>> {
+    async fn send<T: Serialize>(&self, payload: &T, endpoint: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>>
+    {
         // Set up headers
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -216,30 +226,43 @@ impl LLMState {
         );
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-        // Create HTTP client
         let client = reqwest::Client::new();
-
-        // Simple chat completion
         let response = client
-            .post("https://nano-gpt.com/api/v1/chat/completions")
+            .post(format!("https://nano-gpt.com/api/{}", endpoint))
             .headers(headers)
-            .json(aictx)
+            .json(payload)
             .send()
             .await?;
 
-        // let response_data: ChatResponse = response.json().await?;
-        // Try adding this to debug
-        let text = response.text().await?;
-        // println!("Raw JSON: {}", text);
+        let text = dbg!(response.text().await?);
+        let x: Value = serde_json::from_str(&text).unwrap();
+        Ok(x)
+    }
 
-        // Then parse separately
-        let response_data: ChatResponse = serde_json::from_str(&text)?;
-        return Ok(response_data)
+    async fn chat_complete(
+        &self,
+        ctx: &Context,
+        msg: &Message,
+    ) -> Result<ChatResponse, Box<dyn std::error::Error>> {
+        let payload = self.gather_context(ctx, msg.channel_id, CONTEXT_SZ+1).await?;
+        let resp = self.send(&payload, "v1/chat/completions").await?;
+        let resp: ChatResponse = serde_json::from_value(resp).unwrap();
+        Ok(resp)
+    }
+
+    async fn image_generate(&self, prompt: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        return dbg!(self.send(&json!({
+            "prompt": prompt,
+            "n": "1",
+            "model": self.image_model,
+            "height": 512,
+            "width": 512
+        }), "generate-image").await)
     }
 
     async fn gather_context(
         &self,
-        ctx: Context,
+        ctx: &Context,
         channel_id: ChannelId,
         limit: usize
     ) -> Result<LLMRequest, serenity::Error> {
@@ -287,7 +310,7 @@ const CHANNEL_WHITELIST: &'static [ ChannelId ] = &[
     ChannelId(943224671183204374)
 ];
 
-pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
+pub async fn on_message(ctx: &Context, msg: &Message) -> Option<String> {
     // Ignore messages from bots including self
     if msg.author.bot {
         return None;
@@ -339,7 +362,9 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
         "jr",
         "luni",
         "lunarix",
-        "dad"
+        "dad",
+        "choatic",
+        "coggles",
     ].iter().any(|x| msg.content.contains(x)) || msg.mentions_user_id(bot_id);
 
     if is_mentioned || random_trigger {
@@ -355,21 +380,21 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 
         {
             let mut llm_manager = llm_manager.lock().await;
+            return match llm_manager.chat_complete(ctx, msg).await {
+                Ok(response) => {
+                    if let Some(cost) = &response.nanoGPT {
+                        llm_manager.cost_meter += cost.cost.unwrap_or(0.0);
+                    }
 
-            if let Ok(aictx) = llm_manager.gather_context(ctx.clone(), msg.channel_id, CONTEXT_SZ).await {
-                return match llm_manager.send(&aictx).await {
-                    Ok(response) => {
-                        if let Some(cost) = &response.nanoGPT {
-                            llm_manager.cost_meter += cost.cost;
-                        }
+                    if !response.choices.is_empty() {
+                        Some(response.choices[0].message.content.clone())
 
-                        if !response.choices.is_empty() {
-                            Some(response.choices[0].message.content.clone())
-                        } else { None }
-                    },
+                    }
+                    else { None }
 
-                    Err(e) => None, //{ let _ = msg.channel_id.say(&ctx.http, format!("{:?}", e)).await; }
-                }
+                },
+
+                Err(e) => None, //{ let _ = msg.channel_id.say(&ctx.http, format!("{:?}", e)).await; }
             }
         }
     }
@@ -379,10 +404,10 @@ pub async fn on_message(ctx: Context, msg: Message) -> Option<String> {
 #[hook]
 async fn normal_message(ctx: &Context, msg: &Message) {
     let typing = msg.channel_id.start_typing(&ctx.http).unwrap();
-    if let Some(response) = on_message(ctx.clone(), msg.clone()).await {
-        let _ = msg.channel_id.say(&ctx, response).await;
-        typing.stop();
-    };
+    if let Some(x) = on_message(&ctx, &msg).await {
+        msg.reply(ctx, &x).await;
+    }
+    typing.stop();
 }
 
 pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
@@ -480,6 +505,54 @@ pub async fn cost(ctx: &Context, msg: &Message) -> CommandResult {
     }
 
     msg.reply(ctx, format!("{}", cost)).await?;
+    Ok(())
+}
+
+#[command]
+pub async fn imagine(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    if !CHANNEL_WHITELIST.contains(&msg.channel_id) {
+        return Ok(());
+    }
+
+    let llm_manager = ctx.data.read().await.get::<LLMStateKey>().unwrap().clone();
+    let prompt = args.rest().trim();
+
+    if prompt.is_empty() {
+        msg.reply(ctx, "Please provide a prompt for image generation.").await?;
+        return Ok(());
+    }
+
+    // Send a "thinking" message
+    let mut thinking_msg = msg.reply(ctx, "🎨 Generating image...").await?;
+
+    let response = {
+        let mut llm_state = llm_manager.lock().await;
+        match llm_state.image_generate(&prompt).await {
+            Ok(response) => response,
+            Err(e) => {
+                tracing::error!(e);
+                // thinking_msg.edit(ctx, |m| {
+                //     m.content("❌ Failed to generate image. Please try again. [Image generate error]")
+                // }).await;
+
+                return Ok(())
+            }
+        }
+    };
+
+    // Decode base64
+    let b64_data = response["data"][0]["b64_json"].as_str().unwrap();
+    let image_bytes: Vec<u8> = BASE64_STANDARD.decode(b64_data)?;
+
+    msg.channel_id.send_files(
+        &ctx.http,
+        vec![
+            (&image_bytes[..], "generated.png")
+        ],
+        |m| m.content(":paperclip:")
+             .reference_message(msg)
+    ).await?;
+
     Ok(())
 }
 
