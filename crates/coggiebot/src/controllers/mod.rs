@@ -1,3 +1,8 @@
+
+#[cfg(feature = "llm")]
+#[path = "llm.rs"]
+mod llm;
+
 #[cfg(feature = "bookmark")]
 #[path = "bookmark.rs"]
 mod bookmark;
@@ -33,16 +38,22 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
         cfg,
         {
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
-            ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
-            ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
             ["mockingbird-set-arl-cmd"] => [mockingbird::player::DANGEROUS_GROUP],
-            ["mockingbird-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP]
+            ["mockingbird-ctrl"] => [mockingbird::player::BETTERPLAYER_GROUP],
+            ["llm"] => [ llm::LLMCOMMANDS_GROUP ]
+            //TODO: ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
+            //TODO: ["help-cmd"] => [features::HELP_GROUP],
         }
     );
+
+    #[cfg(feature = "llm")]
+    { cfg = llm::setup_framework(cfg); }
+
     cfg
 }
+
 
 #[allow(unused_mut)]
 pub async fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
@@ -51,6 +62,12 @@ pub async fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
         use mockingbird::init as mockingbird_init;
         cfg = mockingbird_init(cfg).await;
     }
+
+    #[cfg(feature = "llm")]
+    {
+        cfg = llm::init(cfg).await;
+    }
+
     cfg
 }
 
