@@ -1224,11 +1224,11 @@ async fn q_autoindex(ctx: &Context, msg: &Message, mut args: Args) -> CommandRes
     let html_content = response.text().await?;
     let re = regex::Regex::new(r#"<a href="([^"]+)">"#)?;
 
-    let mut urls = dbg!(re.captures_iter(&html_content)
+    let mut urls = re.captures_iter(&html_content)
       .map(|x| x[1].to_string())
       .filter(|x| x.as_str() != "../")
       .map(|x| format!("{}/{}", url, x))
-      .collect::<Vec<_>>());
+      .collect::<Vec<_>>();
 
     let how_many = urls.len();
     let mut urls_drain = urls.drain(..);
