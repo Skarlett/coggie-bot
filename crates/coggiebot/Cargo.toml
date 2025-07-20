@@ -1,6 +1,6 @@
 [package]
 name = "coggiebot"
-version = "1.4.18"
+version = "1.5.1"
 edition = "2021"
 
 [dependencies]
@@ -18,7 +18,13 @@ serde = "1"
 base64 = { version = "0.21", optional = true }
 
 [features]
-default = []
+default = [
+    "mockingbird-radio",
+    "mockingbird-deemix",
+    "mockingbird-ctrl",
+    "mockingbird-core",
+    "mockingbird-http"
+]
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
@@ -30,6 +36,7 @@ mockingbird-core = ["dep:mockingbird"]
 mockingbird-arl-cmd = ["mockingbird?/arl-cmd"]
 mockingbird-ctrl = ["mockingbird?/controller"]
 mockingbird-debug = ["mockingbird?/debug"]
+mockingbird-radio = ["mockingbird?/radio"]
 
 ################
 # mockingbird is compatiable with youtube & soundcloud
@@ -45,6 +52,8 @@ mockingbird-deemix = ["mockingbird?/deemix"]
 
 ################
 mockingbird-deemix-check = ["mockingbird?/check"]
+
+mockingbird-crossfade = ["mockingbird?/crossfade"]
 
 ################
 # NOTE: enabling this is dangerous

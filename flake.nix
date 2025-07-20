@@ -22,6 +22,7 @@
           
           deemix-stream = pkgs.python3Packages.callPackage ./sbin/deemix-stream {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
+
           stable-features = (with cogpkgs.features; [
               basic-cmds
               bookmark
@@ -36,6 +37,8 @@
               mockingbird-set-arl-cmd
               mockingbird-http
               llm
+              mockingbird-radio
+              mockingbird-crossfade
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
@@ -87,6 +90,7 @@
           };
 
           packages.cache-target = coggiebot-stable;
+          packages.arange = pkgs.python3.withPackages(ps: with ps; [ numpy ]);
         })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
