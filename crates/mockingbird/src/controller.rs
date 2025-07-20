@@ -19,7 +19,8 @@ use std::{
 };
 
 use core::sync::atomic::Ordering;
-
+use crate::player::join_routine;
+use crate::player::next_track_handle;
 
 #[group]
 #[commands(join, leave, queue, now_playing, skip, list, shuffle)]
@@ -350,26 +351,73 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    match manager.get(guild_id) {
-        Some(call) => {
-            let call = call.lock().await;
-            let queue = call.queue();
-            let _ = queue.skip();
-        }
-        None => {
-            msg.channel_id
-               .say(&ctx.http, "Not in a voice channel to play in")
-               .await?;
-            return Ok(())
-        }
-    };
+    let crossfading = qctx.crossfade.load(Ordering::Relaxed);
 
-    msg.channel_id
-       .say(
-            &ctx.http,
-            format!("Song skipped [{}]: {} in queue.", skipn, skipn-cold_queue_len as isize),
-       )
-       .await?;
+    {
+        match manager.get(guild_id) {
+            Some(call) => {
+                let call = call.lock().await;
+                if ! crossfading {
+                    let queue = call.queue();
+                    let _ = queue.skip();
+                    return Ok(());
+                };
+            }
+            None => {
+                msg.channel_id
+                    .say(&ctx.http, "Not in a voice channel to play in")
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let mut cold_queue = qctx.cold_queue.write().await;
+        match (cold_queue.crossfade_lhs.take(), cold_queue.crossfade_rhs.take()) {
+            (None, None) => {}
+
+            (Some(lhs), Some(rhs)) => {
+                let _ = lhs.stop();
+                cold_queue.crossfade_lhs = Some(rhs);
+                cold_queue.crossfade_rhs = None;
+            }
+
+            (Some(lhs), None) => {
+                let _ = lhs.stop();
+                cold_queue.crossfade_lhs = None;
+
+                match manager.get(guild_id) {
+                    Some(call) => {
+                        let mut call = call.lock().await;
+                        if let Ok(Some( (mut track, handle, metadata) )) = next_track_handle(&mut cold_queue, qctx.clone(), true).await {
+                            play(&mut call, track, &handle, &mut cold_queue, true).await?;
+                        }
+                    }
+                    None => {
+                        msg.channel_id
+                            .say(&ctx.http, "Not in a voice channel to play in")
+                            .await?;
+                        return Ok(());
+                    }
+                };
+            }
+
+            (None, Some(rhs)) => {
+                cold_queue.crossfade_lhs = Some(rhs);
+                cold_queue.crossfade_rhs = None;
+            }
+        }
+    }
+
+    let reply_msg = format!(
+        "Song skipped [{}]: {} in queue.",
+        skipn,
+        skipn-cold_queue_len as isize
+    );
+
+    msg.reply(
+        &ctx,
+        reply_msg,
+    ).await?;
 
     Ok(())
 }
@@ -547,13 +595,7 @@ async fn q_autoindex(ctx: &Context, msg: &Message, mut args: Args) -> CommandRes
 
     let how_many = urls.len();
     let mut urls_drain = urls.drain(..);
-
-    if let Some(first) = urls_drain.next() {
-        input_track(call.clone(), qctx.clone(), &ctx, &msg, first, true).await?;
-    }
-
-    qctx.cold_queue.write().await.extend(urls_drain);
-
+    qctx.cold_queue.write().await.queue.extend(urls_drain);
     msg.reply(ctx, format!("added: [{}]", how_many)).await;
     Ok(())
 }
