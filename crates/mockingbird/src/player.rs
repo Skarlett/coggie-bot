@@ -45,7 +45,7 @@ const TS_ABANDONED_HB: Duration = Duration::from_secs(720);
 // const MAX_ENQUEUED: u16 = 300;
 
 #[group]
-#[commands(join, leave, queue, now_playing, skip, shuffle)]
+#[commands(join, leave, queue, now_playing, skip, shuffle, q_autoindex)]
 struct BetterPlayer;
 
 async fn next_track(call: &mut Call, uri: &str, guild_id: u64) -> Result<TrackHandle, HandlerError> {
@@ -304,15 +304,19 @@ impl Players {
     {
         const DEEMIX: [&'static str; 4] = ["deezer.page.link", "deezer.com", "open.spotify", "spotify.link"];
         const YTDL: [&'static str; 4] = ["youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com"];
-        const HTTPGET: [&'static str; 3] = [
-            "tape.unallocatedspace.luni",
-            "tape.cypress.local",
-            "vxsesh.cypress.local"
-        ];
+
+        let ok_domains = std::env::var("MKBIRD_HTTPGET_DOMAINS")
+            .unwrap_or("tape.cypress.local:flagship.unallocatedspace.luni".to_string());
 
         if DEEMIX.iter().any(|x|data.contains(x)) { return Some(Self::Deemix) }
         else if YTDL.iter().any(|x|data.contains(x)) {return Some(Self::Ytdl) }
-        else if HTTPGET.iter().any(|x|data.contains(x)) {return Some(Self::HttpGet) }
+
+        /* raw http get files */
+        else if ok_domains.split(":")
+                //TODO: .filter(|x| x.is_empty())
+                .any(|x| data.contains(x))
+                   { return Some(Self::HttpGet) }
+
         else { return None }
     }
 
@@ -481,7 +485,6 @@ async fn play_routine(qctx: Arc<QueueContext>) -> Result<(), HandlerError> {
     let mut call = handler.lock().await;
 
     while let Some(uri) = qctx.cold_queue.write().await.pop_front() {
-        let uri = dbg!(uri);
         match next_track(&mut call, &uri, qctx.guild_id.0).await {
             Ok(track) => {
                 let track = dbg!(track);
@@ -857,6 +860,73 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+async fn input_track(
+    call: Arc<Mutex<songbird::Call>>,
+    qctx: Arc<QueueContext>,
+    ctx: &Context,
+    msg: &Message,
+    url: String,
+    silent: bool
+) -> CommandResult
+{
+    if !url.starts_with("http") {
+        msg.channel_id
+           .say(&ctx.http, "Must provide a valid URL")
+           .await
+           .unwrap();
+        return Ok(());
+    };
+
+    match Players::from_str(&url)
+        .ok_or_else(|| String::from("Failed to select extractor for URL"))
+    {
+        Ok(player) => {
+            let mut uris = player.fan_collection(&url).await?;
+            let added = uris.len();
+
+            // YTDLP singles don't work.
+            // so instead, use the original URI.
+            if uris.len() == 1 && player == Players::Ytdl {
+                uris.clear();
+                uris.push_back(url.clone());
+            }
+
+            qctx.cold_queue.write().await.extend(uris.drain(..));
+
+            let maybe_hot = {
+                let call = call.lock().await;
+                call.queue().len() > 0
+            };
+
+            drop(call); // probably not needed, but just in case
+            if !maybe_hot {
+                play_routine(qctx.clone()).await?;
+            }
+
+            let content = format!(
+                "Added {} Song(s) [{}] queued",
+                added,
+                qctx.cold_queue.read().await.len()
+            );
+
+            if !silent {
+                msg.channel_id
+                   .say(&ctx.http, &content)
+                   .await?;
+            }
+
+        },
+
+        Err(_) => {
+            msg.channel_id
+               .say(&ctx.http, format!("Failed to select extractor for URL: {}", url))
+               .await?;
+        }
+    }
+
+    return Ok(())
+}
+
 #[command]
 #[aliases("play", "p", "q")]
 #[only_in(guilds)]
@@ -922,49 +992,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         }
     };
 
-    match Players::from_str(&url)
-        .ok_or_else(|| String::from("Failed to select extractor for URL"))
-    {
-        Ok(player) => {
-            let mut uris = player.fan_collection(url.as_str()).await?;
-            let added = uris.len();
-            
-            // YTDLP singles don't work.
-            // so instead, use the original URI.
-            if uris.len() == 1 && player == Players::Ytdl {
-                uris.clear();
-                uris.push_back(url.clone());
-            }
-            
-            qctx.cold_queue.write().await.extend(uris.drain(..));    
-
-            let maybe_hot = {
-                let call = call.lock().await;
-                call.queue().len() > 0            
-            };
-
-            drop(call); // probably not needed, but just in case
-            if !maybe_hot {
-                play_routine(qctx.clone()).await?;
-            }
-
-            let content = format!(
-                "Added {} Song(s) [{}] queued",
-                added,
-                qctx.cold_queue.read().await.len()
-            );
-            
-            msg.channel_id            
-               .say(&ctx.http, &content)
-               .await?;            
-        },
-
-        Err(_) => {
-            msg.channel_id
-               .say(&ctx.http, format!("Failed to select extractor for URL: {}", url))
-               .await?;
-        }
-    }
+    input_track(call.clone(), qctx.clone(), &ctx, &msg, url, false).await?;
 
     Ok(())
 }
@@ -1035,7 +1063,6 @@ async fn skip(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let mut call = handler_lock.lock().await;
     let queue = call.queue();
     let _ = queue.skip();
-
     Ok(())
 }
 
@@ -1063,7 +1090,10 @@ async fn shuffle(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         let mut write_lock = qctx.cold_queue.write().await;
         let mut vec = write_lock.iter().cloned().collect::<Vec<_>>();
 
-        vec.shuffle(&mut thread_rng());
+        for _ in 0..64 {
+            vec.shuffle(&mut thread_rng());
+        }
+
         write_lock.clear();
         write_lock.extend(vec);
     }
@@ -1092,7 +1122,6 @@ async fn shuffle(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     let mut call = handler_lock.lock().await;
     let queue = call.queue();
-    let _ = queue.skip();
 
     Ok(())
 }
@@ -1102,7 +1131,6 @@ async fn shuffle(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 struct Dangerous;
 
 #[command]
-#[only_in(guilds)]
 async fn setarl(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     tracing::info!("[{}::{}] set a new arl", msg.author.id, msg.author.name);
 
@@ -1120,7 +1148,6 @@ async fn setarl(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 }
 
 #[command]
-#[only_in(guilds)]
 async fn getarl(ctx: &Context, msg: &Message) -> CommandResult {
     tracing::info!("[{}::{}] requested arl", msg.author.id, msg.author.name);
 
@@ -1142,4 +1169,76 @@ async fn getarl(ctx: &Context, msg: &Message) -> CommandResult {
         }
     }
     return Ok(())
+}
+
+#[command]
+async fn q_autoindex(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let url = match args.single::<String>() {
+        Ok(url) => url,
+        Err(_) => {
+            msg.channel_id
+               .say(&ctx.http, "Must provide a URL to a video or audio")
+               .await
+               .unwrap();
+            return Ok(());
+        },
+    };
+
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    let qctx: Arc<QueueContext>;
+
+    let call = match manager.get(guild_id) {
+        Some(call_lock) => {
+            qctx = ctx.data.write().await.get_mut::<LazyQueueKey>().unwrap().get_mut(&guild_id).unwrap().clone();
+            call_lock
+        },
+        None => {
+            let tmp = join_routine(ctx, msg).await;
+
+            if let Err(ref e) = tmp {
+                msg.channel_id
+                   .say(&ctx.http, format!("Failed to join voice channel: {:?}", e))
+                   .await
+                   .unwrap();
+                return Ok(());
+            };
+            qctx = tmp.unwrap();
+            msg.channel_id
+                   .say(&ctx.http, format!("Joined: {}", qctx.voice_chan_id.mention()))
+                   .await
+                   .unwrap();
+
+            let call = manager.get(guild_id).ok_or_else(|| JoinError::NoCall);
+            call?
+        }
+    };
+
+    let response = reqwest::get(url.clone()).await?;
+    let html_content = response.text().await?;
+    let re = regex::Regex::new(r#"<a href="([^"]+)">"#)?;
+
+    let mut urls = dbg!(re.captures_iter(&html_content)
+      .map(|x| x[1].to_string())
+      .filter(|x| x.as_str() != "../")
+      .map(|x| format!("{}/{}", url, x))
+      .collect::<Vec<_>>());
+
+    let how_many = urls.len();
+    let mut urls_drain = urls.drain(..);
+
+    if let Some(first) = urls_drain.next() {
+        input_track(call.clone(), qctx.clone(), &ctx, &msg, first, true).await?;
+    }
+
+    qctx.cold_queue.write().await.extend(urls_drain);
+
+    msg.reply(ctx, format!("added: [{}]", how_many)).await;
+    Ok(())
 }
