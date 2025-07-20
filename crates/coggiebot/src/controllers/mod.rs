@@ -39,8 +39,7 @@ pub fn setup_framework(mut cfg: StandardFramework) -> StandardFramework {
         {
             ["basic-cmds"] => [basic::COMMANDS_GROUP],
             ["list-feature-cmd"] => [features::FEATURES_GROUP],
-            // ["mockingbird-arl-cmd"] => [mockingbird::check::ARL_GROUP],
-            ["llm"] => [ llm::LLMCOMMANDS_GROUP ]
+            ["llm"] => [ llm::LLMCOMMANDS_GROUP ],
             //TODO: ["prerelease"] => [features::PRERELEASE_GROUP::PRERELEASE_GROUP],
             //TODO: ["help-cmd"] => [features::HELP_GROUP],
             ["mockingbird-set-arl-cmd"] => [mockingbird::usersettoken::DANGEROUS_GROUP],
