@@ -18,7 +18,6 @@ use std::{
     sync::Arc,
     path::PathBuf,
 };
-
 use std::sync::atomic::AtomicBool;
 use parking_lot::{Mutex};
 
@@ -120,6 +119,38 @@ impl Players {
     }
 }
 
+pub async fn next_track_handle(
+    cold_queue: &mut ColdQueue,
+    qctx: Arc<QueueContext>,
+    crossfade: bool
+) -> Result<Option<(Track, TrackHandle, Option<MetadataType>)>, HandlerError>
+{
+    if let Some((preload, metadata)) = cold_queue.queue_next.take() {
+        tracing::info!("Pulling track from user-preload");
+        let (track, handle) = create_player(preload.into());
+        add_events(&handle, qctx.clone(), crossfade).await;
+        Ok(Some((track, handle, metadata)))
+    }
+
+    else if let Ok(Some((track, handle, metadata))) = invoke_cold_queue(cold_queue, qctx.clone()).await {
+        tracing::info!("Pulling track from user-queue");
+        add_events(&handle, qctx.clone(), crossfade).await;
+
+        Ok(Some((track, handle, metadata)))
+    }
+
+    else if cold_queue.use_radio {
+        if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
+            tracing::info!("Pulling track from radio");
+            let (track, handle) = create_player(radio_preload.into());
+            add_events(&handle, qctx.clone(), crossfade).await;
+            Ok(Some((track, handle, metadata)))
+        }
+        else { Ok(None) }
+    }
+    else { Ok(None) }
+}
+
 pub async fn play(
     call: &mut Call,
     mut track: Track,
@@ -148,19 +179,15 @@ pub async fn play(
 
         (Some(lhs), None) => {
             cold_queue.crossfade_lhs = Some(lhs);
-            // let _ = handle.make_playable();
             cold_queue.crossfade_rhs = Some(handle.clone());
         }
 
         (None, None) => {
-            // let _ = handle.make_playable();
             let _ = handle.play();
             cold_queue.crossfade_lhs = Some(handle.clone());
         }
         (None, Some(rhs)) => {
             cold_queue.crossfade_lhs = Some(rhs);
-            
-            // let _ = handle.make_playable();
             cold_queue.crossfade_rhs = Some(handle.clone());
         }        
     }
@@ -287,40 +314,6 @@ async fn history_completed_track(has_played: &mut VecDeque<TrackRecord>, metadat
     };
 
     has_played.push_front(data);
-}
-
-pub async fn next_track_handle(
-    cold_queue: &mut ColdQueue,
-    qctx: Arc<QueueContext>,
-    crossfade: bool
-) -> Result<Option<(Track, TrackHandle, Option<MetadataType>)>, HandlerError>
-{   
-
-
-    if let Some((preload, metadata)) = cold_queue.queue_next.take() {
-        tracing::info!("Pulling track from user-preload");
-        let (track, handle) = create_player(preload.into());
-        add_events(&handle, qctx.clone(), crossfade).await;
-        Ok(Some((track, handle, metadata)))
-    }
-
-    else if let Ok(Some((track, handle, metadata))) = invoke_cold_queue(cold_queue, qctx.clone()).await {
-        tracing::info!("Pulling track from user-queue");
-        add_events(&handle, qctx.clone(), crossfade).await;      
-
-        Ok(Some((track, handle, metadata)))
-    }
-
-    else if cold_queue.use_radio {
-        if let Some((radio_preload, metadata)) = cold_queue.radio_next.take() {
-            tracing::info!("Pulling track from radio");
-            let (track, handle) = create_player(radio_preload.into());
-            add_events(&handle, qctx.clone(), crossfade).await;      
-            Ok(Some((track, handle, metadata)))
-        }
-        else { Ok(None) }
-    }
-    else { Ok(None) }
 }
 
 pub async fn invoke_cold_queue(
