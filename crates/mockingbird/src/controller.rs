@@ -485,3 +485,75 @@ async fn shuffle(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     Ok(())
 }
+
+#[command]
+async fn q_autoindex(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let url = match args.single::<String>() {
+        Ok(url) => url,
+        Err(_) => {
+            msg.channel_id
+               .say(&ctx.http, "Must provide a URL to a video or audio")
+               .await
+               .unwrap();
+            return Ok(());
+        },
+    };
+
+    let guild = msg.guild(&ctx.cache).unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    let qctx: Arc<QueueContext>;
+
+    let call = match manager.get(guild_id) {
+        Some(call_lock) => {
+            qctx = ctx.data.write().await.get_mut::<LazyQueueKey>().unwrap().get_mut(&guild_id).unwrap().clone();
+            call_lock
+        },
+        None => {
+            let tmp = join_routine(ctx, msg).await;
+
+            if let Err(ref e) = tmp {
+                msg.channel_id
+                   .say(&ctx.http, format!("Failed to join voice channel: {:?}", e))
+                   .await
+                   .unwrap();
+                return Ok(());
+            };
+            qctx = tmp.unwrap();
+            msg.channel_id
+                   .say(&ctx.http, format!("Joined: {}", qctx.voice_chan_id.mention()))
+                   .await
+                   .unwrap();
+
+            let call = manager.get(guild_id).ok_or_else(|| JoinError::NoCall);
+            call?
+        }
+    };
+
+    let response = reqwest::get(url.clone()).await?;
+    let html_content = response.text().await?;
+    let re = regex::Regex::new(r#"<a href="([^"]+)">"#)?;
+
+    let mut urls = re.captures_iter(&html_content)
+      .map(|x| x[1].to_string())
+      .filter(|x| x.as_str() != "../")
+      .map(|x| format!("{}/{}", url, x))
+      .collect::<Vec<_>>();
+
+    let how_many = urls.len();
+    let mut urls_drain = urls.drain(..);
+
+    if let Some(first) = urls_drain.next() {
+        input_track(call.clone(), qctx.clone(), &ctx, &msg, first, true).await?;
+    }
+
+    qctx.cold_queue.write().await.extend(urls_drain);
+
+    msg.reply(ctx, format!("added: [{}]", how_many)).await;
+    Ok(())
+}
