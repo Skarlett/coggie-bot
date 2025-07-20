@@ -26,7 +26,7 @@ use serenity::prelude::*;
 use serenity::model::prelude::*;
 
 #[group]
-#[commands(set_model, get_model, cost, imagine, set_system_prompt)]
+#[commands(set_model, get_model, cost, imagine, set_system_prompt, reset_quota)]
 pub struct LLMCommands;
 
 const CONTEXT_SZ: usize = 10;
@@ -61,7 +61,7 @@ struct NanoGpt {
 
 #[derive(Deserialize, Debug)]
 struct ChatResponse {
-    id: String,
+    id: Option<String>,
     object: String,
     created: u64,
     model: String,
@@ -92,6 +92,11 @@ struct QuotaManager {
 
 struct QuotaManagerKey;
 impl TypeMapKey for QuotaManagerKey {
+    type Value = Arc<Mutex<QuotaManager>>;
+}
+
+struct ImageQuotaManagerKey;
+impl TypeMapKey for ImageQuotaManagerKey {
     type Value = Arc<Mutex<QuotaManager>>;
 }
 
@@ -167,6 +172,14 @@ impl QuotaManager {
         } else {
             self.default_bucket_limit
         }
+    }
+
+    fn force_eviction(&mut self, user_id: &UserId) -> bool {
+        if self.quotas.contains_key(user_id) {
+            self.quotas.remove(user_id);
+            return true;
+        }
+        return false;
     }
 }
 
@@ -443,7 +456,12 @@ pub async fn init(mut cfg: ClientBuilder) -> ClientBuilder {
         cfg
         .type_map_insert::<LLMStateKey>(Arc::new(Mutex::new(LLMState::new(model, key))))
         .type_map_insert::<QuotaManagerKey>(Arc::new(Mutex::new(QuotaManager::new(
-            30, /* daily limit */
+            500, /* daily limit */
+            3,  /* bucket limit */
+            Duration::from_millis(15000) /* bucket refill */
+        ))))
+        .type_map_insert::<ImageQuotaManagerKey>(Arc::new(Mutex::new(QuotaManager::new(
+            10, /* daily limit */
             2,  /* bucket limit */
             Duration::from_millis(15000) /* bucket refill */
         ))))
@@ -509,12 +527,47 @@ pub async fn cost(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
+pub async fn reset_quota(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let data = ctx.data.read().await;
+    let llm_manager = data.get::<LLMStateKey>().unwrap().clone();
+
+    let user_id: UserId = match args.single() {
+        Ok(user_id) => user_id,
+        Err(e) => {
+            msg.reply(ctx, "Missing userid .reset_quota <id>");
+            return Ok(());
+        }
+    };
+    let llm_quota_manager: Arc<Mutex<QuotaManager>> = data.get::<ImageQuotaManagerKey>().unwrap().clone();
+    let image_quota_manager: Arc<Mutex<QuotaManager>> = data.get::<ImageQuotaManagerKey>().unwrap().clone();
+
+    { llm_quota_manager.lock().await.force_eviction(&user_id); }
+    { image_quota_manager.lock().await.force_eviction(&user_id); }
+
+    msg.reply(ctx, "reset").await?;
+    Ok(())
+}
+
+#[command]
 pub async fn imagine(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     if !CHANNEL_WHITELIST.contains(&msg.channel_id) {
         return Ok(());
     }
 
+    let data = ctx.data.read().await;
     let llm_manager = ctx.data.read().await.get::<LLMStateKey>().unwrap().clone();
+    let quota_manager: Arc<Mutex<QuotaManager>> = data.get::<ImageQuotaManagerKey>().unwrap().clone();
+    {
+        let mut quota_manager = quota_manager.lock().await;
+        let user_id = msg.author.id;
+
+        if !quota_manager.check_quota(user_id.clone()) {
+            msg.reply(ctx, "quota limit reached, resets tomorrow.");
+            return Ok(());
+        };
+    }
+
+
     let prompt = args.rest().trim();
 
     if prompt.is_empty() {
@@ -528,13 +581,13 @@ pub async fn imagine(ctx: &Context, msg: &Message, args: Args) -> CommandResult 
     let response = {
         let mut llm_state = llm_manager.lock().await;
         match llm_state.image_generate(&prompt).await {
-            Ok(response) => response,
+            Ok(response) => {
+                let cost: f64 = response["cost"].as_f64().unwrap();
+                llm_state.cost_meter += cost;
+                response
+            },
             Err(e) => {
                 tracing::error!(e);
-                // thinking_msg.edit(ctx, |m| {
-                //     m.content("❌ Failed to generate image. Please try again. [Image generate error]")
-                // }).await;
-
                 return Ok(())
             }
         }
