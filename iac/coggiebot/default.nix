@@ -40,6 +40,7 @@ let
             });  
           }
           { name = "llm"; }
+          { name = "vc-notify"; }
           { name = "basic-cmds"; }
           { name = "bookmark"; }
           { name = "prerelease";

@@ -28,6 +28,8 @@ default = [
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
+vc-notify = []
+
 llm = ["dep:rand", "dep:base64"]
 ################
 # mockingbird features

@@ -1,3 +1,4 @@
+mod vc_notify;
 
 #[cfg(feature = "llm")]
 #[path = "llm.rs"]
@@ -69,15 +70,26 @@ pub async fn setup_state(mut cfg: ClientBuilder) -> ClientBuilder {
         cfg = llm::init(cfg).await;
     }
 
+    #[cfg(feature = "vc-notify")]
+    {
+        cfg = vc_notify::init(cfg).await;
+    }
+
     cfg
 }
 
+
 pub struct EvHandler;
+
+
+use serenity::model::voice::VoiceState;
+use crate::controllers::vc_notify::VcActionKey;
 
 #[async_trait]
 impl EventHandler for EvHandler {
     #[allow(unused_variables)]
     async fn reaction_add(&self, ctx: Context, ev: Reaction) {
+
         #[cfg(feature="bookmark")]
         tokio::spawn(async move {
             use bookmark::bookmark_on_react_add;
@@ -88,20 +100,41 @@ impl EventHandler for EvHandler {
         });
     }
 
-    // #[allow(unused_variables)]
-    // async fn message(&self, ctx: Context, msg: Message) {
-    //     #[cfg(feature="enable-dj-room")]
-    //     tokio::spawn(async move {
-    //         const DJ_CHANNEL: u64 = 960044319476179055;
-    //         let bot_id = ctx.cache.current_user_id().0;
-    //         if msg.channel_id.0 == DJ_CHANNEL && msg.author.id.0 != bot_id {
-    //             match mockingbird::on_dj_channel(&ctx, &msg).await {
-    //                 Ok(_) => {},
-    //                 Err(e) => { msg.channel_id.say(&ctx.http, format!("Error: {}", e)).await.unwrap(); },
-    //             }
-    //         }
-    //     });
-    // }
+    #[cfg(feature="vc-notify")]
+    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+        // Handle voice channel join
+
+        let data = ctx.data.read().await;
+        let x = data.get::<VcActionKey>().unwrap().clone();
+
+        if old.as_ref().map(|o| o.channel_id).is_none() && new.channel_id.is_some() {
+            if let Some(channel_id) = new.channel_id {
+                let cfg_mgr = x.lock().await;
+                vc_notify::handle_voice_join(&ctx, &new, channel_id, &cfg_mgr).await;
+            }
+        }
+
+        // Handle voice channel leave
+        if let Some(old_state) = &old {
+            if old_state.channel_id.is_some() && new.channel_id.is_none() {
+                if let Some(channel_id) = old_state.channel_id {
+                   let cfg_mgr = x.lock().await;
+                   vc_notify::handle_voice_leave(&ctx, &new, channel_id, &cfg_mgr).await;
+                }
+            }
+        }
+
+        // Handle voice channel move (leave old, join new)
+        if let Some(old_state) = &old {
+            if let (Some(old_channel), Some(new_channel)) = (old_state.channel_id, new.channel_id) {
+                if old_channel != new_channel {
+                   let cfg_mgr = x.lock().await;
+                    vc_notify::handle_voice_leave(&ctx, &new, old_channel, &cfg_mgr).await;
+                    vc_notify::handle_voice_join(&ctx, &new, new_channel, &cfg_mgr).await;
+                }
+            }
+        }
+    }
 
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);

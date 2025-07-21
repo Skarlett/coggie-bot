@@ -36,9 +36,10 @@
               mockingbird-debug
               mockingbird-set-arl-cmd
               mockingbird-http
-              llm
               mockingbird-radio
               mockingbird-crossfade
+              llm
+              vc-notify
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
@@ -105,9 +106,10 @@
           };
 
           config = mkIf cfg.enable {
-            nix.settings.trusted-public-keys = [
-              "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
-            ];
+            ###
+            # nix.settings.trusted-public-keys = [
+            #   "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
+            # ];
 
             users.users.coggiebot = {
               isSystemUser = true;
