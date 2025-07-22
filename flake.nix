@@ -22,6 +22,7 @@
           
           deemix-stream = pkgs.python3Packages.callPackage ./sbin/deemix-stream {};
           cogpkgs = pkgs.callPackage ./iac/coggiebot/default.nix { inherit naerk-lib self recursiveMerge; inherit deemix-stream; };
+
           stable-features = (with cogpkgs.features; [
               basic-cmds
               bookmark
@@ -35,6 +36,10 @@
               mockingbird-debug
               mockingbird-set-arl-cmd
               mockingbird-http
+              mockingbird-radio
+              mockingbird-crossfade
+              llm
+              vc-notify
           ]);
 
           coggiebot-stable = cogpkgs.mkCoggiebot {
@@ -86,6 +91,7 @@
           };
 
           packages.cache-target = coggiebot-stable;
+          packages.arange = pkgs.python3.withPackages(ps: with ps; [ numpy ]);
         })) packages;
 
       nixosModules.coggiebot = {pkgs, lib, config, ...}:
@@ -100,9 +106,10 @@
           };
 
           config = mkIf cfg.enable {
-            nix.settings.trusted-public-keys = [
-              "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
-            ];
+            ###
+            # nix.settings.trusted-public-keys = [
+            #   "coggiebot.cachix.org-1:nQZzOJPdTU0yvMlv3Hy7cTF77bfYS0bbf35dIialf9k="
+            # ];
 
             users.users.coggiebot = {
               isSystemUser = true;

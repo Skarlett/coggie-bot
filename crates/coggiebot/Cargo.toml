@@ -1,24 +1,36 @@
 [package]
 name = "coggiebot"
-version = "1.4.17"
+version = "1.5.1"
 edition = "2021"
 
 [dependencies]
-serenity = { version = "0.11", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "framework", "standard_framework", "voice", "cache"] }
+serenity = { version = "0.11", default-features=true, features = ["client", "gateway", "rustls_backend", "model", "builder", "framework", "standard_framework", "voice", "cache" ] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 structopt = { version = "0.3", default-features = false }
 thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-
+reqwest = "0.11"
 mockingbird = { path = "../mockingbird", optional=true }
+rand = { version="^0.8", optional=true }
+serde_json = "1"
+serde = "1"
+base64 = { version = "0.21", optional = true }
 
 [features]
-default = []
+default = [
+    "mockingbird-radio",
+    "mockingbird-deemix",
+    "mockingbird-ctrl",
+    "mockingbird-core",
+    "mockingbird-http"
+]
 list-feature-cmd = []
 basic-cmds = []
 bookmark = []
+vc-notify = []
 
+llm = ["dep:rand", "dep:base64"]
 ################
 # mockingbird features
 mockingbird-core = ["dep:mockingbird"]
@@ -26,6 +38,7 @@ mockingbird-core = ["dep:mockingbird"]
 mockingbird-arl-cmd = ["mockingbird?/arl-cmd"]
 mockingbird-ctrl = ["mockingbird?/controller"]
 mockingbird-debug = ["mockingbird?/debug"]
+mockingbird-radio = ["mockingbird?/radio"]
 
 ################
 # mockingbird is compatiable with youtube & soundcloud
@@ -41,6 +54,8 @@ mockingbird-deemix = ["mockingbird?/deemix"]
 
 ################
 mockingbird-deemix-check = ["mockingbird?/check"]
+
+mockingbird-crossfade = ["mockingbird?/crossfade"]
 
 ################
 # NOTE: enabling this is dangerous

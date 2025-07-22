@@ -1,16 +1,18 @@
 [package]
 name = "mockingbird"
-version = "0.0.6"
+version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 songbird = { version = "0.3", features = ["builtin-queue"] }
-serenity = { version = "0.11", default-features=false, features = ["standard_framework", "model", "voice", "client", "gateway", "cache"] }
+serenity = { version = "0.11", default-features=false, features = ["standard_framework", "model", "voice", "client", "gateway", "cache", "builder"] }
 tracing = { version = "0.1"}
 tokio = {version = "1.0", default-features=false, features = ["time", "rt"]}
 rand = { version = "0.8" }
+regex = { version = "*" }
+parking_lot = "*"
 
 ####
 serde = { version = "1.0", optional=true }
@@ -18,13 +20,18 @@ serde_json = { version = "1.0", optional=true }
 reqwest = { version = "0.11", optional = true, features = ["cookies"]}
 chrono = {version = "^0.4.26", optional = true }
 cutils = { path = "../cutils", features = ["tokio"], optional=true }
+metrics = { version = "0.22", optional=true }
+
 
 [features]
 default = []
 controller = []
 debug = []
+radio = []
+crossfade = []
+metrics = ["dep:metrics"]
 
-check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json"]
+check = ["dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json", "metrics"]
 ytdl = ["songbird/yt-dlp"]
 deemix = ["dep:serde", "dep:serde_json", "cutils"]
 http-get = ["dep:reqwest"]

@@ -1,4 +1,10 @@
-use std::io::{BufReader, BufRead, Read};
+use std::{
+    io::{BufReader, BufRead, Read},
+    os::fd::RawFd,
+    mem,
+    process::{Child, Stdio},
+    time::Duration
+};
 use songbird::{
     constants::SAMPLE_RATE_RAW,
     input::{
@@ -8,17 +14,17 @@ use songbird::{
         Container,
         Metadata,
         Input,
-        restartable::Restart
+        restartable::Restart,
+        Reader,
     },
-};
-use std::{
-    process::Stdio,
-    time::Duration
 };
 use serde_json::Value;
 use std::os::fd::AsRawFd;
 use tokio::io::AsyncReadExt;
 use cutils::{availbytes, bigpipe, max_pipe_size, PipeError};
+use tokio::runtime::Handle;
+use tracing::debug;
+
 
 #[derive(Debug)]
 pub enum DeemixError {
@@ -99,22 +105,33 @@ where
     async fn call_restart(&mut self, time: Option<Duration>) -> Result<Input, SongbirdError> {
         if let Some(time) = time {
             let ts = format!("{:.3}", time.as_secs_f64());
-            _deemix(self.uri.as_ref(), &["-ss", &ts])
+            _deemix(self.uri.as_ref(), &["-ss", &ts], true)
                 .await
                 .map_err(DeemixError::into)
+                .map(|(i, _)| i)
         } else {
             deemix(self.uri.as_ref())
                 .await
                 .map_err(DeemixError::into)
+                .map(|(i, _)| i)
         }
     }
 
     async fn lazy_init(&mut self) -> Result<(Option<Metadata>, Codec, Container), SongbirdError> {
-        Ok(( Some(deemix_metadata(self.uri.as_ref()).await.unwrap()), Codec::FloatPcm, Container::Raw))
+        Ok(
+        (
+            Some(deemix_metadata(self.uri.as_ref())
+                    .await
+                    .map(DeemixMetadata::into)
+                    .map_err(SongbirdError::from)?
+            ),
+            Codec::FloatPcm, Container::Raw)
+        )
     }
 }
 
-pub async fn deemix_metadata(uri: &str) -> std::io::Result<Metadata> {
+
+pub async fn deemix_metadata(uri: &str) -> std::io::Result<DeemixMetadata> {
     let deemix = tokio::process::Command::new("deemix-metadata")
         .arg(uri.trim())
         .stdin(Stdio::null())
@@ -161,17 +178,48 @@ fn process_stderr(s: &mut std::process::ChildStderr) -> Result<Value, DeemixErro
 
 pub async fn deemix(
     uri: &str,
-) -> Result<Input, DeemixError> {
-    _deemix(uri, &[])
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError> {
+    _deemix(uri, &[], true)
         .await
 }
 
-pub async fn _deemix(
-    uri: &str,
-    pre_args: &[&str],
-) -> Result<Input, DeemixError>
-{
-    let pipesize = max_pipe_size().await.unwrap();
+async fn _deemix_stream(uri: &str, pipesize: i32) -> Result<(std::process::Child, DeemixMetadata), DeemixError> 
+{  
+    let mut deemix = std::process::Command::new("deemix-stream")
+        .arg(uri.trim())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    
+    let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
+    unsafe { bigpipe(deemix_out, pipesize); }
+    
+    let stderr = deemix.stderr.take();
+    // Read first line of stderr
+    // for metadata, but read entire buffer if error.
+    let threadout = tokio::task::spawn_blocking(move || {
+        let mut s = stderr.unwrap();        
+        let out = process_stderr(&mut s);  
+        (s, out)
+    })
+    .await?;
+
+    let (returned_stderr, metadata_raw) = threadout;
+
+    deemix.stderr = Some(returned_stderr);
+    
+    let metadata_raw = metadata_raw?;
+    if let Some(_) = metadata_raw.get("error") {
+        return Err(DeemixError::Metadata);
+    }
+
+    let _filesize = metadata_raw["filesize"].as_u64();
+
+    Ok((deemix, metadata_from_deemix_output(&metadata_raw)))
+}
+
+fn _ffmpeg(proc: &mut std::process::Child, pre_args: &[&str], pipesize: i32) -> Result<std::process::Child, DeemixError> {
     let ffmpeg_args = [
         "-f",
         "s16le",
@@ -183,129 +231,147 @@ pub async fn _deemix(
         "pcm_f32le",
         "-",
     ];
-    
-    tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
-    let mut deemix = std::process::Command::new("deemix-stream")
-        .arg("-hq")
-        .arg("1")
-        .arg(uri.trim())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    
-    let deemix_out = deemix.stdout.as_ref().unwrap().as_raw_fd();
-    unsafe { bigpipe(deemix_out, pipesize); }
 
-    let stderr = deemix.stderr.take();
-    // Read first line of stderr
-    // for metadata, but read entire buffer if error.
-    let threadout = tokio::task::spawn_blocking(move || {
-        let mut s = stderr.unwrap();        
-        let out = process_stderr(&mut s);  
-        (s, out)
-    })
-    .await?;
-
-    let (returned_stderr, value) = threadout;
-
-    deemix.stderr = Some(returned_stderr);
-    
-    let metadata_raw = value?;
-    if let Some(_) = metadata_raw.get("error") {
-        return Err(DeemixError::Metadata);
-    }
-
-    let _filesize = metadata_raw["filesize"].as_u64();
-    let metadata = Some(metadata_from_deemix_output(&metadata_raw));
-
-    tracing::info!("running ffmpeg");
     let ffmpeg = std::process::Command::new("ffmpeg")
         .args(pre_args)
         .arg("-i")
         .arg("-")
         .args(&ffmpeg_args)
-        .stdin(deemix.stdout.take().ok_or(SongbirdError::Stdout)?)
+        .stdin(
+            proc.stdout
+                .take()
+                .ok_or(SongbirdError::Stdout)?       
+        )
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start child process");
     
-    tracing::info!("deezer metadata {:?}", metadata);
-    let ffmpeg_ptr = ffmpeg.stdout.as_ref().ok_or(SongbirdError::Stdout)?.as_raw_fd();
+    let ffmpeg_ptr = ffmpeg.stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+    
     unsafe { bigpipe(ffmpeg_ptr, pipesize); }
     
-    let now = std::time::Instant::now();
-    let pipesize = max_pipe_size().await.unwrap();
+    Ok(ffmpeg)
+}
+
+pub async fn _deemix(
+    uri: &str,
+    pre_args: &[&str],
+    wait: bool,
+) -> Result<(Input, Option<DeemixMetadata>), DeemixError>
+{
     let pipe_threshold = std::env::var("MKBIRD_PIPE_THRESHOLD")
         .unwrap_or_else(|_| "0.8".to_string())
         .parse::<f32>()
         .unwrap_or(0.8);
 
-    loop {
-        let avail = unsafe { availbytes(ffmpeg_ptr) };            
-        let mut percentage = 0.0;
-        if 0 > avail {
-            break
-        }
-        if avail > 0 {
-            percentage = pipesize as f32 / avail as f32;
-        }
+    let pipesize = max_pipe_size().await.unwrap();
 
-        if pipe_threshold > percentage {
-            tokio::time::sleep(std::time::Duration::from_micros(200)).await;
-            tracing::debug!("availbytes: {}", avail);
-            tracing::debug!("pipesize: {}", pipesize);
+    tracing::info!("Running: deemix-stream {} {}", pre_args.join(" "), uri);
+    let (mut deemix, metadata) =  _deemix_stream(uri, pipesize).await?;
+
+    let ffmpeg = _ffmpeg(&mut deemix, pre_args, pipesize)?;
+    let stdout_fd = ffmpeg.stdout.as_ref()
+        .ok_or(SongbirdError::Stdout)?
+        .as_raw_fd();
+
+    if wait {
+        let now = std::time::Instant::now();
+        loop {
+            let avail = unsafe { availbytes(stdout_fd) };
+            let mut percentage = 0.0;
+            if 0 > avail {
+                break
+            }
+            if avail > 0 {
+                percentage = pipesize as f32 / avail as f32;
+            }
+
+            if pipe_threshold > percentage {
+                tokio::time::sleep(std::time::Duration::from_micros(200)).await;
+                tracing::debug!("availbytes: {}", avail);
+                tracing::debug!("pipesize: {}", pipesize);
+            }
+            else {
+                tracing::info!("load time: {}", now.elapsed().as_secs_f64());
+                tracing::debug!("availbytes: {}", avail);
+                tracing::debug!("pipesize: {}", pipesize);
+                break
+            }
         }
-        else {
-            tracing::info!("load time: {}", now.elapsed().as_secs_f64());
-            tracing::debug!("availbytes: {}", avail);
-            tracing::debug!("pipesize: {}", pipesize);
-            break
-        }
-    }  
- 
-    Ok(Input::new(
-        true,
-        children_to_reader::<f32>(vec![deemix, ffmpeg]),
-        Codec::FloatPcm,
-        Container::Raw,
-        metadata,
+    }
+
+    Ok((
+        Input::new(
+            true,
+            children_to_reader::<f32>(vec![deemix, ffmpeg]),
+            Codec::FloatPcm,
+            Container::Raw,
+            Some(metadata.clone().into()),
+        ),
+        Some(metadata.clone())
     ))
 }
 
-fn metadata_from_deemix_output(val: &serde_json::Value) -> Metadata
+#[derive(Debug, Clone)]
+pub struct DeemixMetadata {
+    pub isrc: Option<String>,
+    pub metadata: Metadata,
+}
+
+impl Into<Metadata> for DeemixMetadata {
+    fn into(self) -> Metadata {
+        self.metadata
+    }
+}
+
+fn metadata_from_deemix_output(val: &serde_json::Value) -> DeemixMetadata
 {
     let obj = val.as_object();
 
     let track = obj
         .and_then(|m| m.get("title"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
 
     let artist = obj
         .and_then(|m| m.get("artist"))
         .and_then(|x| x.get("name"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
  
    let duration = obj
         .and_then(|m| m.get("duration"))
         .and_then(Value::as_f64)
-        .map(Duration::from_secs_f64);
+        .map(Duration::from_secs_f64)
+        .clone();
 
-    let source_url = obj
+   let source_url = obj
         .and_then(|m| m.get("link"))
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .map(str::to_string)
+        .clone();
 
-    Metadata {
-        track,
-        artist,
-        channels: Some(2),
-        duration,
-        source_url,
-        sample_rate: Some(SAMPLE_RATE_RAW as u32),
-        ..Default::default()
+    let isrc = obj
+        .and_then(|m| m.get("isrc"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .clone();
+
+    DeemixMetadata {
+        isrc,
+        metadata: Metadata {
+            track,
+            artist,
+            channels: Some(2),
+            duration,
+            source_url,
+            sample_rate: Some(SAMPLE_RATE_RAW as u32),
+            ..Default::default()
+        }
     }
 }

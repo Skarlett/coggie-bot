@@ -39,6 +39,8 @@ let
               COGGIEBOT_FEATURES = lib.concatStringsSep "," (map (x: "${x.featureName}=${if x.enabled then "1" else "0"}") prev.passthru.available-features);
             });  
           }
+          { name = "llm"; }
+          { name = "vc-notify"; }
           { name = "basic-cmds"; }
           { name = "bookmark"; }
           { name = "prerelease";
@@ -52,7 +54,7 @@ let
               (prev: {
                 buildInputs = with pkgs; prev.buildInputs ++ [
                   ffmpeg
-	                libopus
+                  libopus
                   gcc
                   cmake
                   gnumake
@@ -71,7 +73,9 @@ let
           { name = "mockingbird-set-arl-cmd";
             dependencies = [ "mockingbird-core" ];
           }
-
+          { name = "mockingbird-crossfade";
+            dependencies = ["mockingbird-core"];
+          }
           { name = "mockingbird-debug";
             dependencies = [];
           }
@@ -83,6 +87,9 @@ let
             });
           }
 
+          { name = "mockingbird-radio";
+            dependencies = ["mockingbird-deemix" "mockingbird-core" "mockingbird-ctrl"];
+          }
           { name = "mockingbird-deemix";
             pkg-override = (prev: {
               buildInputs = prev.buildInputs ++ [ deemix-stream ];
@@ -126,7 +133,7 @@ let
   coggiebot-default-args = features-list: {
     name = "coggiebot";
     pname = "coggiebot";
-    version = "1.4.15";
+    version = "1.5.1";
     nativeBuildInputs = [];
     buildInputs = [
       pkgs.pkg-config
@@ -249,8 +256,8 @@ rec {
               pkg-override = (prev: {
                   postInstall = prev.postInstall + ''
                     wrapProgram $out/bin/${prev.name} \
-                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}
-                  '';
+                        --prefix PATH : ${lib.makeBinPath prev.buildInputs}:$out/bin
+                     '';
                   nativeBuildInputs = prev.nativeBuildInputs ++ [ pkgs.makeWrapper ];
               });
             }
